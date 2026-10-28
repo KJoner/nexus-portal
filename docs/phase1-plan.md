@@ -96,14 +96,14 @@ Nexus Portal/
 
 ### B3. 数据库实体（SQLite）
 
+> 第二批实施时调整：应用、分类、固定顺序、引擎与设置合并为**一份经 zod 校验的配置文档**（`config` 表单行 JSON + 修订号）。所有写入都经由前后端共用的操作归约函数，避免「拆表 ↔ 对象」两套映射不一致；配置量很小（< 100 KB），单文档事务足够。
+
 | 表 | 关键字段 |
 | --- | --- |
-| `apps` | id、kind（site / service）、name、description、url、lan_url、prefer、category_id、hidden、pinned_service、aliases、icon_source、icon_value、icon_letter、icon_tone、open_in、sort、updated_at |
-| `categories` | id、label、locked、sort |
-| `pins` | app_id、position（只含网站，最多 12） |
-| `engines` | id、name、url_template、prefix、builtin、kind（web / linkwarden）、sort |
-| `settings` | key（search / home / look / privacy）、value JSON、updated_at |
-| `health_checks` | app_id、enabled、target（路径或同主机完整网址）、interval_s、timeout_ms |
+| `config` | revision、updated_at、data（应用 / 分类 / 固定顺序 / 引擎 / 设置，见 `packages/shared/src/schema.ts`） |
+| `op_log` | revision、batch_id（唯一，重试幂等）、client_id、ops、created_at（保留最近 500 条） |
+| `auth` | password_hash（scrypt） |
+| `health_checks` | 第三批：检查配置已在应用的 `health` 字段中，此表只存调度状态 |
 | `health_status` | app_id、level、http_status、latency_ms、message、checked_at、fail_count |
 | `wallpapers` | id、name、kind、variants JSON（1280/1920/2560 × AVIF/WebP/JPEG）、placeholder、width、height |
 | `integrations` | id（linkwarden）、base_url、token_enc（AES-GCM 加密）、token_last4 |
@@ -168,6 +168,13 @@ PC 与手机差异字段放在 settings 内：`home.desktop.dockSize`（3–7）
 | C2-4 设置中心 | 桌面工作区与手机推入式页面：外观（预览后应用）、首页与快捷方式、应用与服务（编辑抽屉、校验、分类管理）、搜索（引擎管理）、数据与安全 |
 | C2-5 壁纸 | 上传、服务端生成三档尺寸与模糊占位、焦点（PC / 手机分别保存） |
 | C2-6 导入导出与重置 | JSON 导出（不含令牌与上传图片）、导入预览 → 替换 → 撤销、输入「重置」确认 |
+
+**进度（2026-10-29）**：C2-1 至 C2-6 已完成首版。
+- 服务端：Hono + better-sqlite3；会话令牌只存 SHA-256；登录按 IP 与全局双重限速；写操作要求 `X-Nexus-Client` 头并校验 Origin；CSP / X-Frame-Options / no-referrer。
+- 同步：发件箱持久化在本设备，断网修改恢复后自动补发；批次 ID 保证重试不重复应用；SSE 推送修订号，实测另一设备即时更新；被服务端拒绝的改动会丢弃并提示。
+- 设置中心：桌面与手机两套外壳、五个分组全部可用；新增应用图标上传（服务端统一转 256 px PNG，拒绝含外部引用的 SVG）。
+- 测试：服务端 16 项、前端与共享层 58 项，共 74 项通过；生产构建由服务端单进程托管已验证。
+- 明确标注「尚未实现」的项：搜索建议、Linkwarden 收藏搜索、测试连接、本地缓存图标、每日轮换、浅色主题、按网络自动切换内外网（前四项属于第三批）。
 
 **验收**：两台设备（Chrome + 手机 Safari）修改后 3 秒内互相看到；离线修改恢复网络后自动补发；刷新恢复；接口 500 / 断网时首页仍可用并提示状态；未登录无法读取任何配置；保存状态只在服务端确认后显示「已保存」。
 

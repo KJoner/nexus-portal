@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router';
 import { ContextMenu, menuPoint, type MenuItem, type MenuState } from '../../../components/ContextMenu';
 import { ToastHost } from '../../../components/ToastHost';
 import { toast } from '../../../components/toast-store';
-import { useConfig, useConfigStore } from '../../../data/config-store';
+import { flush, useConfig, useConfigStore } from '../../../data/config-store';
 import { useServices } from '../../../data/status';
 import { useMotionLevel, useNow, useViewport } from '../../../lib/hooks';
 import { openApp } from '../../../lib/open';
@@ -73,10 +73,12 @@ export function DesktopHome() {
     setMenu(null);
     setStatusOpen(false);
   };
-  const exitEdit = () => {
+  /** Confirms only what the server actually stored; offline edits are reported as queued. */
+  const exitEdit = async () => {
     setEdit(false);
-    const save = useConfigStore.getState().save;
-    toast(save.kind === 'error' ? { msg: save.message, tone: 'error' } : { msg: '首页布局已保存', tone: 'ok' });
+    await flush();
+    const s = useConfigStore.getState();
+    toast(!s.online ? { msg: '已离线保存，恢复连接后自动同步', tone: 'warn' } : s.pending.length ? { msg: '正在保存首页布局…', tone: 'info' } : { msg: '首页布局已保存', tone: 'ok' });
   };
   const openStatus = () => {
     setStatusOpen(true);
@@ -100,7 +102,7 @@ export function DesktopHome() {
       else if (statusOpen) {
         setStatusOpen(false);
         pillRef.current?.focus();
-      } else if (edit) exitEdit();
+      } else if (edit) void exitEdit();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -172,7 +174,7 @@ export function DesktopHome() {
   const breathe = summary.level === 'error' && !errorSeen && motion === 'full';
 
   return (
-    <div className="fixed inset-0 overflow-hidden bg-base">
+    <div className="fixed inset-0 overflow-clip bg-base">
       <Wallpaper look={look} variant="desktop" receded={drawer} />
 
       <div inert={drawer}>
@@ -239,7 +241,7 @@ export function DesktopHome() {
                 {Math.min(pinned.length, home.dockSize)} / {home.dockSize}
                 {extra > 0 && ` · 另有 ${extra} 个仅在手机显示`}
               </span>
-              <button type="button" onClick={exitEdit} className="h-[34px] rounded-[10px] border-0 bg-amber px-4 text-[13.5px] font-semibold text-on-amber hover:bg-amber-hi">
+              <button type="button" onClick={() => void exitEdit()} className="h-[34px] rounded-[10px] border-0 bg-amber px-4 text-[13.5px] font-semibold text-on-amber hover:bg-amber-hi">
                 完成
               </button>
             </div>

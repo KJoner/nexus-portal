@@ -115,7 +115,7 @@ export function MobileHome() {
   });
 
   return (
-    <div className="nx-touch fixed inset-x-0 top-0 overflow-hidden bg-base" style={rootStyle}>
+    <div className="nx-touch fixed inset-x-0 top-0 overflow-clip bg-base" style={rootStyle}>
       <Wallpaper look={look} variant="mobile" receded={!isHome} />
 
       <div className="absolute right-[22px] left-[26px] flex items-start transition-opacity duration-200 ease-soft" style={{ top: `calc(${SAFE_TOP} + ${small ? 32 : 25}px)`, opacity: isHome ? 1 : 0 }} inert={!isHome}>

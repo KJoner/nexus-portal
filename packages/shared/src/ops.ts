@@ -1,4 +1,4 @@
-import type { z } from 'zod';
+import { z } from 'zod';
 import {
   AppSchema,
   CategorySchema,
@@ -35,6 +35,37 @@ export type Op =
   | { type: 'engine.move'; engineId: string; toIndex: number }
   | { type: 'settings.patch'; section: SettingsSection; patch: Record<string, unknown> }
   | { type: 'config.replace'; config: Config };
+
+const IdRef = z.string().min(1).max(64);
+const Index = z.number().int().min(-1000).max(1000);
+
+/**
+ * Structural check for ops arriving over the network. Payloads (app, engine, categories, config)
+ * stay `unknown` here because `applyOp` validates them against their full schemas.
+ */
+export const OpSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('pin.add'), appId: IdRef, index: Index.optional() }),
+  z.object({ type: z.literal('pin.remove'), appId: IdRef }),
+  z.object({ type: z.literal('pin.move'), appId: IdRef, toIndex: Index }),
+  z.object({ type: z.literal('pin.reorder'), order: z.array(IdRef).max(200) }),
+  z.object({ type: z.literal('app.setHidden'), appId: IdRef, hidden: z.boolean() }),
+  z.object({ type: z.literal('service.setShown'), appId: IdRef, shown: z.boolean() }),
+  z.object({ type: z.literal('app.upsert'), app: z.unknown(), index: Index.optional() }),
+  z.object({ type: z.literal('app.delete'), appId: IdRef }),
+  z.object({ type: z.literal('categories.replace'), categories: z.array(z.unknown()).max(50) }),
+  z.object({ type: z.literal('engine.upsert'), engine: z.unknown(), index: Index.optional() }),
+  z.object({ type: z.literal('engine.delete'), engineId: IdRef }),
+  z.object({ type: z.literal('engine.move'), engineId: IdRef, toIndex: Index }),
+  z.object({ type: z.literal('settings.patch'), section: z.enum(['search', 'home', 'look', 'privacy']), patch: z.record(z.string(), z.unknown()) }),
+  z.object({ type: z.literal('config.replace'), config: z.unknown() }),
+]);
+
+export const OpBatchSchema = z.object({
+  clientId: z.string().min(1).max(64),
+  batchId: z.string().min(1).max(64),
+  ops: z.array(OpSchema).min(1).max(100),
+});
+export type OpBatch = { clientId: string; batchId: string; ops: Op[] };
 
 export type OpErrorCode = 'not_found' | 'pins_full' | 'not_pinnable' | 'invalid' | 'locked';
 

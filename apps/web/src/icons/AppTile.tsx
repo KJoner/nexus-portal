@@ -62,7 +62,7 @@ function resolve(t: TileTarget): Resolved {
         case 'library':
           return { surface, src: a.icon.ref ? libraryIconUrl(a.icon.ref) : null, scale: svc ? 0.58 : 0.54, letter };
         case 'upload':
-          return { surface, src: a.icon.ref || null, scale: svc ? 0.58 : 0.54, letter };
+          return { surface, src: a.icon.ref ? `/api/icons/${encodeURIComponent(a.icon.ref)}.png` : null, scale: svc ? 0.58 : 0.54, letter };
         case 'auto':
           return { surface, src: faviconUrl(hostOf(a.url)), scale: svc ? 0.58 : 0.54, letter };
       }

@@ -10,6 +10,8 @@ interface RecentStore {
   items: RecentItem[];
   record(item: Omit<RecentItem, 'at'>): void;
   clear(): void;
+  /** 清除搜索历史: removes searched terms, keeps recently opened apps. */
+  clearSearches(): void;
 }
 
 const same = (a: Omit<RecentItem, 'at'>, b: RecentItem) => a.kind === b.kind && (a.appId ?? a.url ?? a.query) === (b.appId ?? b.url ?? b.query);
@@ -28,6 +30,11 @@ export const useRecentStore = create<RecentStore>((set, get) => ({
   clear() {
     storage.remove(KEY);
     set({ items: [] });
+  },
+  clearSearches() {
+    const items = get().items.filter((x) => x.kind !== 'search');
+    storage.set(KEY, items);
+    set({ items });
   },
 }));
 

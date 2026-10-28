@@ -1,53 +1,128 @@
 import { defaultConfig } from '@nexus/shared';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { runUndo, useToastStore } from '../components/toast-store';
 import { homeActions } from '../features/home/actions';
-import { localAdapter } from './adapter';
-import { setConfigAdapter, useConfigStore } from './config-store';
+import { flush, login, onSyncRejected, refresh, resetSync, useConfigStore } from './config-store';
+import { MemoryTransport, NetworkError } from './transport';
 
-const KEY = 'nexus.config.v1';
-const pins = () => useConfigStore.getState().snapshot.config.pins;
+let server: MemoryTransport;
+const state = () => useConfigStore.getState();
+const pins = () => state().snapshot.config.pins;
 
 beforeEach(() => {
   localStorage.clear();
-  setConfigAdapter(localAdapter);
+  server = new MemoryTransport();
+  resetSync(server);
   useToastStore.setState({ current: null });
 });
 
-describe('local adapter', () => {
-  it('boots from defaults and persists every change', async () => {
-    expect(pins()).toEqual(defaultConfig().pins);
+describe('sync engine', () => {
+  it('sends ops to the server and adopts its revision', async () => {
     homeActions.unpin('youtube');
-    await Promise.resolve();
-    expect(JSON.parse(localStorage.getItem(KEY)!).config.pins).not.toContain('youtube');
-    expect(useConfigStore.getState().snapshot.revision).toBe(1);
+    expect(pins()).not.toContain('youtube'); // optimistic
+    await flush();
+    expect(server.config.pins).not.toContain('youtube');
+    expect(state().confirmed?.revision).toBe(2);
+    expect(state().pending).toEqual([]);
   });
 
-  it('falls back to defaults when stored data is corrupt instead of crashing', () => {
-    localStorage.setItem(KEY, '{"revision":3,"config":{"apps":"nope"}}');
-    setConfigAdapter(localAdapter);
-    expect(pins()).toEqual(defaultConfig().pins);
-    localStorage.setItem(KEY, 'not json');
-    setConfigAdapter(localAdapter);
-    expect(pins()).toEqual(defaultConfig().pins);
+  it('still sends after an idle refresh (regression: flush stuck after a no-op run)', async () => {
+    await refresh();
+    homeActions.unpin('gmail');
+    await flush();
+    expect(server.calls).toHaveLength(1);
+    expect(server.config.pins).not.toContain('gmail');
   });
 
-  it('restores the stored snapshot on reload', () => {
+  it('keeps edits while offline and sends them when the connection returns', async () => {
+    server.online = false;
+    homeActions.unpin('youtube');
+    await flush();
+    expect(state().online).toBe(false);
+    expect(state().pending).toHaveLength(1);
+    expect(pins()).not.toContain('youtube');
+    // Survives a reload: the outbox is persisted.
+    expect(JSON.parse(localStorage.getItem('nexus.cache.v2')!).pending).toHaveLength(1);
+    server.online = true;
+    await refresh();
+    expect(state().online).toBe(true);
+    expect(server.config.pins).not.toContain('youtube');
+    expect(state().pending).toEqual([]);
+  });
+
+  it('retrying after a lost response does not apply the batch twice', async () => {
+    const post = server.postOps.bind(server);
+    let drop = true;
+    server.postOps = async (b) => {
+      const r = await post(b);
+      if (drop) {
+        drop = false;
+        throw new NetworkError();
+      }
+      return r;
+    };
+    homeActions.move('github', 1);
+    await flush();
+    expect(state().pending).toHaveLength(1);
+    await refresh();
+    expect(server.revision).toBe(2);
+    expect(server.calls).toHaveLength(2);
+    expect(server.config.pins.slice(0, 2)).toEqual(['gmail', 'github']);
+  });
+
+  it('merges a remote change with a local pending change by intent', async () => {
+    server.online = false;
+    homeActions.unpin('youtube');
+    await flush();
+    server.online = true;
+    server.remoteChange([{ type: 'pin.add', appId: 'figma' }]);
+    await refresh();
+    expect(pins()).toEqual(['github', 'gmail', 'bilibili', 'notion', 'figma']);
+    expect(server.config.pins).toEqual(pins());
+  });
+
+  it('drops a change the server rejects and says so', async () => {
+    const rejected = vi.fn();
+    onSyncRejected(rejected);
+    server.online = false;
     homeActions.pin('vercel');
-    setConfigAdapter(localAdapter);
-    expect(pins()).toContain('vercel');
+    await flush();
+    server.online = true;
+    server.remoteChange([{ type: 'app.setHidden', appId: 'vercel', hidden: true }]);
+    await refresh();
+    expect(rejected).toHaveBeenCalledOnce();
+    expect(pins()).not.toContain('vercel');
+    expect(state().pending).toEqual([]);
+  });
+
+  it('a 401 shows the login page and keeps the outbox for after sign-in', async () => {
+    server.authenticated = false;
+    homeActions.unpin('gmail');
+    await flush();
+    expect(state().auth).toBe('anonymous');
+    expect(state().pending).toHaveLength(1);
+    await login('pw');
+    expect(state().auth).toBe('authenticated');
+    expect(server.config.pins).not.toContain('gmail');
+  });
+
+  it('a corrupt cache falls back to defaults instead of crashing', () => {
+    localStorage.setItem('nexus.cache.v2', '{"confirmed":{"revision":3,"config":{"apps":"nope"}},"pending":[]}');
+    resetSync(server);
+    expect(pins()).toEqual(defaultConfig().pins);
   });
 });
 
 describe('structural changes are undoable', () => {
-  it('hide → toast → undo restores visibility and position', () => {
+  it('hide → toast → undo restores visibility and position, also on the server', async () => {
     homeActions.hide('gmail');
     const t = useToastStore.getState().current!;
     expect(t.msg).toContain('已隐藏 Gmail');
-    expect(pins()).not.toContain('gmail');
     runUndo(t);
+    await flush();
     expect(pins()[1]).toBe('gmail');
-    expect(useConfigStore.getState().snapshot.config.apps.find((a) => a.id === 'gmail')!.hidden).toBe(false);
+    expect(server.config.pins[1]).toBe('gmail');
+    expect(server.config.apps.find((a) => a.id === 'gmail')!.hidden).toBe(false);
     expect(useToastStore.getState().current!.msg).toBe('已撤销');
   });
 

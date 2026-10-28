@@ -1,8 +1,8 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { localAdapter } from '../../../data/adapter';
-import { setConfigAdapter } from '../../../data/config-store';
+import { resetSync } from '../../../data/config-store';
+import { MemoryTransport } from '../../../data/transport';
 import { SearchSlab } from './SearchSlab';
 
 function setup() {
@@ -20,7 +20,7 @@ const engineButton = () => screen.getByRole('button', { name: /搜索引擎：/ 
 
 beforeEach(() => {
   localStorage.clear();
-  setConfigAdapter(localAdapter);
+  resetSync(new MemoryTransport());
 });
 
 describe('SearchSlab keyboard model (R1.5 · 01)', () => {

@@ -1,6 +1,7 @@
-import { BUILTIN_WALLPAPERS, homeCapacity, MAX_PINS, type Op } from '@nexus/shared';
+import { homeCapacity, MAX_PINS, type Op } from '@nexus/shared';
 import { toast } from '../../components/toast-store';
 import { dispatch, useConfigStore } from '../../data/config-store';
+import { wallpaperList } from './Wallpaper';
 
 const cfg = () => useConfigStore.getState().snapshot.config;
 const nameOf = (id: string) => cfg().apps.find((a) => a.id === id)?.name ?? id;
@@ -47,8 +48,9 @@ export const homeActions = {
   },
   nextWallpaper() {
     const look = cfg().settings.look;
-    const i = BUILTIN_WALLPAPERS.findIndex((w) => w.id === look.wallpaper);
-    const next = BUILTIN_WALLPAPERS[(i + 1) % BUILTIN_WALLPAPERS.length]!;
+    const list = wallpaperList(useConfigStore.getState().wallpapers);
+    const i = list.findIndex((w) => w.id === look.wallpaper);
+    const next = list[(i + 1) % list.length]!;
     commit({ type: 'settings.patch', section: 'look', patch: { wallpaper: next.id } }, `已换成「${next.name}」`);
   },
 };

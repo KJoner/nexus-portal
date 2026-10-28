@@ -1,4 +1,4 @@
-import { BUILTIN_WALLPAPERS, buildSearch, engineSearchUrl, flattenRows, type Config, type Engine, type QuickAction, type SearchRow } from '@nexus/shared';
+import { buildSearch, engineSearchUrl, flattenRows, type Config, type Engine, type QuickAction, type SearchRow } from '@nexus/shared';
 import { Activity, Globe, History, Image, Search, Settings } from 'lucide-react';
 import { useMemo } from 'react';
 import { useConfig } from '../../data/config-store';
@@ -7,7 +7,7 @@ import { useServices } from '../../data/status';
 import type { TileTarget } from '../../icons/AppTile';
 import { navigateTo, openApp } from '../../lib/open';
 import { formatAgo } from '../../lib/time';
-import { useWallpaper } from './Wallpaper';
+import { useWallpaper, useWallpapers } from './Wallpaper';
 
 export type QuickActionId = 'status' | 'wallpaper' | 'settings';
 
@@ -23,13 +23,14 @@ export function useSearchModel(query: string, engineId: string, maxApps: number)
   const recentItems = useRecentStore((s) => s.items);
   const { summary } = useServices();
   const wp = useWallpaper(config.settings.look);
+  const walls = useWallpapers();
 
   return useMemo(() => {
     const guest = config.settings.privacy.guest;
-    const wi = BUILTIN_WALLPAPERS.findIndex((w) => w.id === wp.id);
+    const wi = walls.findIndex((w) => w.id === wp.id);
     const actions: QuickAction[] = [
       ...(guest ? [] : [{ id: 'status', title: '查看服务状态', sub: summary.text }]),
-      { id: 'wallpaper', title: '更换壁纸', sub: `${wp.name} · 第 ${wi + 1} / ${BUILTIN_WALLPAPERS.length} 张` },
+      { id: 'wallpaper', title: '更换壁纸', sub: `${wp.name} · 第 ${wi + 1} / ${walls.length} 张` },
       { id: 'settings', title: '打开设置', sub: '外观、快捷方式、应用与搜索' },
     ];
     const result = buildSearch({
@@ -45,7 +46,7 @@ export function useSearchModel(query: string, engineId: string, maxApps: number)
       formatAgo,
     });
     return { engines, result, rows: flattenRows(result.sections) };
-  }, [config, engines, recentItems, summary.text, wp, query, engineId, maxApps]);
+  }, [config, engines, recentItems, summary.text, wp, walls, query, engineId, maxApps]);
 }
 
 export function rowTile(row: SearchRow, config: Config, engine: Engine): TileTarget {

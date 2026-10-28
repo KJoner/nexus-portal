@@ -8,7 +8,9 @@
   ],
   "scripts": {
     "dev": "npm run dev -w @nexus/web",
-    "build": "npm run build -w @nexus/web",
+    "dev:server": "npm run dev -w @nexus/server",
+    "build": "npm run build -w @nexus/web && npm run build -w @nexus/server",
+    "start": "npm run start -w @nexus/server",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "npm run typecheck --workspaces --if-present"

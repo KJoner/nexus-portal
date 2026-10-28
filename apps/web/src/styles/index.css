@@ -91,3 +91,74 @@
   transition-duration: 0.01s !important;
   animation: none !important;
 }
+
+@keyframes nx-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes nx-slide {
+  from { transform: translateX(40px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes nx-push {
+  from { transform: translateX(28%); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes nx-up {
+  from { transform: translateY(100%); }
+  to { transform: none; }
+}
+
+/* R2 · 滑块: 4px track, 18px thumb (26px on phones). */
+.nx-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 26px;
+  background: transparent;
+  cursor: pointer;
+}
+.nx-range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: rgb(239 234 225 / 0.16);
+}
+.nx-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -7px;
+  border-radius: 50%;
+  background: #efeae1;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.45);
+}
+.nx-range::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: rgb(239 234 225 / 0.16);
+}
+.nx-range::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 50%;
+  background: #efeae1;
+}
+.nx-range-lg {
+  height: 32px;
+}
+.nx-range-lg::-webkit-slider-thumb {
+  width: 26px;
+  height: 26px;
+  margin-top: -11px;
+}
+.nx-range-lg::-moz-range-thumb {
+  width: 26px;
+  height: 26px;
+}
+.nx-range:focus-visible {
+  outline-offset: 2px;
+}
+select option {
+  background: #2a2824;
+  color: #efeae1;
+}

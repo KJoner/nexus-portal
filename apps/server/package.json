@@ -1,0 +1,25 @@
+{
+  "name": "@nexus/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --clear-screen=false src/index.ts",
+    "build": "node build.mjs",
+    "start": "node dist/index.js",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "9.6.0",
+    "@types/node": "26.6.5",
+    "esbuild": "0.28.2",
+    "tsx": "4.23.15"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.5",
+    "better-sqlite3": "13.0.3",
+    "hono": "4.13.14",
+    "sharp": "0.35.5",
+    "zod": "4.6.7"
+  }
+}
