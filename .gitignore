@@ -5,7 +5,7 @@ coverage/
 .env
 .env.*
 !.env.example
-data/
+/data/
 test-results/
 playwright-report/
 .idea/workspace.xml
