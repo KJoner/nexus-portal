@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&family=Noto+Sans+SC:wght@400;500;700&display=swap">
+<script src="nexus-icons.js"></script>
+<style>
+body{margin:0;background:#f3f2f2}
+a{color:#ec3013;text-underline-offset:3px}a:hover{color:#dd2b0f}
+::placeholder{color:currentColor;opacity:.55}
+</style>
+</helmet>
+<div ref="{{ rootRef }}" style="--bg:#f3f2f2; --surface:#eae9e9; --ink:#201e1d; --muted:rgba(32,30,29,0.66); --rule:rgba(32,30,29,0.4); --rule-soft:rgba(32,30,29,0.16); --hover:rgba(32,30,29,0.05); --warn:#ae1800; --kicker:#ae1800; --scrim:rgba(45,43,43,0.5); min-height:100vh; background:#f3f2f2; color:#201e1d; font-family:Archivo, 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif; padding:64px 80px 140px; display:flex; flex-direction:column; gap:96px; box-sizing:border-box">
+
+<header style="display:flex; flex-direction:column; gap:40px; width:1906px">
+  <div style="display:flex; align-items:center; gap:24px; font-size:13px; padding-bottom:14px; border-bottom:2px solid rgba(32,30,29,0.4)">
+    <span style="font-weight:800; letter-spacing:0.18em">NEXUS PORTAL · 星枢</span>
+    <span style="color:rgba(32,30,29,0.62)">阶段 0 · UI 方案对比</span>
+    <span style="flex:1"></span>
+    <div style="display:flex; gap:28px; font-size:14px">
+      <a href="Nexus%20A%20Immersive.dc.html" style="color:#201e1d; text-decoration:none; padding-bottom:4px; border-bottom:2px solid transparent" style-hover="color:#ec3013">A 沉浸式</a>
+      <a href="Nexus%20B%20Console.dc.html" style="color:#201e1d; text-decoration:none; font-weight:800; padding-bottom:4px; border-bottom:2px solid #ec3013">B 科技控制台</a>
+      <a href="Nexus%20C%20Minimal.dc.html" style="color:#201e1d; text-decoration:none; padding-bottom:4px; border-bottom:2px solid transparent" style-hover="color:#ec3013">C 极简</a>
+    </div>
+  </div>
+  <div style="display:grid; grid-template-columns:minmax(0,1fr) auto; gap:48px; align-items:end">
+    <div>
+      <div style="font-size:13px; letter-spacing:0.12em; text-transform:uppercase; color:#ae1800; font-weight:600">方案 B / 3</div>
+      <div style="font-size:96px; font-weight:800; line-height:1; letter-spacing:-0.03em; margin-top:10px">科技控制台 Console</div>
+      <p style="max-width:820px; font-size:18px; line-height:1.6; margin:20px 0 0; color:rgba(32,30,29,0.78); text-wrap:pretty">默认浅色，模块化网格把常用入口、应用、收藏和运行状态放在同一屏。2px 分隔线组织信息，状态与到期信息常驻右栏，适合一眼扫完再跳转。</p>
+    </div>
+    <div style="display:flex; gap:32px; align-items:flex-end">
+      <div style="display:flex; flex-direction:column; gap:6px">
+        <span style="font-size:12px; color:rgba(32,30,29,0.7)">主题</span>
+        <div style="display:flex; border:1px solid rgba(32,30,29,0.4)">
+          <button onClick="{{ setLight }}" style="font:inherit; font-size:13px; padding:8px 16px; white-space:nowrap; border:0; cursor:pointer; text-align:left; background:{{ pLight.bg }}; color:{{ pLight.fg }}">浅色</button>
+          <button onClick="{{ setDark }}" style="font:inherit; font-size:13px; padding:8px 16px; white-space:nowrap; border:0; border-left:1px solid rgba(32,30,29,0.4); cursor:pointer; text-align:left; background:{{ pDark.bg }}; color:{{ pDark.fg }}">深色</button>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:6px">
+        <span style="font-size:12px; color:rgba(32,30,29,0.7)">状态色</span>
+        <div style="display:flex; border:1px solid rgba(32,30,29,0.4)">
+          <button onClick="{{ setMono }}" style="font:inherit; font-size:13px; padding:8px 16px; white-space:nowrap; border:0; cursor:pointer; text-align:left; background:{{ pMono.bg }}; color:{{ pMono.fg }}">单色</button>
+          <button onClick="{{ setSemantic }}" style="font:inherit; font-size:13px; padding:8px 16px; white-space:nowrap; border:0; border-left:1px solid rgba(32,30,29,0.4); cursor:pointer; text-align:left; background:{{ pSemantic.bg }}; color:{{ pSemantic.fg }}">红黄绿</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div style="display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:32px">
+    <div style="border-top:2px solid rgba(32,30,29,0.4); padding-top:14px; display:flex; flex-direction:column; gap:6px">
+      <span style="font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:#ae1800; font-weight:600">参考</span>
+      <span style="font-size:15px; line-height:1.5">Homarr 的应用卡片与网格 + Glance 的多列信息流 + Homepage 的服务状态</span>
+    </div>
+    <div style="border-top:2px solid rgba(32,30,29,0.4); padding-top:14px; display:flex; flex-direction:column; gap:6px">
+      <span style="font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:#ae1800; font-weight:600">布局</span>
+      <span style="font-size:15px; line-height:1.5">三栏网格：左侧时间与入口，中间搜索与应用，右侧状态与到期</span>
+    </div>
+    <div style="border-top:2px solid rgba(32,30,29,0.4); padding-top:14px; display:flex; flex-direction:column; gap:6px">
+      <span style="font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:#ae1800; font-weight:600">细节</span>
+      <span style="font-size:15px; line-height:1.5">选中态反白、表格化应用目录、服务注册元数据直接可见</span>
+    </div>
+    <div style="border-top:2px solid rgba(32,30,29,0.4); padding-top:14px; display:flex; flex-direction:column; gap:6px">
+      <span style="font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:#ae1800; font-weight:600">适合</span>
+      <span style="font-size:15px; line-height:1.5">服务较多、希望首页就看到状态的使用方式；信息密度最高</span>
+    </div>
+  </div>
+</header>
+
+<section id="B1" data-screen-label="B1 日常首页" style="display:flex; flex-direction:column; gap:28px">
+  <div style="display:flex; align-items:baseline; gap:16px; border-top:2px solid rgba(32,30,29,0.4); padding-top:18px">
+    <span style="font-size:13px; font-weight:800; background:#201e1d; color:#f3f2f2; padding:3px 8px">B1</span>
+    <span style="font-size:32px; font-weight:800; letter-spacing:-0.015em">日常首页</span>
+    <span style="font-size:15px; color:rgba(32,30,29,0.62)">Home · 浏览器默认入口</span>
+  </div>
+  <div style="display:flex; gap:64px; align-items:flex-start">
+    <div style="display:flex; flex-direction:column; gap:12px">
+      <span style="font-size:12px; color:rgba(32,30,29,0.62)">桌面 · Chrome 启动页 / 主页 · 1440 × 900</span>
+      <x-import component-from-global-scope="ChromeWindow" from="./browser-window.jsx" width="1440px" height="900px" url="home.example.com" tabs="{{ chromeTabs }}" hint-size="1440px,900px">
+        <div style="width:1440px; height:816px; display:flex; flex-direction:column; background:var(--bg); color:var(--ink); font-family:Archivo, 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif">
+          <div style="display:flex; align-items:stretch; height:56px; flex:none; border-bottom:2px solid var(--rule)">
+            <div style="width:358px; display:flex; align-items:center; gap:10px; padding:0 24px; box-sizing:border-box; border-right:2px solid var(--rule)"><span style="font-size:17px; font-weight:800; letter-spacing:0.18em">NEXUS</span><span style="font-size:13px; color:var(--muted)">星枢</span></div>
+            <sc-for list="{{ nav0 }}" as="n" hint-placeholder-count="3"><div style="display:flex; align-items:center; padding:0 24px; font-size:14px; font-weight:600; border-right:1px solid var(--rule-soft); background:{{ n.bg }}; color:{{ n.fg }}">{{ n.label }}</div></sc-for>
+            <span style="flex:1"></span>
+            <div style="display:flex; align-items:center; gap:8px; padding:0 20px; border-left:2px solid var(--rule); font-size:13px; white-space:nowrap">
+              <span style="width:8px; height:8px; background:{{ dotOk }}"></span><span>2 / 3 在线</span><span style="color:var(--muted)">·</span><span style="width:8px; height:8px; background:{{ dotWarn }}"></span><span style="color:var(--warn)">1 需要关注</span>
+            </div>
+            <button onClick="{{ toggleTheme }}" title="切换主题" style="width:56px; display:grid; place-items:center; background:transparent; border:0; border-left:2px solid var(--rule); color:var(--ink); cursor:pointer" style-hover="background:var(--hover)"><span style="width:18px; height:18px; background:currentColor; mask:{{ themeIcon }} center/contain no-repeat"></span></button>
+          </div>
+          <div style="flex:1; min-height:0; display:grid; grid-template-columns:358px minmax(0,1fr) 358px; gap:2px; background:var(--rule)">
+            <div style="display:flex; flex-direction:column; gap:2px; min-height:0">
+              <div style="background:var(--bg); padding:24px">
+                <div style="font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:var(--kicker); font-weight:600">10月27日 · 星期二</div>
+                <div style="margin-top:12px; font-size:80px; font-weight:800; line-height:0.95; letter-spacing:-0.04em; font-variant-numeric:tabular-nums">21:14</div>
+                <div style="margin-top:12px; font-size:16px; color:var(--muted)">Good Evening.</div>
+              </div>
+              <div style="background:var(--bg); padding:20px 24px 12px">
+                <div style="display:flex; justify-content:space-between; align-items:baseline"><span style="font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:var(--kicker); font-weight:600">常用入口</span><span style="font-size:12px; color:var(--muted)">编辑</span></div>
+                <div style="margin-top:10px; display:flex; flex-direction:column">
+                  <sc-for list="{{ quick }}" as="q" hint-placeholder-count="4">
+                    <div style="display:flex; align-items:center; gap:12px; height:48px; margin:0 -24px; padding:0 24px; border-top:1px solid var(--rule-soft); cursor:pointer" style-hover="background:var(--hover)">
+                      <span style="width:18px; height:18px; background:currentColor; mask:{{ q.icon }} center/contain no-repeat"></span>
+                      <span style="font-size:15px; font-weight:600">{{ q.name }}</span>
+                      <span style="flex:1; font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ q.url }}</span>
+                      <span style="width:14px; height:14px; background:var(--muted); mask:{{ i.arrowUpRight }} center/contain no-repeat"></span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+              <div style="flex:1; background:var(--bg); padding:20px 24px">
+                <div style="font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:var(--kicker); font-weight:600">快捷键</div>
+                <div style="margin-top:12px; display:flex; flex-direction:column; gap:10px; font-size:14px">
+                  <div style="display:flex; align-items:center; gap:12px"><span style="min-width:40px; padding:2px 8px; box-sizing:border-box; border:1px solid var(--rule); font-size:12px; font-weight:600; white-space:nowrap">/</span><span>聚焦搜索</span></div>
+                  <div style="display:flex; align-items:center; gap:12px"><span style="min-width:40px; padding:2px 8px; box-sizing:border-box; border:1px solid var(--rule); font-size:12px; font-weight:600; white-space:nowrap">⌘ K</span><span>命令面板</span></div>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:2px; min-height:0">
+              <div style="background:var(--bg); padding:22px 28px 24px">
+                <div style="display:flex; align-items:center; gap:0; font-size:13px">
+                  <span style="padding:6px 12px; white-space:nowrap; background:var(--ink); color:var(--bg)">网络 · Google</span>
+                  <span style="padding:6px 12px; white-space:nowrap; border:1px solid var(--rule-soft); border-left:0">应用</span>
+                  <span style="padding:6px 12px; white-space:nowrap; border:1px solid var(--rule-soft); border-left:0">收藏 · Linkwarden</span>
+                  <span style="flex:1"></span>
+                  <span style="font-size:12px; color:var(--muted)">Tab 切换</span>
+                </div>
+                <div style="position:relative; margin-top:12px">
+                  <span style="position:absolute; z-index:1; left:18px; top:19px; width:20px; height:20px; background:var(--muted); pointer-events:none; mask:{{ i.search }} center/contain no-repeat"></span>
+                  <input placeholder="搜索网络、应用或收藏..." style="width:100%; height:58px; box-sizing:border-box; padding:0 70px 0 52px; font:inherit; font-size:17px; color:var(--ink); background:var(--bg); border:2px solid var(--rule); border-radius:0; outline:none; caret-color:#ec3013" style-focus="border-color:#ec3013; background:var(--surface)">
+                  <span style="position:absolute; right:16px; top:17px; padding:2px 8px; border:1px solid var(--rule); font-size:12px; color:var(--muted); white-space:nowrap">⌘ K</span>
+                </div>
+              </div>
+              <div style="background:var(--bg); padding:20px 28px 24px">
+                <div style="display:flex; justify-content:space-between; align-items:baseline"><span style="font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:var(--kicker); font-weight:600">应用中心 · 4</span><span style="font-size:13px; font-weight:600">全部应用 →</span></div>
+                <div style="margin-top:14px; display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:1px; background:var(--rule-soft); border:1px solid var(--rule-soft)">
+                  <sc-for list="{{ services }}" as="s" hint-placeholder-count="4">
+                    <div style="height:142px; box-sizing:border-box; padding:16px 18px; display:flex; flex-direction:column; background:var(--bg); cursor:pointer" style-hover="background:var(--surface)">
+                      <div style="display:flex; align-items:center; gap:8px">
+                        <span style="width:20px; height:20px; background:currentColor; mask:{{ s.icon }} center/contain no-repeat"></span>
+                        <span style="flex:1"></span>
+                        <span style="width:8px; height:8px; box-sizing:border-box; background:{{ s.dotBg }}; border:{{ s.dotBorder }}"></span>
+                        <span style="font-size:12px; color:{{ s.stateColor }}">{{ s.stateLabel }}</span>
+                      </div>
+                      <span style="margin-top:14px; font-size:18px; font-weight:800">{{ s.name }}</span>
+                      <span style="margin-top:2px; font-size:13px; color:var(--muted)">{{ s.desc }}</span>
+                      <div style="margin-top:auto; display:flex; gap:6px; font-size:11px">
+                        <span style="padding:2px 8px; background:var(--surface)">{{ s.level }}</span>
+                        <span style="padding:2px 8px; background:var(--surface)">{{ s.vis }}</span>
+                      </div>
+                    </div>
+                  </sc-for>
+                  <div style="height:142px; box-sizing:border-box; padding:16px 18px; display:flex; flex-direction:column; gap:8px; background:var(--bg); cursor:pointer; color:var(--muted)" style-hover="background:var(--surface); color:var(--ink)">
+                    <span style="width:20px; height:20px; background:currentColor; mask:{{ i.plus }} center/contain no-repeat"></span>
+                    <span style="margin-top:6px; font-size:18px; font-weight:800">添加服务</span>
+                    <span style="font-size:13px">注册名称、图标、地址与权限</span>
+                  </div>
+                  <div style="background:var(--bg)"></div>
+                </div>
+              </div>
+              <div style="flex:1; min-height:0; background:var(--bg); padding:20px 28px">
+                <div style="display:flex; justify-content:space-between; align-items:baseline"><span style="font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:var(--kicker); font-weight:600">Linkwarden · 最近收藏</span><span style="font-size:12px; color:var(--muted)">经由门户后端读取</span></div>
+                <div style="margin-top:10px; display:flex; flex-direction:column">
+                  <sc-for list="{{ recent }}" as="r" hint-placeholder-count="3">
+                    <div style="display:flex; align-items:center; gap:12px; height:42px; border-top:1px solid var(--rule-soft); cursor:pointer" style-hover="background:var(--hover)">
+                      <span style="width:14px; height:14px; background:var(--muted); mask:{{ i.bookmark }} center/contain no-repeat"></span>
+                      <span style="font-size:14px; font-weight:600">{{ r.title }}</span>
+                      <span style="font-size:12px; color:var(--muted)">{{ r.col }}</span>
+                      <span style="flex:1"></span>
+                      <span style="font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums">{{ r.date }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:2px; min-height:0">
+              <div style="background:var(--bg); padding:20px 24px">
+                <div style="display:flex; justify-content:space-between; align-items:baseline"><span style="font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:var(--kicker); font-weight:600">运行概览</span><span style="font-size:12px; color:var(--muted)">2 分钟前</span></div>
+                <div style="margin-top:14px; display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:1px; background:var(--rule-soft); border:1px solid var(--rule-soft)">
+                  <div style="background:var(--bg); padding:10px 12px"><div style="font-size:30px; font-weight:800; line-height:1">2</div><div style="margin-top:4px; font-size:12px; color:var(--muted)">在线</div></div>
+                  <div style="background:var(--bg); padding:10px 12px"><div style="font-size:30px; font-weight:800; line-height:1; color:#ec3013">1</div><div style="margin-top:4px; font-size:12px; color:var(--muted)">需要关注</div></div>
+                  <div style="background:var(--bg); padding:10px 12px"><div style="font-size:30px; font-weight:800; line-height:1">2</div><div style="margin-top:4px; font-size:12px; color:var(--muted)">告警</div></div>
+                </div>
+                <div style="margin-top:10px; display:flex; flex-direction:column">
+                  <sc-for list="{{ monitored }}" as="s" hint-placeholder-count="3">
+                    <div style="display:flex; align-items:center; gap:12px; height:56px; border-bottom:1px solid var(--rule-soft); cursor:pointer" style-hover="background:var(--hover)">
+                      <span style="width:8px; height:8px; flex:none; box-sizing:border-box; background:{{ s.dotBg }}; border:{{ s.dotBorder }}"></span>
+                      <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:2px">
+                        <span style="font-size:15px; font-weight:600">{{ s.name }}</span>
+                        <span style="font-size:12px; color:{{ s.stateColor }}">{{ s.brief }}</span>
+                      </div>
+                      <span style="width:14px; height:14px; background:var(--muted); mask:{{ i.chevronRight }} center/contain no-repeat"></span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+              <div style="flex:1; background:var(--bg); padding:20px 24px">
+                <div style="font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:var(--kicker); font-weight:600">到期提醒</div>
+                <div style="margin-top:10px; display:flex; flex-direction:column">
+                  <sc-for list="{{ expiry }}" as="e" hint-placeholder-count="2">
+                    <div style="display:flex; align-items:center; gap:12px; height:56px; border-bottom:1px solid var(--rule-soft)">
+                      <div style="flex:1; display:flex; flex-direction:column; gap:2px">
+                        <span style="font-size:14px; font-weight:600">{{ e.label }}</span>
+                        <span style="font-size:12px; color:var(--muted)">{{ e.target }}</span>
+                      </div>
+                      <span style="font-size:20px; font-weight:800; font-variant-numeric:tabular-nums">{{ e.days }}</span><span style="font-size:12px; color:var(--muted)">天</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </x-import>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:12px">
+      <span style="font-size:12px; color:rgba(32,30,29,0.62)">手机 · Safari 添加到主屏幕（PWA）</span>
+      <x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" dark="{{ isDark }}" hint-size="402px,874px">
+        <div style="position:relative; height:100%; box-sizing:border-box; padding-top:54px; display:flex; flex-direction:column; overflow:hidden; background:var(--bg); color:var(--ink); font-family:Archivo, 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif">
+          <div style="display:flex; align-items:stretch; height:50px; flex:none; border-bottom:2px solid var(--rule)">
+            <div style="display:flex; align-items:center; gap:8px; padding:0 20px"><span style="font-size:15px; font-weight:800; letter-spacing:0.18em">NEXUS</span><span style="font-size:12px; color:var(--muted)">星枢</span></div>
+            <span style="flex:1"></span>
+            <div style="display:flex; align-items:center; gap:6px; padding:0 14px; border-left:2px solid var(--rule); font-size:12px; white-space:nowrap"><span style="width:7px; height:7px; background:{{ dotWarn }}"></span>1 需要关注</div>
+            <button onClick="{{ toggleTheme }}" style="width:50px; display:grid; place-items:center; background:transparent; border:0; border-left:2px solid var(--rule); color:var(--ink); cursor:pointer"><span style="width:18px; height:18px; background:currentColor; mask:{{ themeIcon }} center/contain no-repeat"></span></button>
+          </div>
+          <div style="padding:18px 20px 20px; border-bottom:2px solid var(--rule)">
+            <div style="font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:var(--kicker); font-weight:600">10月27日 · 星期二</div>
+            <div style="display:flex; align-items:baseline; gap:12px; margin-top:8px">
+              <span style="font-size:64px; font-weight:800; line-height:0.95; letter-spacing:-0.04em; font-variant-numeric:tabular-nums">09:41</span>
+              <span style="font-size:14px; color:var(--muted)">My personal space</span>
+            </div>
+          </div>
+          <div style="padding:16px 20px; border-bottom:2px solid var(--rule)">
+            <div style="position:relative">
+              <span style="position:absolute; z-index:1; left:14px; top:15px; width:18px; height:18px; background:var(--muted); pointer-events:none; mask:{{ i.search }} center/contain no-repeat"></span>
+              <input placeholder="搜索或打开应用" style="width:100%; height:48px; box-sizing:border-box; padding:0 14px 0 42px; font:inherit; font-size:16px; color:var(--ink); background:var(--bg); border:2px solid var(--rule); border-radius:0; outline:none; caret-color:#ec3013" style-focus="border-color:#ec3013; background:var(--surface)">
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:2px; background:var(--rule); border-bottom:2px solid var(--rule)">
+            <sc-for list="{{ mquick }}" as="q" hint-placeholder-count="4">
+              <div style="height:84px; box-sizing:border-box; padding:12px; display:flex; flex-direction:column; justify-content:space-between; background:var(--bg)">
+                <span style="width:20px; height:20px; background:currentColor; mask:{{ q.icon }} center/contain no-repeat"></span>
+                <span style="font-size:13px; font-weight:600">{{ q.name }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="padding:16px 20px 4px; font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:var(--kicker); font-weight:600">服务中心</div>
+          <div style="display:flex; flex-direction:column; padding:0 20px">
+            <sc-for list="{{ monitored }}" as="s" hint-placeholder-count="3">
+              <div style="display:flex; align-items:center; gap:12px; height:60px; border-bottom:1px solid var(--rule-soft)">
+                <span style="width:8px; height:8px; flex:none; box-sizing:border-box; background:{{ s.dotBg }}; border:{{ s.dotBorder }}"></span>
+                <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:2px">
+                  <span style="font-size:15px; font-weight:600">{{ s.name }}</span>
+                  <span style="font-size:12px; color:{{ s.stateColor }}">{{ s.brief }}</span>
+                </div>
+                <span style="width:16px; height:16px; background:var(--muted); mask:{{ i.chevronRight }} center/contain no-repeat"></span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="position:absolute; left:0; right:0; bottom:0; height:82px; display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:1px; background:var(--rule-soft); border-top:2px solid var(--rule)">
+            <sc-for list="{{ tabs0 }}" as="t" hint-placeholder-count="4">
+              <div style="display:flex; flex-direction:column; align-items:center; gap:4px; padding-top:12px; background:{{ t.bg }}; color:{{ t.fg }}">
+                <span style="width:20px; height:20px; background:currentColor; mask:{{ t.icon }} center/contain no-repeat"></span>
+                <span style="font-size:11px; font-weight:600">{{ t.label }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </x-import>
+    </div>
+  </div>
+</section>
+
+<section id="B2" data-screen-label="B2 应用中心" style="display:flex; flex-direction:column; gap:28px">
+  <div style="display:flex; align-items:baseline; gap:16px; border-top:2px solid rgba(32,30,29,0.4); padding-top:18px">
+    <span style="font-size:13px; font-weight:800; background:#201e1d; color:#f3f2f2; padding:3px 8px">B2</span>
+    <span style="font-size:32px; font-weight:800; letter-spacing:-0.015em">应用中心</span>
+    <span style="font-size:15px; color:rgba(32,30,29,0.62)">App center · 服务目录与注册信息</span>
+  </div>
+  <div style="display:flex; gap:64px; align-items:flex-start">
+    <div style="display:flex; flex-direction:column; gap:12px">
+      <span style="font-size:12px; color:rgba(32,30,29,0.62)">桌面 · 1440 × 900</span>
+      <x-import component-from-global-scope="ChromeWindow" from="./browser-window.jsx" width="1440px" height="900px" url="home.example.com/apps" tabs="{{ chromeTabs }}" hint-size="1440px,900px">
+        <div style="width:1440px; height:816px; display:flex; flex-direction:column; background:var(--bg); color:var(--ink); font-family:Archivo, 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif">
+          <div style="display:flex; align-items:stretch; height:56px; flex:none; border-bottom:2px solid var(--rule)">
+            <div style="width:240px; display:flex; align-items:center; gap:10px; padding:0 24px; box-sizing:border-box; border-right:2px solid var(--rule)"><span style="font-size:17px; font-weight:800; letter-spacing:0.18em">NEXUS</span><span style="font-size:13px; color:var(--muted)">星枢</span></div>
+            <sc-for list="{{ nav1 }}" as="n" hint-placeholder-count="3"><div style="display:flex; align-items:center; padding:0 24px; font-size:14px; font-weight:600; border-right:1px solid var(--rule-soft); background:{{ n.bg }}; color:{{ n.fg }}">{{ n.label }}</div></sc-for>
+            <span style="flex:1"></span>
+            <div style="position:relative; width:340px; border-left:2px solid var(--rule)">
+              <span style="position:absolute; z-index:1; left:18px; top:19px; width:16px; height:16px; background:var(--muted); pointer-events:none; mask:{{ i.search }} center/contain no-repeat"></span>
+              <input placeholder="搜索网络、应用或收藏..." style="width:100%; height:100%; box-sizing:border-box; padding:0 64px 0 46px; font:inherit; font-size:14px; color:var(--ink); background:transparent; border:0; border-radius:0; outline:none; caret-color:#ec3013" style-focus="background:var(--surface); box-shadow:inset 0 0 0 2px #ec3013">
+              <span style="position:absolute; right:16px; top:17px; padding:1px 7px; border:1px solid var(--rule); font-size:11px; color:var(--muted); white-space:nowrap">⌘ K</span>
+            </div>
+            <button onClick="{{ toggleTheme }}" title="切换主题" style="width:56px; display:grid; place-items:center; background:transparent; border:0; border-left:2px solid var(--rule); color:var(--ink); cursor:pointer" style-hover="background:var(--hover)"><span style="width:18px; height:18px; background:currentColor; mask:{{ themeIcon }} center/contain no-repeat"></span></button>
+          </div>
+          <div style="flex:1; min-height:0; display:grid; grid-template-columns:238px minmax(0,1fr) 380px; gap:2px; background:var(--rule)">
+            <div style="background:var(--bg); padding:20px 0; display:flex; flex-direction:column; gap:20px">
+              <sc-for list="{{ facets }}" as="f" hint-placeholder-count="3">
+                <div style="display:flex; flex-direction:column">
+                  <div style="padding:0 24px 6px; font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:var(--kicker); font-weight:600">{{ f.label }}</div>
+                  <sc-for list="{{ f.items }}" as="o" hint-placeholder-count="2">
+                    <div style="display:flex; justify-content:space-between; padding:9px 24px; font-size:14px; cursor:pointer; background:{{ o.bg }}; color:{{ o.fg }}" style-hover="text-decoration:underline">
+                      <span>{{ o.label }}</span><span style="font-variant-numeric:tabular-nums; opacity:0.7">{{ o.count }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-for>
+            </div>
+            <div style="background:var(--bg); padding:28px 32px; display:flex; flex-direction:column; min-width:0">
+              <div style="display:flex; align-items:flex-end; gap:16px">
+                <div style="display:flex; flex-direction:column; gap:6px">
+                  <span style="font-size:40px; font-weight:800; line-height:1; letter-spacing:-0.025em">应用中心</span>
+                  <span style="font-size:14px; color:var(--muted)">4 项服务 · 3 项私有 · 门户只做导航与只读状态</span>
+                </div>
+                <span style="flex:1"></span>
+                <button style="height:38px; display:flex; align-items:center; gap:8px; padding:0 16px; font:inherit; font-size:14px; font-weight:800; white-space:nowrap; background:#ec3013; color:#f3f2f2; border:0; cursor:pointer" style-hover="background:#dd2b0f"><span style="width:16px; height:16px; background:currentColor; mask:{{ i.plus }} center/contain no-repeat"></span>添加服务</button>
+              </div>
+              <div style="margin-top:28px; display:grid; grid-template-columns:minmax(0,2.3fr) minmax(0,1fr) minmax(0,1.7fr) minmax(0,0.9fr) minmax(0,0.7fr) minmax(0,1fr); padding:0 12px 8px; border-bottom:2px solid var(--rule); font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted)">
+                <span>服务</span><span>分类</span><span>访问地址</span><span>集成</span><span>可见性</span><span>状态</span>
+              </div>
+              <sc-for list="{{ services }}" as="s" hint-placeholder-count="4">
+                <div style="display:grid; grid-template-columns:minmax(0,2.3fr) minmax(0,1fr) minmax(0,1.7fr) minmax(0,0.9fr) minmax(0,0.7fr) minmax(0,1fr); align-items:center; height:64px; padding:0 12px; border-bottom:1px solid var(--rule-soft); font-size:14px; cursor:pointer; background:{{ s.selBg }}" style-hover="background:var(--surface)">
+                  <div style="display:flex; align-items:center; gap:12px; min-width:0">
+                    <span style="width:34px; height:34px; flex:none; display:grid; place-items:center; border:1px solid var(--rule)"><span style="width:18px; height:18px; background:currentColor; mask:{{ s.icon }} center/contain no-repeat"></span></span>
+                    <div style="display:flex; flex-direction:column; min-width:0"><span style="font-weight:800">{{ s.name }}</span><span style="font-size:12px; color:var(--muted)">{{ s.desc }}</span></div>
+                  </div>
+                  <span style="color:var(--muted)">{{ s.category }}</span>
+                  <span style="font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ s.url }}</span>
+                  <span><span style="font-size:11px; padding:2px 8px; background:var(--surface); white-space:nowrap">{{ s.level }}</span></span>
+                  <span style="display:flex; align-items:center; gap:6px; font-size:13px"><span style="width:12px; height:12px; background:currentColor; mask:{{ s.visIcon }} center/contain no-repeat"></span>{{ s.vis }}</span>
+                  <span style="display:flex; align-items:center; gap:8px; font-size:13px"><span style="width:8px; height:8px; box-sizing:border-box; background:{{ s.dotBg }}; border:{{ s.dotBorder }}"></span><span style="color:{{ s.stateColor }}">{{ s.stateLabel }}</span></span>
+                </div>
+              </sc-for>
+              <div style="margin-top:16px; font-size:12px; color:var(--muted)">访问地址可区分内网 / 外网；实际能否访问由浏览器所在网络决定。</div>
+            </div>
+            <div style="background:var(--bg); padding:24px 28px; display:flex; flex-direction:column">
+              <div style="font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:var(--kicker); font-weight:600">服务注册 · 已选中</div>
+              <div style="margin-top:10px; display:flex; align-items:center; gap:12px">
+                <span style="width:44px; height:44px; display:grid; place-items:center; background:var(--ink); color:var(--bg)"><span style="width:22px; height:22px; background:currentColor; mask:{{ i.server }} center/contain no-repeat"></span></span>
+                <div style="display:flex; flex-direction:column"><span style="font-size:24px; font-weight:800; line-height:1.1">LiteBox</span><span style="font-size:13px; color:var(--muted)">节点与网络管理</span></div>
+              </div>
+              <div style="margin-top:20px; display:flex; flex-direction:column; border-top:2px solid var(--rule)">
+                <sc-for list="{{ registry }}" as="r" hint-placeholder-count="9">
+                  <div style="display:grid; grid-template-columns:132px minmax(0,1fr); gap:12px; padding:8px 0; border-bottom:1px solid var(--rule-soft); font-family:ui-monospace, 'SF Mono', Menlo, monospace; font-size:12.5px">
+                    <span style="color:var(--muted)">{{ r.k }}</span><span style="word-break:break-all">{{ r.v }}</span>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="margin-top:auto; display:flex; gap:8px">
+                <button style="height:36px; display:flex; align-items:center; gap:8px; padding:0 14px; font:inherit; font-size:14px; font-weight:800; white-space:nowrap; background:transparent; color:var(--ink); border:1px solid var(--rule); cursor:pointer" style-hover="background:var(--hover)">编辑</button>
+                <button style="height:36px; display:flex; align-items:center; gap:6px; padding:0 14px; font:inherit; font-size:14px; font-weight:800; white-space:nowrap; background:transparent; color:#ec3013; border:0; cursor:pointer" style-hover="background:rgba(236,48,19,0.1)">打开 LiteBox<span style="width:14px; height:14px; background:currentColor; mask:{{ i.arrowUpRight }} center/contain no-repeat"></span></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </x-import>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:12px">
+      <span style="font-size:12px; color:rgba(32,30,29,0.62)">手机</span>
+      <x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" dark="{{ isDark }}" hint-size="402px,874px">
+        <div style="position:relative; height:100%; box-sizing:border-box; padding-top:54px; display:flex; flex-direction:column; overflow:hidden; background:var(--bg); color:var(--ink); font-family:Archivo, 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif">
+          <div style="display:flex; align-items:stretch; height:50px; flex:none; border-bottom:2px solid var(--rule)">
+            <div style="display:flex; align-items:center; padding:0 20px; font-size:20px; font-weight:800">应用中心</div>
+            <span style="flex:1"></span>
+            <button style="width:50px; display:grid; place-items:center; background:#ec3013; border:0; color:#f3f2f2; cursor:pointer"><span style="width:18px; height:18px; background:currentColor; mask:{{ i.plus }} center/contain no-repeat"></span></button>
+          </div>
+          <div style="padding:14px 20px; border-bottom:2px solid var(--rule); display:flex; flex-direction:column; gap:10px">
+            <div style="position:relative">
+              <span style="position:absolute; z-index:1; left:14px; top:13px; width:18px; height:18px; background:var(--muted); pointer-events:none; mask:{{ i.search }} center/contain no-repeat"></span>
+              <input placeholder="搜索应用" style="width:100%; height:44px; box-sizing:border-box; padding:0 14px 0 42px; font:inherit; font-size:16px; color:var(--ink); background:var(--bg); border:2px solid var(--rule); border-radius:0; outline:none; caret-color:#ec3013" style-focus="border-color:#ec3013; background:var(--surface)">
+            </div>
+            <div style="display:flex; font-size:13px">
+              <span style="padding:6px 12px; white-space:nowrap; background:var(--ink); color:var(--bg)">全部 4</span>
+              <span style="padding:6px 12px; white-space:nowrap; border:1px solid var(--rule-soft); border-left:0">自部署 3</span>
+              <span style="padding:6px 12px; white-space:nowrap; border:1px solid var(--rule-soft); border-left:0">网站 1</span>
+            </div>
+          </div>
+          <div style="display:flex; flex-direction:column; padding:0 20px">
+            <sc-for list="{{ services }}" as="s" hint-placeholder-count="4">
+              <div style="display:flex; align-items:center; gap:12px; height:76px; border-bottom:1px solid var(--rule-soft)">
+                <span style="width:40px; height:40px; flex:none; display:grid; place-items:center; border:1px solid var(--rule)"><span style="width:20px; height:20px; background:currentColor; mask:{{ s.icon }} center/contain no-repeat"></span></span>
+                <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:3px">
+                  <span style="font-size:16px; font-weight:800">{{ s.name }}</span>
+                  <span style="font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ s.url }}</span>
+                </div>
+                <span style="font-size:11px; padding:2px 6px; background:var(--surface); white-space:nowrap">{{ s.level }}</span>
+                <span style="width:8px; height:8px; flex:none; box-sizing:border-box; background:{{ s.dotBg }}; border:{{ s.dotBorder }}"></span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="position:absolute; left:0; right:0; bottom:0; height:82px; display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:1px; background:var(--rule-soft); border-top:2px solid var(--rule)">
+            <sc-for list="{{ tabs1 }}" as="t" hint-placeholder-count="4">
+              <div style="display:flex; flex-direction:column; align-items:center; gap:4px; padding-top:12px; background:{{ t.bg }}; color:{{ t.fg }}">
+                <span style="width:20px; height:20px; background:currentColor; mask:{{ t.icon }} center/contain no-repeat"></span>
+                <span style="font-size:11px; font-weight:600">{{ t.label }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </x-import>
+    </div>
+  </div>
+</section>
+
+<section id="B3" data-screen-label="B3 运行概览" style="display:flex; flex-direction:column; gap:28px">
+  <div style="display:flex; align-items:baseline; gap:16px; border-top:2px solid rgba(32,30,29,0.4); padding-top:18px">
+    <span style="font-size:13px; font-weight:800; background:#201e1d; color:#f3f2f2; padding:3px 8px">B3</span>
+    <span style="font-size:32px; font-weight:800; letter-spacing:-0.015em">运行概览</span>
+    <span style="font-size:15px; color:rgba(32,30,29,0.62)">Status overview · 示意数据，非真实监控</span>
+  </div>
+  <div style="display:flex; gap:64px; align-items:flex-start">
+    <div style="display:flex; flex-direction:column; gap:12px">
+      <span style="font-size:12px; color:rgba(32,30,29,0.62)">桌面 · 1440 × 900</span>
+      <x-import component-from-global-scope="ChromeWindow" from="./browser-window.jsx" width="1440px" height="900px" url="home.example.com/status" tabs="{{ chromeTabs }}" hint-size="1440px,900px">
+        <div style="width:1440px; height:816px; display:flex; flex-direction:column; background:var(--bg); color:var(--ink); font-family:Archivo, 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif">
+          <div style="display:flex; align-items:stretch; height:56px; flex:none; border-bottom:2px solid var(--rule)">
+            <div style="width:240px; display:flex; align-items:center; gap:10px; padding:0 24px; box-sizing:border-box; border-right:2px solid var(--rule)"><span style="font-size:17px; font-weight:800; letter-spacing:0.18em">NEXUS</span><span style="font-size:13px; color:var(--muted)">星枢</span></div>
+            <sc-for list="{{ nav2 }}" as="n" hint-placeholder-count="3"><div style="display:flex; align-items:center; padding:0 24px; font-size:14px; font-weight:600; border-right:1px solid var(--rule-soft); background:{{ n.bg }}; color:{{ n.fg }}">{{ n.label }}</div></sc-for>
+            <span style="flex:1"></span>
+            <div style="display:flex; align-items:center; gap:8px; padding:0 20px; border-left:2px solid var(--rule); font-size:13px; color:var(--muted); white-space:nowrap">示意数据 · 后端每 5 分钟缓存 · 2 分钟前</div>
+            <button style="display:flex; align-items:center; gap:8px; padding:0 20px; font:inherit; font-size:14px; font-weight:800; white-space:nowrap; background:transparent; border:0; border-left:2px solid var(--rule); color:var(--ink); cursor:pointer" style-hover="background:var(--hover)"><span style="width:16px; height:16px; background:currentColor; mask:{{ i.refreshCw }} center/contain no-repeat"></span>刷新</button>
+            <button onClick="{{ toggleTheme }}" title="切换主题" style="width:56px; display:grid; place-items:center; background:transparent; border:0; border-left:2px solid var(--rule); color:var(--ink); cursor:pointer" style-hover="background:var(--hover)"><span style="width:18px; height:18px; background:currentColor; mask:{{ themeIcon }} center/contain no-repeat"></span></button>
+          </div>
+          <div style="flex:1; min-height:0; display:flex; flex-direction:column; gap:2px; background:var(--rule)">
+            <div style="display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:2px">
+              <sc-for list="{{ kpis }}" as="m" hint-placeholder-count="5">
+                <div style="height:150px; box-sizing:border-box; padding:20px 24px; display:flex; flex-direction:column; background:var(--bg)">
+                  <span style="font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:var(--kicker); font-weight:600">{{ m.label }}</span>
+                  <div style="margin-top:auto; display:flex; align-items:baseline; gap:8px">
+                    <span style="font-size:64px; font-weight:800; line-height:0.9; letter-spacing:-0.04em; font-variant-numeric:tabular-nums; color:{{ m.color }}">{{ m.value }}</span>
+                    <span style="font-size:14px; color:var(--muted)">{{ m.unit }}</span>
+                  </div>
+                  <span style="margin-top:8px; font-size:13px; color:var(--muted)">{{ m.sub }}</span>
+                </div>
+              </sc-for>
+            </div>
+            <div style="flex:1; min-height:0; display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:2px">
+              <sc-for list="{{ monitored }}" as="s" hint-placeholder-count="3">
+                <div style="background:var(--bg); padding:22px 24px; display:flex; flex-direction:column">
+                  <div style="display:flex; align-items:center; gap:10px">
+                    <span style="width:20px; height:20px; background:currentColor; mask:{{ s.icon }} center/contain no-repeat"></span>
+                    <span style="font-size:20px; font-weight:800">{{ s.name }}</span>
+                    <span style="flex:1"></span>
+                    <span style="width:8px; height:8px; box-sizing:border-box; background:{{ s.dotBg }}; border:{{ s.dotBorder }}"></span>
+                    <span style="font-size:12px; color:{{ s.stateColor }}">{{ s.stateLabel }}</span>
+                  </div>
+                  <span style="margin-top:4px; font-size:13px; color:var(--muted)">{{ s.desc }} · {{ s.level }}</span>
+                  <div style="margin-top:18px; display:flex; flex-direction:column; border-top:2px solid var(--rule)">
+                    <sc-for list="{{ s.metrics }}" as="k" hint-placeholder-count="3">
+                      <div style="display:flex; justify-content:space-between; padding:11px 0; border-bottom:1px solid var(--rule-soft); font-size:14px">
+                        <span style="color:var(--muted)">{{ k.k }}</span>
+                        <span style="font-weight:600; font-variant-numeric:tabular-nums; color:{{ k.c }}">{{ k.v }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                  <div style="margin-top:22px; display:flex; flex-direction:column; gap:8px">
+                    <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--muted)"><span>最近 24 小时</span><span>{{ s.uptime }}</span></div>
+                    <div style="display:grid; grid-template-columns:repeat(24, minmax(0,1fr)); gap:2px; height:28px">
+                      <sc-for list="{{ s.hours }}" as="h" hint-placeholder-count="24"><span style="background:{{ h }}"></span></sc-for>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--muted); font-variant-numeric:tabular-nums"><span>22:00</span><span>现在</span></div>
+                  </div>
+                  <span style="margin-top:auto; display:flex; align-items:center; gap:6px; font-size:14px; font-weight:800; color:#ec3013">{{ s.link }}<span style="width:14px; height:14px; background:currentColor; mask:{{ i.arrowUpRight }} center/contain no-repeat"></span></span>
+                </div>
+              </sc-for>
+              <div style="background:var(--bg); padding:22px 24px; display:flex; flex-direction:column">
+                <span style="font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:var(--kicker); font-weight:600">最近事件</span>
+                <div style="margin-top:12px; display:flex; flex-direction:column; border-top:2px solid var(--rule)">
+                  <sc-for list="{{ events }}" as="e" hint-placeholder-count="3">
+                    <div style="display:grid; grid-template-columns:52px minmax(0,1fr); gap:10px; padding:11px 0; border-bottom:1px solid var(--rule-soft); font-size:13px">
+                      <span style="color:var(--muted); font-variant-numeric:tabular-nums">{{ e.t }}</span>
+                      <span style="color:{{ e.c }}">{{ e.text }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+                <span style="margin-top:24px; font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:var(--kicker); font-weight:600">到期提醒</span>
+                <div style="margin-top:12px; display:flex; flex-direction:column; border-top:2px solid var(--rule)">
+                  <sc-for list="{{ expiry }}" as="e" hint-placeholder-count="2">
+                    <div style="display:flex; justify-content:space-between; padding:11px 0; border-bottom:1px solid var(--rule-soft); font-size:13px">
+                      <span>{{ e.label }} · <span style="color:var(--muted)">{{ e.target }}</span></span>
+                      <span style="font-weight:800; font-variant-numeric:tabular-nums">{{ e.days }} 天</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </x-import>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:12px">
+      <span style="font-size:12px; color:rgba(32,30,29,0.62)">手机</span>
+      <x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" dark="{{ isDark }}" hint-size="402px,874px">
+        <div style="position:relative; height:100%; box-sizing:border-box; padding-top:54px; display:flex; flex-direction:column; overflow:hidden; background:var(--bg); color:var(--ink); font-family:Archivo, 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif">
+          <div style="display:flex; align-items:stretch; height:50px; flex:none; border-bottom:2px solid var(--rule)">
+            <div style="display:flex; align-items:center; padding:0 20px; font-size:20px; font-weight:800">运行概览</div>
+            <span style="flex:1"></span>
+            <div style="display:flex; align-items:center; padding:0 16px; font-size:12px; color:var(--muted)">2 分钟前</div>
+          </div>
+          <div style="display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:2px; background:var(--rule); border-bottom:2px solid var(--rule)">
+            <sc-for list="{{ mkpis }}" as="m" hint-placeholder-count="4">
+              <div style="box-sizing:border-box; padding:14px 18px; display:flex; flex-direction:column; gap:8px; background:var(--bg)">
+                <span style="font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:var(--kicker); font-weight:600">{{ m.label }}</span>
+                <div style="display:flex; align-items:baseline; gap:6px">
+                  <span style="font-size:40px; font-weight:800; line-height:0.95; letter-spacing:-0.03em; font-variant-numeric:tabular-nums; color:{{ m.color }}">{{ m.value }}</span>
+                  <span style="font-size:13px; color:var(--muted)">{{ m.unit }}</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="padding:16px 20px 4px; font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:var(--kicker); font-weight:600">服务</div>
+          <div style="display:flex; flex-direction:column; padding:0 20px">
+            <sc-for list="{{ monitored }}" as="s" hint-placeholder-count="3">
+              <div style="display:flex; align-items:center; gap:12px; height:64px; border-bottom:1px solid var(--rule-soft)">
+                <span style="width:8px; height:8px; flex:none; box-sizing:border-box; background:{{ s.dotBg }}; border:{{ s.dotBorder }}"></span>
+                <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:2px">
+                  <span style="font-size:15px; font-weight:800">{{ s.name }}</span>
+                  <span style="font-size:12px; color:{{ s.stateColor }}">{{ s.brief }}</span>
+                </div>
+                <span style="width:16px; height:16px; background:var(--muted); mask:{{ i.arrowUpRight }} center/contain no-repeat"></span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="padding:16px 20px 4px; font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:var(--kicker); font-weight:600">到期提醒</div>
+          <div style="display:flex; flex-direction:column; padding:0 20px">
+            <sc-for list="{{ expiry }}" as="e" hint-placeholder-count="2">
+              <div style="display:flex; align-items:center; gap:12px; height:52px; border-bottom:1px solid var(--rule-soft); font-size:14px">
+                <span style="flex:1">{{ e.label }} <span style="font-size:12px; color:var(--muted)">{{ e.target }}</span></span>
+                <span style="font-weight:800; font-variant-numeric:tabular-nums">{{ e.days }} 天</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="position:absolute; left:0; right:0; bottom:0; height:82px; display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:1px; background:var(--rule-soft); border-top:2px solid var(--rule)">
+            <sc-for list="{{ tabs2 }}" as="t" hint-placeholder-count="4">
+              <div style="display:flex; flex-direction:column; align-items:center; gap:4px; padding-top:12px; background:{{ t.bg }}; color:{{ t.fg }}">
+                <span style="width:20px; height:20px; background:currentColor; mask:{{ t.icon }} center/contain no-repeat"></span>
+                <span style="font-size:11px; font-weight:600">{{ t.label }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </x-import>
+    </div>
+  </div>
+</section>
+
+<section id="B4" data-screen-label="B4 命令面板" style="display:flex; flex-direction:column; gap:28px">
+  <div style="display:flex; align-items:baseline; gap:16px; border-top:2px solid rgba(32,30,29,0.4); padding-top:18px">
+    <span style="font-size:13px; font-weight:800; background:#201e1d; color:#f3f2f2; padding:3px 8px">B4</span>
+    <span style="font-size:32px; font-weight:800; letter-spacing:-0.015em">⌘K 命令面板</span>
+    <span style="font-size:15px; color:rgba(32,30,29,0.62)">Command palette · 键盘优先，结果按来源分列</span>
+  </div>
+  <div style="display:flex; gap:64px; align-items:flex-start">
+    <div style="display:flex; flex-direction:column; gap:12px">
+      <span style="font-size:12px; color:rgba(32,30,29,0.62)">桌面 · ⌘K 或 / 唤起</span>
+      <x-import component-from-global-scope="ChromeWindow" from="./browser-window.jsx" width="1440px" height="900px" url="home.example.com" tabs="{{ chromeTabs }}" hint-size="1440px,900px">
+        <div style="position:relative; width:1440px; height:816px; display:flex; flex-direction:column; background:var(--bg); color:var(--ink); font-family:Archivo, 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif">
+          <div style="display:flex; align-items:stretch; height:56px; flex:none; border-bottom:2px solid var(--rule)">
+            <div style="width:358px; display:flex; align-items:center; gap:10px; padding:0 24px; box-sizing:border-box; border-right:2px solid var(--rule)"><span style="font-size:17px; font-weight:800; letter-spacing:0.18em">NEXUS</span><span style="font-size:13px; color:var(--muted)">星枢</span></div>
+            <sc-for list="{{ nav0 }}" as="n" hint-placeholder-count="3"><div style="display:flex; align-items:center; padding:0 24px; font-size:14px; font-weight:600; border-right:1px solid var(--rule-soft); background:{{ n.bg }}; color:{{ n.fg }}">{{ n.label }}</div></sc-for>
+          </div>
+          <div style="flex:1; display:grid; grid-template-columns:358px minmax(0,1fr) 358px; gap:2px; background:var(--rule)">
+            <div style="background:var(--bg); padding:24px"><div style="font-size:80px; font-weight:800; line-height:0.95; letter-spacing:-0.04em; margin-top:26px">21:14</div></div>
+            <div style="background:var(--bg)"></div>
+            <div style="background:var(--bg)"></div>
+          </div>
+          <div style="position:absolute; inset:0; background:var(--scrim)"></div>
+          <div style="position:absolute; top:96px; left:360px; width:720px; display:flex; flex-direction:column; background:var(--bg); border:2px solid var(--ink); box-shadow:0 12px 32px rgba(45,43,43,0.22)">
+            <div style="display:flex; align-items:center; gap:12px; height:64px; padding:0 20px; border-bottom:2px solid var(--rule)">
+              <span style="font-size:20px; font-weight:800; color:#ec3013">›</span>
+              <span style="font-size:20px">sync</span><span style="width:2px; height:26px; margin-left:-10px; background:#ec3013"></span>
+              <span style="flex:1"></span>
+              <span style="font-size:12px; color:var(--muted)">7 条结果</span>
+              <span style="font-size:11px; padding:2px 8px; border:1px solid var(--rule); color:var(--muted)">esc</span>
+            </div>
+            <sc-for list="{{ palette }}" as="g" hint-placeholder-count="4">
+              <div style="padding:12px 20px 6px; font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:var(--kicker); font-weight:600">{{ g.label }}</div>
+              <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="1">
+                <div style="display:grid; grid-template-columns:20px minmax(0,1fr) auto; align-items:center; gap:14px; height:44px; padding:0 20px; background:{{ it.rowBg }}; color:{{ it.rowFg }}; cursor:pointer" style-hover="text-decoration:underline">
+                  <span style="width:18px; height:18px; background:currentColor; mask:{{ it.icon }} center/contain no-repeat"></span>
+                  <span style="font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis"><span style="font-weight:800">{{ it.title }}</span>  <span style="opacity:0.66">{{ it.sub }}</span></span>
+                  <span style="font-size:12px; opacity:0.8">{{ it.hint }}</span>
+                </div>
+              </sc-for>
+            </sc-for>
+            <div style="display:flex; align-items:center; gap:20px; height:42px; margin-top:8px; padding:0 20px; border-top:2px solid var(--rule); font-size:12px; color:var(--muted)">
+              <span>↑↓ 选择</span><span>↵ 打开</span><span>Tab 切换搜索引擎</span>
+              <span style="flex:1"></span>
+              <span>收藏结果经由门户后端检索</span>
+            </div>
+          </div>
+        </div>
+      </x-import>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:12px">
+      <span style="font-size:12px; color:rgba(32,30,29,0.62)">手机 · 点击搜索框进入</span>
+      <x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" dark="{{ isDark }}" keyboard="{{ true }}" hint-size="402px,874px">
+        <div style="position:relative; height:100%; box-sizing:border-box; padding-top:54px; display:flex; flex-direction:column; overflow:hidden; background:var(--bg); color:var(--ink); font-family:Archivo, 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif">
+          <div style="display:flex; align-items:stretch; height:56px; flex:none; border-bottom:2px solid var(--rule)">
+            <div style="flex:1; display:flex; align-items:center; gap:10px; padding:0 20px">
+              <span style="font-size:18px; font-weight:800; color:#ec3013">›</span>
+              <span style="font-size:17px">sync</span><span style="width:2px; height:22px; margin-left:-8px; background:#ec3013"></span>
+            </div>
+            <div style="display:flex; align-items:center; padding:0 18px; border-left:2px solid var(--rule); font-size:15px; font-weight:600">取消</div>
+          </div>
+          <sc-for list="{{ mpalette }}" as="it" hint-placeholder-count="4">
+            <div style="display:flex; align-items:center; gap:12px; height:58px; padding:0 20px; border-bottom:1px solid var(--rule-soft); background:{{ it.rowBg }}; color:{{ it.rowFg }}">
+              <span style="width:18px; height:18px; flex:none; background:currentColor; mask:{{ it.icon }} center/contain no-repeat"></span>
+              <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:2px">
+                <span style="font-size:15px; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ it.title }}</span>
+                <span style="font-size:12px; opacity:0.7">{{ it.group }}</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </x-import>
+    </div>
+  </div>
+</section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;light&quot;,&quot;tsType&quot;:&quot;'light' | 'dark'&quot;},&quot;statusColors&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;mono&quot;,&quot;semantic&quot;],&quot;default&quot;:&quot;mono&quot;,&quot;tsType&quot;:&quot;'mono' | 'semantic'&quot;}}">
+const L = 'https://cdn.jsdelivr.net/npm/lucide-static@0.469.0/icons/';
+const ic = n => (window.NX_ICONS && window.NX_ICONS[n]) || `url(${L}${n}.svg)`;
+const camel = s => s.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+const iconMap = () => Object.fromEntries(Object.keys(window.NX_ICONS || {}).map(k => [camel(k), window.NX_ICONS[k]]));
+const THEMES = {
+  light: {'--bg':'#f3f2f2','--surface':'#eae9e9','--ink':'#201e1d','--muted':'rgba(32,30,29,0.66)','--rule':'rgba(32,30,29,0.4)','--rule-soft':'rgba(32,30,29,0.16)','--hover':'rgba(32,30,29,0.05)','--warn':'#ae1800','--kicker':'#ae1800','--scrim':'rgba(45,43,43,0.5)'},
+  dark: {'--bg':'#201e1d','--surface':'#2d2b2b','--ink':'#f3f2f2','--muted':'rgba(243,242,242,0.66)','--rule':'rgba(243,242,242,0.36)','--rule-soft':'rgba(243,242,242,0.14)','--hover':'rgba(243,242,242,0.06)','--warn':'#ff9783','--kicker':'#ff9783','--scrim':'rgba(16,15,14,0.6)'}
+};
+
+function buildData(mode) {
+  const sem = mode === 'semantic';
+  const OK = sem ? 'oklch(0.64 0.15 150)' : 'var(--ink)';
+  const WARN = sem ? 'oklch(0.74 0.15 75)' : '#ec3013';
+  const DOT = {
+    online: {dotBg: OK, dotBorder:'none', stateColor:'var(--muted)'},
+    warn: {dotBg: WARN, dotBorder:'none', stateColor: sem ? 'var(--ink)' : 'var(--warn)'},
+    none: {dotBg:'transparent', dotBorder:'1.5px solid var(--muted)', stateColor:'var(--muted)'}
+  };
+  const SERVICES = [
+    {name:'LiteBox', desc:'节点与网络管理', category:'自部署服务', url:'litebox.example.com', icon:ic('server'), level:'L2 状态', vis:'私有', visIcon:ic('lock'), state:'online', stateLabel:'在线', brief:'1 个异常节点 · 2 条告警', link:'在 LiteBox 中处理',
+      metrics:[{k:'节点总数',v:'24',c:'var(--ink)'},{k:'异常节点',v:'1',c:'var(--warn)'},{k:'待处理告警',v:'2',c:'var(--warn)'}]},
+    {name:'OBsync', desc:'数据同步服务', category:'自部署服务', url:'obsync.example.com', icon:ic('refresh-cw'), level:'L2 状态', vis:'私有', visIcon:ic('lock'), state:'warn', stateLabel:'需要关注', brief:'最近一次同步失败 · 42 分钟前', link:'查看任务状态',
+      metrics:[{k:'最近同步',v:'失败 · 42 分钟前',c:'var(--warn)'},{k:'失败任务',v:'1',c:'var(--warn)'},{k:'下次计划',v:'18 分钟后',c:'var(--ink)'}]},
+    {name:'Linkwarden', desc:'收藏与知识管理', category:'自部署服务', url:'links.example.com', icon:ic('bookmark'), level:'L2 搜索', vis:'私有', visIcon:ic('lock'), state:'online', stateLabel:'在线', brief:'搜索接口正常', link:'打开 Linkwarden',
+      metrics:[{k:'服务状态',v:'在线',c:'var(--ink)'},{k:'搜索接口',v:'/api/v1/search 正常',c:'var(--ink)'},{k:'API 密钥',v:'仅存服务器端',c:'var(--ink)'}]},
+    {name:'GitHub', desc:'代码托管', category:'常用网站', url:'github.com', icon:ic('github'), level:'L1 导航', vis:'公开', visIcon:ic('globe'), state:'none', stateLabel:'未接入', brief:'外部网站', link:'打开 GitHub', metrics:[]}
+  ].map((o, i) => ({...o, ...DOT[o.state], selBg: i === 0 ? 'var(--surface)' : 'transparent'}));
+  const HOK = sem ? 'oklch(0.64 0.15 150)' : 'var(--rule)';
+  const hours = bad => Array.from({length: 24}, (_, h) => bad.includes(h) ? WARN : HOK);
+  Object.assign(SERVICES[0], {hours: hours([21]), uptime: '1 小时有告警'});
+  Object.assign(SERVICES[1], {hours: hours([22]), uptime: '1 次同步失败'});
+  Object.assign(SERVICES[2], {hours: hours([18, 19]), uptime: '2 小时不可用'});
+  const quick = SERVICES.map(s => ({name:s.name, icon:s.icon, url:s.url}));
+  const mquick = [{name:'LiteBox',icon:ic('server')},{name:'OBsync',icon:ic('refresh-cw')},{name:'书签',icon:ic('bookmark')},{name:'更多',icon:ic('ellipsis')}];
+  const recent = [
+    {title:'Rsync 增量备份实践', col:'运维', date:'10-26'},
+    {title:'Hono 中间件与路由', col:'开发', date:'10-24'},
+    {title:'Syncthing 配置笔记', col:'工具', date:'10-21'}
+  ];
+  const expiry = [
+    {label:'TLS 证书', target:'home.example.com', days:'54'},
+    {label:'域名续费', target:'example.com', days:'212'}
+  ];
+  const kpis = [
+    {label:'在线', value:'2', unit:'/ 3', sub:'LiteBox · Linkwarden', color:'var(--ink)'},
+    {label:'需要关注', value:'1', unit:'项', sub:'OBsync 同步失败', color: sem ? 'var(--ink)' : '#ec3013'},
+    {label:'待处理告警', value:'2', unit:'条', sub:'来自 LiteBox', color:'var(--ink)'},
+    {label:'失败任务', value:'1', unit:'个', sub:'来自 OBsync', color:'var(--ink)'},
+    {label:'证书剩余', value:'54', unit:'天', sub:'home.example.com', color:'var(--ink)'}
+  ];
+  const mkpis = [kpis[0], kpis[1], kpis[2], kpis[4]];
+  const events = [
+    {t:'20:32', text:'OBsync 同步任务失败', c:'var(--warn)'},
+    {t:'19:58', text:'LiteBox 节点 node-07 离线', c:'var(--warn)'},
+    {t:'18:00', text:'Linkwarden 健康检查恢复', c:'var(--ink)'}
+  ];
+  const facet = (label, items) => ({label, items: items.map(([l, c], j) => ({label:l, count:c, bg: label === '分类' && j === 0 ? 'var(--ink)' : 'transparent', fg: label === '分类' && j === 0 ? 'var(--bg)' : 'var(--ink)'}))});
+  const facets = [
+    facet('分类', [['全部','4'],['自部署服务','3'],['常用网站','1']]),
+    facet('集成等级', [['L1 导航','1'],['L2 状态','2'],['L2 搜索','1'],['L3 深度','0']]),
+    facet('可见性', [['私有','3'],['公开','1']])
+  ];
+  const registry = [
+    {k:'id', v:'litebox'}, {k:'category', v:'self-hosted'}, {k:'icon', v:'server'},
+    {k:'url', v:'https://litebox.example.com'}, {k:'tags', v:'node, network'},
+    {k:'visibility', v:'private'}, {k:'integrationLevel', v:'status'},
+    {k:'healthCheck', v:'每 5 分钟 · 后端缓存'}, {k:'enabled', v:'true'}
+  ];
+  const sel = (o, a) => ({...o, rowBg: a ? 'var(--ink)' : 'transparent', rowFg: a ? 'var(--bg)' : 'var(--ink)', hint: a ? '↵ 打开' : (o.hint || '')});
+  const palette = [
+    {label:'应用', items:[sel({icon:ic('refresh-cw'), title:'OBsync', sub:'数据同步服务 · obsync.example.com'}, true)]},
+    {label:'Linkwarden 收藏', items:[sel({icon:ic('bookmark'), title:'Rsync 增量备份实践', sub:'收藏集 · 运维'}), sel({icon:ic('bookmark'), title:'Syncthing 配置笔记', sub:'收藏集 · 工具'})]},
+    {label:'操作', items:[sel({icon:ic('activity'), title:'查看 OBsync 任务状态', sub:'运行概览'}), sel({icon:ic('sun-moon'), title:'切换深色 / 浅色主题', sub:'个性化'})]},
+    {label:'搜索网络', items:[sel({icon:ic('search'), title:'使用 Google 搜索 “sync”', sub:'', hint:'Tab 换引擎'})]}
+  ];
+  const mpalette = [
+    {icon:ic('refresh-cw'), title:'OBsync', group:'应用'},
+    {icon:ic('bookmark'), title:'Rsync 增量备份实践', group:'Linkwarden 收藏'},
+    {icon:ic('bookmark'), title:'Syncthing 配置笔记', group:'Linkwarden 收藏'},
+    {icon:ic('activity'), title:'查看 OBsync 任务状态', group:'操作'},
+    {icon:ic('search'), title:'使用 Google 搜索 “sync”', group:'搜索网络'}
+  ].map((o, i) => ({...o, rowBg: i === 0 ? 'var(--ink)' : 'transparent', rowFg: i === 0 ? 'var(--bg)' : 'var(--ink)'}));
+  return {services: SERVICES, monitored: SERVICES.slice(0, 3), quick, mquick, recent, expiry, kpis, mkpis, events, facets, registry, palette, mpalette, dotOk: OK, dotWarn: WARN};
+}
+const nav = i => ['日常','应用','概览'].map((l, j) => ({label:l, bg: j === i ? 'var(--ink)' : 'transparent', fg: j === i ? 'var(--bg)' : 'var(--ink)'}));
+const tabs = i => [['日常','house'],['应用','layout-grid'],['概览','activity'],['搜索','search']].map(([l, n], j) => ({label:l, icon:ic(n), bg: j === i ? 'var(--ink)' : 'var(--bg)', fg: j === i ? 'var(--bg)' : 'var(--muted)'}));
+
+class Component extends DCLogic {
+  state = { theme: this.props.theme ?? 'light', status: this.props.statusColors ?? 'mono' };
+  rootRef = React.createRef();
+  applyTheme() {
+    const el = this.rootRef.current;
+    if (!el) return;
+    Object.entries(THEMES[this.state.theme]).forEach(([k, v]) => el.style.setProperty(k, v));
+  }
+  componentDidMount() {
+    this.applyTheme();
+    const wait = () => { if (window.NX_ICONS) this.forceUpdate(); else this._t = setTimeout(wait, 60); };
+    if (!window.NX_ICONS) wait();
+  }
+  componentWillUnmount() { clearTimeout(this._t); }
+  componentDidUpdate(prev) {
+    if (prev.theme !== this.props.theme && this.props.theme) this.setState({ theme: this.props.theme });
+    if (prev.statusColors !== this.props.statusColors && this.props.statusColors) this.setState({ status: this.props.statusColors });
+    this.applyTheme();
+  }
+  renderVals() {
+    const dark = this.state.theme === 'dark';
+    const sem = this.state.status === 'semantic';
+    const pon = { bg: '#201e1d', fg: '#f3f2f2' }, poff = { bg: 'transparent', fg: '#201e1d' };
+    return {
+      ...buildData(this.state.status),
+      rootRef: this.rootRef,
+      i: iconMap(),
+      isDark: dark,
+      toggleTheme: () => this.setState(s => ({ theme: s.theme === 'dark' ? 'light' : 'dark' })),
+      setDark: () => this.setState({ theme: 'dark' }),
+      setLight: () => this.setState({ theme: 'light' }),
+      setMono: () => this.setState({ status: 'mono' }),
+      setSemantic: () => this.setState({ status: 'semantic' }),
+      pDark: dark ? pon : poff, pLight: dark ? poff : pon,
+      pMono: sem ? poff : pon, pSemantic: sem ? pon : poff,
+      themeIcon: ic(dark ? 'moon' : 'sun'),
+      chromeTabs: [{ title: 'Nexus Portal' }],
+      nav0: nav(0), nav1: nav(1), nav2: nav(2),
+      tabs0: tabs(0), tabs1: tabs(1), tabs2: tabs(2)
+    };
+  }
+}
+</script>
+</body>
+</html>

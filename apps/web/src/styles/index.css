@@ -1,0 +1,93 @@
+@import 'tailwindcss';
+
+/* Design tokens — values frozen by R1.5 (首页视觉冻结). */
+@theme {
+  --font-sans: Manrope, 'Noto Sans SC', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  --color-base: #1b1a17;
+  --color-ink: #efeae1;
+  --color-amber: #e6c08a;
+  --color-amber-hi: #f1d3a6;
+  --color-on-amber: #2b2318;
+  --color-ok: #a7bf9f;
+  --color-warn: #e3a35b;
+  --color-error: #e9765f;
+  --color-unknown: #9a948a;
+  --color-danger-ink: #f0a594;
+  --color-menu: rgb(36 34 30 / 0.95);
+
+  --ease-soft: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ease-emph: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+
+  --animate-pop: nx-pop 0.2s var(--ease-soft);
+  --animate-breathe: nx-breathe 2.4s ease-in-out infinite;
+  --animate-spin-slow: nx-spin 0.8s linear infinite;
+}
+
+@keyframes nx-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgb(233 118 95 / 0.55); }
+  50% { box-shadow: 0 0 0 5px rgb(233 118 95 / 0); }
+}
+@keyframes nx-pop {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes nx-spin {
+  to { transform: rotate(360deg); }
+}
+
+@layer base {
+  html, body, #root {
+    height: 100%;
+  }
+  body {
+    background: var(--color-base);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overscroll-behavior: none;
+    -webkit-text-size-adjust: 100%;
+  }
+  button {
+    cursor: pointer;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-amber);
+    outline-offset: 3px;
+  }
+  input:focus-visible, select:focus-visible, textarea:focus-visible {
+    outline: none;
+  }
+  ::placeholder {
+    color: rgb(239 234 225 / 0.46);
+  }
+  [inert] {
+    pointer-events: none;
+  }
+}
+
+/* Touch surfaces: no callout or selection while long-pressing tiles. */
+.nx-touch a,
+.nx-touch button {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+.nx-scroll-hidden {
+  scrollbar-width: none;
+}
+.nx-scroll-hidden::-webkit-scrollbar {
+  display: none;
+}
+
+/* Motion levels: `off` makes every change instant (异常改为静态描边). */
+[data-motion='off'] *,
+[data-motion='off'] *::before,
+[data-motion='off'] *::after {
+  transition-duration: 0.01s !important;
+  animation: none !important;
+}

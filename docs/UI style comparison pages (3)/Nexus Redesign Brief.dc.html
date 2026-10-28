@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600&family=Noto+Sans+SC:wght@300;400;500;600&family=Libre+Caslon+Text:ital,wght@0,400;1,400&family=Noto+Serif+SC:wght@400;500&family=JetBrains+Mono:wght@400&display=swap">
+<style>
+body{margin:0;background:#ece9e3}
+a{color:#2b2926;text-underline-offset:3px}a:hover{color:#9a4322}
+</style>
+</helmet>
+<div style="min-height:100vh; background:#ece9e3; color:#2b2926; font-family:Manrope,'Noto Sans SC',system-ui,sans-serif">
+<div style="max-width:1180px; margin:0 auto; padding:56px 40px 120px; box-sizing:border-box; display:flex; flex-direction:column; gap:96px">
+
+  <header style="display:flex; flex-direction:column; gap:20px">
+    <div style="display:flex; flex-wrap:wrap; gap:8px 24px; font-size:13px; color:#6f695f">
+      <span style="color:#2b2926; font-weight:600">Nexus Portal · 视觉重新探索</span>
+      <span>第 2 轮 · 2026.10.28</span>
+      <span style="flex:1"></span>
+      <a href="Nexus%20R1%20Atmospheric.dc.html">R1 Atmospheric 原型</a>
+      <a href="Nexus%20R2%20Editorial.dc.html">R2 Editorial 原型</a>
+      <a href="Nexus%20A%20Immersive.dc.html" style="color:#6f695f">旧方案 A / B / C</a>
+    </div>
+    <h1 style="margin:0; font-size:44px; line-height:1.2; font-weight:500; letter-spacing:-0.02em; max-width:880px; text-wrap:pretty">两个首页方向：数字桌面与编辑式个人空间</h1>
+    <p style="margin:0; max-width:760px; font-size:16px; line-height:1.75; color:#4d4842">本轮只做首页。每个方向一张桌面 1440 × 900、一张手机 390 × 844，均为可交互原型（搜索可输入、结果可筛选、按 / 聚焦）。两套方案都没有使用 Modernist 设计系统，旧的三套方案保留未动。</p>
+  </header>
+
+  <section data-screen-label="01 诊断" style="display:flex; flex-direction:column; gap:32px">
+    <div style="display:flex; align-items:baseline; gap:16px"><span style="font-size:13px; color:#9a4322; font-weight:600">01</span><h2 style="margin:0; font-size:28px; font-weight:500; letter-spacing:-0.01em">现有设计的问题</h2></div>
+    <p style="margin:0; max-width:760px; font-size:15.5px; line-height:1.75; color:#4d4842">根本原因在于 Modernist 的规则：零圆角、2px 硬分隔线、Archivo 800、单一红色、等宽网格、一律左对齐。这套规则适合海报和编辑网格，放到每天要打开很多次、需要氛围感的首页上，读起来就是控制台。三套方案共用这些规则，只换了排版密度，所以看起来像同一个系统的三张皮。</p>
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:36px 48px">
+      <div style="display:flex; flex-direction:column; gap:10px">
+        <span style="font-size:14px; font-weight:600">排版</span>
+        <ul style="margin:0; padding-left:18px; font-size:14.5px; line-height:1.7; color:#4d4842; display:flex; flex-direction:column; gap:6px">
+          <li>A1 的视觉重心是 104px Archivo 800 的「Good Evening.」，再配一句英文副标题，信息量为零，这是最典型的 AI 首页组合。</li>
+          <li>「常用入口」「我的服务」用 12px 大写加 0.12em 字距，C 和 B 的每个区块标题也是同一种处理，这是仪表盘的语气。</li>
+          <li>中文回退到 Noto Sans SC，和 Archivo 800 的字重、字宽都不匹配，中英混排时英文显得很重。</li>
+        </ul>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:10px">
+        <span style="font-size:14px; font-weight:600">色彩</span>
+        <ul style="margin:0; padding-left:18px; font-size:14.5px; line-height:1.7; color:#4d4842; display:flex; flex-direction:column; gap:6px">
+          <li>A 的极光由 #ec3013、#7c1405、#ff9783 三团光斑叠在 #201e1d 上，整屏偏暗红，读起来像告警。</li>
+          <li>搜索框聚焦时出现 56px 红色外发光，每张卡片悬停时描边也变红。红色用在所有地方，就失去了「重要」这层含义。</li>
+          <li>B 的状态条使用红、琥珀、绿三色，在首页上把注意力引向运维信息。</li>
+        </ul>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:10px">
+        <span style="font-size:14px; font-weight:600">组件</span>
+        <ul style="margin:0; padding-left:18px; font-size:14.5px; line-height:1.7; color:#4d4842; display:flex; flex-direction:column; gap:6px">
+          <li>常用入口是 116 × 116 的方块，1px 描边，图标全部是 Lucide 线性图标，GitHub 和 Gmail 只靠文字区分，缺少品牌辨识度。</li>
+          <li>服务卡片同为 116px 高，每张都有名称、状态点、状态文字、描述和 CTA，相当于把监控卡片放进了首页。</li>
+          <li>顶栏有背景切换、主题、设置三组带边框的按钮，视觉权重和导航相同。</li>
+        </ul>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:10px">
+        <span style="font-size:14px; font-weight:600">布局与层级</span>
+        <ul style="margin:0; padding-left:18px; font-size:14.5px; line-height:1.7; color:#4d4842; display:flex; flex-direction:column; gap:6px">
+          <li>A1 的入口和服务用 margin-top:auto 推到底边，标题和底部之间约 200px 没有内容，搜索框悬在中间。</li>
+          <li>搜索、入口、服务用同一种半透明面板和 1px 描边，三者没有主次。快捷入口和服务卡并排，权重相等。</li>
+          <li>手机端基本是桌面端按比例缩小后纵向堆叠，搜索在顶部，单手够不到。</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section data-screen-label="02 方向" style="display:flex; flex-direction:column; gap:40px">
+    <div style="display:flex; align-items:baseline; gap:16px"><span style="font-size:13px; color:#9a4322; font-weight:600">02</span><h2 style="margin:0; font-size:28px; font-weight:500; letter-spacing:-0.01em">两个视觉方向</h2></div>
+
+    <div style="display:flex; flex-direction:column; gap:28px; padding:40px; background:#1d1c19; color:#efeae1; border-radius:28px">
+      <div style="display:flex; flex-wrap:wrap; align-items:baseline; gap:8px 18px">
+        <span style="font-size:13px; color:#e6c08a; font-weight:600">R1</span>
+        <span style="font-size:26px; font-weight:500; letter-spacing:-0.01em">Atmospheric Desktop · 氛围感数字桌面</span>
+        <span style="font-size:14px; color:rgba(239,234,225,0.6)">高级、宁静、沉浸、自然</span>
+      </div>
+      <div style="display:grid; grid-template-columns:minmax(0,1.5fr) minmax(0,1fr); gap:16px">
+        <div style="position:relative; height:300px; border-radius:18px; overflow:hidden; isolation:isolate; background:#a69e8e">
+          <img src="assets/wallpaper.jpg" alt="" style="position:absolute; inset:0; width:100%; height:100%; object-fit:cover; filter:grayscale(1) contrast(1.08); mix-blend-mode:multiply">
+          <div style="position:absolute; inset:0; background:#221f1b; mix-blend-mode:lighten"></div>
+          <div style="position:absolute; left:28px; right:28px; bottom:28px; height:58px; border-radius:18px; background:rgba(26,25,22,0.5); backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px); display:flex; align-items:center; padding:0 20px; font-size:15px; color:rgba(239,234,225,0.6)">材质样本：石色调摄影 + 暖墨玻璃</div>
+        </div>
+        <div style="display:grid; grid-template-rows:repeat(2, minmax(0,1fr)); gap:16px">
+          <div style="display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:8px">
+            <div style="border-radius:12px; background:#1b1a17; box-shadow:inset 0 0 0 1px rgba(239,234,225,0.12); display:flex; align-items:flex-end; padding:10px; font-size:11px; color:rgba(239,234,225,0.7)">#1B1A17</div>
+            <div style="border-radius:12px; background:#a69e8e; display:flex; align-items:flex-end; padding:10px; font-size:11px; color:#1b1a17">#A69E8E</div>
+            <div style="border-radius:12px; background:#efeae1; display:flex; align-items:flex-end; padding:10px; font-size:11px; color:#1b1a17">#EFEAE1</div>
+            <div style="border-radius:12px; background:#e6c08a; display:flex; align-items:flex-end; padding:10px; font-size:11px; color:#1b1a17">#E6C08A</div>
+            <div style="border-radius:12px; background:#a7bf9f; display:flex; align-items:flex-end; padding:10px; font-size:11px; color:#1b1a17">#A7BF9F</div>
+          </div>
+          <div style="border-radius:18px; background:rgba(239,234,225,0.05); padding:20px 22px; display:flex; flex-direction:column; justify-content:space-between">
+            <span style="font-size:56px; font-weight:300; letter-spacing:-0.04em; line-height:1">21:14</span>
+            <span style="font-size:13px; color:rgba(239,234,225,0.62)">Manrope 300 / 500 · 中文 Noto Sans SC 300 / 400</span>
+          </div>
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:24px 36px; font-size:14px; line-height:1.7; color:rgba(239,234,225,0.78)">
+        <div><div style="color:#efeae1; font-weight:600; margin-bottom:6px">字体</div>Manrope 的几何感克制、数字宽度稳定，用 300 字重写时间，读起来轻。全页只用两种字重，不用大写字距标签。</div>
+        <div><div style="color:#efeae1; font-weight:600; margin-bottom:6px">色彩</div>壁纸统一做双色调处理：暗部 #221F1B，亮部 #A69E8E，任何照片都会落进同一套低饱和石色。唯一的暖色是灯光琥珀 #E6C08A，只用于光标、聚焦和品牌点。</div>
+        <div><div style="color:#efeae1; font-weight:600; margin-bottom:6px">材质</div>只有一块玻璃：搜索和应用合在同一块暖墨玻璃面板里，不设描边，靠模糊和阴影分出层次。应用图标是 52px 圆角方形，使用真实品牌图形。</div>
+        <div><div style="color:#efeae1; font-weight:600; margin-bottom:6px">空间</div>照片占据画面上方和下方约 60%，界面只集中在视线高度的一条带上。状态缩成右上角一枚胶囊，点开才看到详情。</div>
+      </div>
+      <div style="display:grid; grid-template-columns:minmax(0,1fr) 320px; gap:36px; align-items:start">
+        <div style="display:flex; flex-direction:column; gap:10px; font-size:14px; line-height:1.7; color:rgba(239,234,225,0.78)">
+          <div style="color:#efeae1; font-weight:600">参考与借鉴点</div>
+          <div><span style="color:#efeae1">macOS 桌面与 Dock</span>：把应用收进一个物体里，图标即品牌。不借鉴放大动效和反光底座。</div>
+          <div><span style="color:#efeae1">Raycast</span>：一个输入框加一列结果，键盘优先，结果出现时替换原有内容，不弹新层。</div>
+          <div><span style="color:#efeae1">Mue / Tabliss</span>：照片优先，左下角标注照片出处。不借鉴满屏小组件。</div>
+          <div><span style="color:#efeae1">Apple TV 航拍屏保</span>：低饱和、慢节奏的画面可以长时间观看。</div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px">
+          <span style="font-size:12px; color:rgba(239,234,225,0.55)">桌面构图</span>
+          <div style="position:relative; height:200px; border-radius:12px; background:linear-gradient(180deg,#2a2824,#3b3730 60%,#2a2824)">
+            <div style="position:absolute; top:12px; left:14px; width:40px; height:6px; border-radius:3px; background:rgba(239,234,225,0.4)"></div>
+            <div style="position:absolute; top:12px; right:14px; width:50px; height:8px; border-radius:4px; background:rgba(239,234,225,0.25)"></div>
+            <div style="position:absolute; top:58px; left:80px; width:44px; height:14px; border-radius:3px; background:rgba(239,234,225,0.5)"></div>
+            <div style="position:absolute; top:80px; left:76px; right:76px; height:58px; border-radius:10px; background:rgba(239,234,225,0.16)">
+              <div style="margin:8px 10px; height:10px; border-radius:3px; background:rgba(239,234,225,0.25)"></div>
+              <div style="display:flex; gap:5px; margin:10px 10px 0"><span style="width:14px; height:14px; border-radius:4px; background:#ebe6dc"></span><span style="width:14px; height:14px; border-radius:4px; background:#ebe6dc"></span><span style="width:14px; height:14px; border-radius:4px; background:#ebe6dc"></span><span style="width:14px; height:14px; border-radius:4px; background:#ebe6dc"></span><span style="width:14px; height:14px; border-radius:4px; background:#ebe6dc"></span><span style="width:14px; height:14px; border-radius:4px; background:#4a463e"></span><span style="width:14px; height:14px; border-radius:4px; background:#4a463e"></span></div>
+            </div>
+            <div style="position:absolute; bottom:12px; left:14px; width:60px; height:5px; border-radius:3px; background:rgba(239,234,225,0.25)"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:28px; padding:40px; background:#f2ede4; color:#2b2926; border-radius:4px; box-shadow:0 1px 0 rgba(43,41,38,0.06)">
+      <div style="display:flex; flex-wrap:wrap; align-items:baseline; gap:8px 18px; font-family:'Libre Caslon Text','Noto Serif SC',serif">
+        <span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#9a4322">R2</span>
+        <span style="font-size:28px">Editorial Workspace · 编辑式个人空间</span>
+        <span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#6f695f">克制、温暖、优雅、细腻</span>
+      </div>
+      <div style="display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.4fr); gap:28px; align-items:start">
+        <div style="position:relative; height:300px; isolation:isolate; background:#ece3d3; overflow:hidden">
+          <img src="assets/wallpaper.jpg" alt="" style="position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:62% center; filter:grayscale(1) contrast(1.05); mix-blend-mode:multiply">
+          <div style="position:absolute; inset:0; background:#3d362e; mix-blend-mode:lighten"></div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:20px">
+          <p style="margin:0; font-family:'Libre Caslon Text','Noto Serif SC',serif; font-size:34px; line-height:1.4">晚上好。<br>三个服务都在安静地运行。</p>
+          <div style="font-family:'JetBrains Mono',monospace; font-size:11.5px; color:#6f695f">Libre Caslon Text · 中文 Noto Serif SC · 元信息 JetBrains Mono</div>
+          <div style="display:flex; gap:8px">
+            <div style="flex:1; height:64px; background:#f2ede4; box-shadow:inset 0 0 0 1px rgba(43,41,38,0.18); display:flex; align-items:flex-end; padding:8px; font-family:'JetBrains Mono',monospace; font-size:10.5px">#F2EDE4</div>
+            <div style="flex:1; height:64px; background:#2b2926; color:#f2ede4; display:flex; align-items:flex-end; padding:8px; font-family:'JetBrains Mono',monospace; font-size:10.5px">#2B2926</div>
+            <div style="flex:1; height:64px; background:#6f695f; color:#f2ede4; display:flex; align-items:flex-end; padding:8px; font-family:'JetBrains Mono',monospace; font-size:10.5px">#6F695F</div>
+            <div style="flex:1; height:64px; background:#b4532a; color:#f2ede4; display:flex; align-items:flex-end; padding:8px; font-family:'JetBrains Mono',monospace; font-size:10.5px">#B4532A</div>
+            <div style="flex:1; height:64px; background:#6e8b67; color:#f2ede4; display:flex; align-items:flex-end; padding:8px; font-family:'JetBrains Mono',monospace; font-size:10.5px">#6E8B67</div>
+          </div>
+          <div style="display:flex; flex-direction:column">
+            <div style="display:flex; justify-content:space-between; padding-bottom:8px; border-bottom:1px solid #2b2926; font-family:'Noto Serif SC',serif; font-size:14px"><span>常去</span><span style="font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#6f695f">编辑</span></div>
+            <div style="display:flex; justify-content:space-between; align-items:center; height:44px; border-bottom:1px solid rgba(43,41,38,0.13); font-family:'Libre Caslon Text',serif; font-size:19px"><span><span style="font-family:'JetBrains Mono',monospace; font-size:10px; color:#8a8378; margin-right:14px">01</span>GitHub</span><span style="font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#6f695f">github.com</span></div>
+          </div>
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:24px 36px; font-size:14px; line-height:1.7; color:#4d4842">
+        <div><div style="color:#2b2926; font-weight:600; margin-bottom:6px">字体</div>三种角色：Caslon 与思源宋体负责正文和名称，带书卷气；JetBrains Mono 只写时间、域名、计数这类元信息。最大字号留给一句话，不留给问候语。</div>
+        <div><div style="color:#2b2926; font-weight:600; margin-bottom:6px">色彩</div>纸色 #F2EDE4，石墨墨色 #2B2926。陶土色 #B4532A 只出现在时间、聚焦线和需要处理的状态上。照片印成暖墨双色调。</div>
+        <div><div style="color:#2b2926; font-weight:600; margin-bottom:6px">材质</div>纸张颗粒噪点（约 9% 不透明度），没有卡片，没有阴影。结构靠一条墨线标题加一组浅色细线行来组织，参照目录页。</div>
+        <div><div style="color:#2b2926; font-weight:600; margin-bottom:6px">空间</div>12 栏网格，按 7 : 5 非对称分栏。上半部分是导语、搜索和一张照片，下半部分是常去目录和服务目录，两部分之间保留一段完整的留白。</div>
+      </div>
+      <div style="display:grid; grid-template-columns:minmax(0,1fr) 320px; gap:36px; align-items:start">
+        <div style="display:flex; flex-direction:column; gap:10px; font-size:14px; line-height:1.7; color:#4d4842">
+          <div style="color:#2b2926; font-weight:600">参考与借鉴点</div>
+          <div><span style="color:#2b2926">Kinfolk / Cereal 杂志</span>：暖白纸面、大号衬线、很宽的页边距，一张图就能定下整页气质。</div>
+          <div><span style="color:#2b2926">Monocle 刊头</span>：刊名、期号、日期排成一行，像报头。这里用「第 300 天」替代期号。</div>
+          <div><span style="color:#2b2926">Are.na</span>：目录式列表，信息安静，不用卡片也能看清结构。</div>
+          <div><span style="color:#2b2926">Stripe Press</span>：书籍排版的节奏，等宽字体只承担元信息。不借鉴它的 3D 书封。</div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px">
+          <span style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#6f695f">桌面构图</span>
+          <div style="position:relative; height:200px; background:#e9e2d6; box-shadow:inset 0 0 0 1px rgba(43,41,38,0.12)">
+            <div style="position:absolute; top:12px; left:14px; right:14px; height:8px; border-bottom:1px solid rgba(43,41,38,0.3)"></div>
+            <div style="position:absolute; top:34px; left:14px; width:160px; height:10px; background:rgba(43,41,38,0.55)"></div>
+            <div style="position:absolute; top:50px; left:14px; width:140px; height:10px; background:rgba(43,41,38,0.55)"></div>
+            <div style="position:absolute; top:66px; left:14px; width:120px; height:10px; background:rgba(43,41,38,0.55)"></div>
+            <div style="position:absolute; top:94px; left:14px; width:170px; border-bottom:1.5px solid #2b2926"></div>
+            <div style="position:absolute; top:30px; right:14px; width:96px; height:90px; background:#6f665a"></div>
+            <div style="position:absolute; top:136px; left:14px; width:170px; height:46px; background:repeating-linear-gradient(180deg, transparent 0 14px, rgba(43,41,38,0.25) 14px 15px); border-top:1px solid #2b2926"></div>
+            <div style="position:absolute; top:136px; right:14px; width:96px; height:46px; background:repeating-linear-gradient(180deg, transparent 0 14px, rgba(43,41,38,0.25) 14px 15px); border-top:1px solid #2b2926"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:16px 48px; font-size:14.5px; line-height:1.7; color:#4d4842">
+      <div><span style="font-weight:600; color:#2b2926">两者的差异　</span>R1 深色、照片、居中、单一玻璃物体、图标为主；R2 浅色、纸张、非对称分栏、无卡片、文字为主。两套方案的字体、材质、构图和状态表达方式各不相同。</div>
+      <div><span style="font-weight:600; color:#2b2926">状态的写法　</span>R1 把状态收进一枚胶囊，加上图标角落的小圆点。R2 把状态写进导语，一切正常时就是一句问候，出问题时这句话会变成提醒（可在 Tweaks 里切换到「issue」查看）。</div>
+    </div>
+  </section>
+
+  <section data-screen-label="03 原型" style="display:flex; flex-direction:column; gap:32px">
+    <div style="display:flex; align-items:baseline; gap:16px"><span style="font-size:13px; color:#9a4322; font-weight:600">03</span><h2 style="margin:0; font-size:28px; font-weight:500; letter-spacing:-0.01em">高保真首页</h2></div>
+    <p style="margin:0; max-width:760px; font-size:14.5px; line-height:1.7; color:#4d4842">以下为静态截图，交互请打开原型文件。截图工具不能完整渲染背景模糊，R1 玻璃面板的实际效果以原型为准。</p>
+    <div style="display:flex; flex-direction:column; gap:14px">
+      <div style="display:flex; justify-content:space-between; font-size:13px"><span style="font-weight:600">R1 Atmospheric · 桌面 1440 × 900</span><a href="Nexus%20R1%20Atmospheric.dc.html">打开原型 →</a></div>
+      <div style="display:grid; grid-template-columns:minmax(0,1fr) minmax(0,0.3fr); gap:20px; align-items:start">
+        <img src="assets/shots/r1-desktop.png" alt="R1 桌面" style="width:100%; display:block; border-radius:10px; box-shadow:0 20px 50px rgba(0,0,0,0.18)">
+        <img src="assets/shots/r1-mobile.png" alt="R1 手机" style="width:100%; display:block; border-radius:28px; box-shadow:0 20px 50px rgba(0,0,0,0.18)">
+      </div>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:14px">
+      <div style="display:flex; justify-content:space-between; font-size:13px"><span style="font-weight:600">R2 Editorial · 桌面 1440 × 900</span><a href="Nexus%20R2%20Editorial.dc.html">打开原型 →</a></div>
+      <div style="display:grid; grid-template-columns:minmax(0,1fr) minmax(0,0.3fr); gap:20px; align-items:start">
+        <img src="assets/shots/r2-desktop.png" alt="R2 桌面" style="width:100%; display:block; border-radius:10px; box-shadow:0 20px 50px rgba(0,0,0,0.12)">
+        <img src="assets/shots/r2-mobile.png" alt="R2 手机" style="width:100%; display:block; border-radius:28px; box-shadow:0 20px 50px rgba(0,0,0,0.12)">
+      </div>
+    </div>
+  </section>
+
+  <section data-screen-label="04 自检" style="display:flex; flex-direction:column; gap:32px">
+    <div style="display:flex; align-items:baseline; gap:16px"><span style="font-size:13px; color:#9a4322; font-weight:600">04</span><h2 style="margin:0; font-size:28px; font-weight:500; letter-spacing:-0.01em">设计自检</h2></div>
+    <div style="display:grid; grid-template-columns:200px minmax(0,1fr) minmax(0,1fr); gap:0 32px; font-size:14px; line-height:1.65; color:#4d4842">
+      <div style="padding:0 0 12px; font-size:12px; color:#6f695f"></div>
+      <div style="padding:0 0 12px; font-weight:600; color:#2b2926">R1 Atmospheric</div>
+      <div style="padding:0 0 12px; font-weight:600; color:#2b2926">R2 Editorial</div>
+
+      <div style="padding:16px 0; border-top:1px solid rgba(43,41,38,0.16); color:#2b2926; font-weight:500">第一眼吸引力</div>
+      <div style="padding:16px 0; border-top:1px solid rgba(43,41,38,0.16)">强。但吸引力大部分来自照片，换一张杂乱的照片效果会明显下降。需要一组精选壁纸，并按照片亮度自动调整遮罩强度。</div>
+      <div style="padding:16px 0; border-top:1px solid rgba(43,41,38,0.16)">中等偏安静。靠排版取胜，第一眼不如 R1 有冲击力，有人会觉得太素。</div>
+
+      <div style="padding:16px 0; border-top:1px solid rgba(43,41,38,0.16); color:#2b2926; font-weight:500">模板感</div>
+      <div style="padding:16px 0; border-top:1px solid rgba(43,41,38,0.16)">「照片 + 时间 + 居中搜索」本身是 Momentum / Bonjourr 的常见套路。把搜索和应用合成一块面板、统一双色调处理，缓解了一部分，但这个结构仍然是熟悉的结构。</div>
+      <div style="padding:16px 0; border-top:1px solid rgba(43,41,38,0.16)">较低。不过「衬线 + 等宽元信息 + 纸色」也是近两年独立站点的流行做法，需要靠导语这类内容层面的设计拉开差距。</div>
+
+      <div style="padding:16px 0; border-top:1px solid rgba(43,41,38,0.16); color:#2b2926; font-weight:500">空白、边框与卡片</div>
+      <div style="padding:16px 0; border-top:1px solid rgba(43,41,38,0.16)">全页只有一块面板，没有描边。大面积留给照片，这是有意的。应用栏的竖向分隔线是唯一一条线。</div>
+      <div style="padding:16px 0; border-top:1px solid rgba(43,41,38,0.16)">没有卡片。细线较多（每行一条），已经降到 13% 不透明度。搜索和目录之间约 140px 留白，在 1366 × 768 下会被压缩，需要补充矮屏规则。</div>
+
+      <div style="padding:16px 0; border-top:1px solid rgba(43,41,38,0.16); color:#2b2926; font-weight:500">搜索与入口的易用性</div>
+      <div style="padding:16px 0; border-top:1px solid rgba(43,41,38,0.16)">好。按 / 聚焦，输入后结果直接替换应用栏，网站、服务、网页搜索、收藏混合排列。一行 9 个是上限，再多需要第二行或进入应用页。</div>
+      <div style="padding:16px 0; border-top:1px solid rgba(43,41,38,0.16)">搜索只有一条下划线，可识别性不如输入框。29px 的占位文字和聚焦时变成陶土色的线做了弥补，可能还需要一个搜索图标。目录行高 54px，点击区域足够。</div>
+
+      <div style="padding:16px 0; border-top:1px solid rgba(43,41,38,0.16); color:#2b2926; font-weight:500">手机单手操作</div>
+      <div style="padding:16px 0; border-top:1px solid rgba(43,41,38,0.16)">搜索在底部，8 个图标在拇指区内，键盘弹出后面板跟着上移。设置按钮在右上角够不到，但它是低频操作。</div>
+      <div style="padding:16px 0; border-top:1px solid rgba(43,41,38,0.16)">搜索在底部，引擎切换在右侧拇指位。「常去」列表位于屏幕中上部，单手需要稍微伸展，可以考虑把常去和服务的位置对调。</div>
+
+      <div style="padding:16px 0; border-top:1px solid rgba(43,41,38,0.16); color:#2b2926; font-weight:500">元素是否都有用途</div>
+      <div style="padding:16px 0; border-top:1px solid rgba(43,41,38,0.16)">照片出处说明是唯一的装饰性元素，同时也是「换一张」的入口。</div>
+      <div style="padding:16px 0; border-top:1px solid rgba(43,41,38,0.16)">照片纯属装饰，是有意保留的例外，可在 Tweaks 中关闭。「第 300 天」也偏装饰，可以删去。</div>
+
+      <div style="padding:16px 0; border-top:1px solid rgba(43,41,38,0.16); color:#2b2926; font-weight:500">去掉 Logo 是否仍有特征</div>
+      <div style="padding:16px 0; border-top:1px solid rgba(43,41,38,0.16)">部分有。石色双色调和琥珀色光点有辨识度，但很大一部分特征来自照片本身。</div>
+      <div style="padding:16px 0; border-top:1px solid rgba(43,41,38,0.16)">有。导语式状态、编号目录和纸张质感都不依赖 Logo。</div>
+
+      <div style="padding:16px 0; border-top:1px solid rgba(43,41,38,0.16); color:#2b2926; font-weight:500">是否愿意长期使用</div>
+      <div style="padding:16px 0; border-top:1px solid rgba(43,41,38,0.16)">深色低饱和，适合整天开着。同一张照片看久了会腻，需要轮换机制。</div>
+      <div style="padding:16px 0; border-top:1px solid rgba(43,41,38,0.16)">白天舒服，夜间纸色偏亮，需要一个深色「墨」版本（本轮未做）。</div>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:8px; font-size:14px; line-height:1.7; color:#4d4842; max-width:820px">
+      <span style="font-weight:600; color:#2b2926">已在本轮修正</span>
+      <span>R2 导语原来自动换行，会把「运行」拆到两行，已改为按语义手动断行，桌面和手机都已调整。R1 引擎下拉箭头引用了不存在的图标，已替换。</span>
+      <span style="font-weight:600; color:#2b2926; margin-top:8px">仍待确认</span>
+      <span>LiteBox 和 OBsync 用的是字母组合占位，需要真实 Logo。品牌图标来自 Simple Icons 和 dashboard-icons 的 CDN，离线时不会显示。手机框架状态栏显示 9:41，与页面里的 21:14 不一致，这是框架的限制。壁纸沿用 assets/wallpaper.jpg。</span>
+    </div>
+  </section>
+</div>
+</div>
+</x-dc>
+</body>
+</html>

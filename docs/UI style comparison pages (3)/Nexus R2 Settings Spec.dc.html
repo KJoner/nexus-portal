@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600&family=Noto+Sans+SC:wght@400;500&family=JetBrains+Mono:wght@400&display=swap">
+<style>
+body{margin:0;background:#1b1a17}
+a{color:#e6c08a;text-underline-offset:3px}a:hover{color:#f1d3a6}
+</style>
+</helmet>
+<div style="min-height:100vh; background:#1b1a17; color:#efeae1; font-family:Manrope,'Noto Sans SC',system-ui,sans-serif">
+<div style="max-width:1200px; margin:0 auto; padding:56px 40px 120px; box-sizing:border-box; display:flex; flex-direction:column; gap:80px">
+
+  <header style="display:flex; flex-direction:column; gap:16px">
+    <div style="display:flex; flex-wrap:wrap; gap:8px 24px; font-size:13px; color:rgba(239,234,225,0.55)">
+      <span style="color:#efeae1; font-weight:600">R2 · 设置中心规范</span>
+      <span style="flex:1"></span>
+      <a href="Nexus%20R2%20Settings.dc.html">高保真画板 →</a>
+      <a href="Nexus%20R1.5%20Revisions.dc.html">R1.5 修订</a>
+    </div>
+    <h1 style="margin:0; font-size:40px; font-weight:400; letter-spacing:-0.02em; line-height:1.2">信息架构、组件与交互</h1>
+    <p style="margin:0; max-width:760px; font-size:15px; line-height:1.75; color:rgba(239,234,225,0.66)">设置中心沿用首页冻结的颜色、字体与材质，只把壁纸压到氛围层：模糊 48px、亮度 42%，再叠 62% 的暖黑。内容卡片使用 4.5% 的暖白底和 5% 描边，正文对比度不低于 7:1。</p>
+  </header>
+
+  <section style="display:flex; flex-direction:column; gap:24px">
+    <div style="display:flex; align-items:baseline; gap:14px"><span style="font-size:13px; color:#e6c08a">01</span><h2 style="margin:0; font-size:24px; font-weight:500">信息架构</h2></div>
+    <div style="display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:14px">
+      <sc-for list="{{ ia }}" as="g" hint-placeholder-count="5">
+        <div style="display:flex; flex-direction:column; gap:12px; padding:18px; border-radius:18px; background:rgba(239,234,225,0.045); box-shadow:inset 0 0 0 1px rgba(239,234,225,0.05)">
+          <span style="font-size:15px; font-weight:500">{{ g.t }}</span>
+          <span style="font-size:12px; color:rgba(239,234,225,0.5)">{{ g.model }}</span>
+          <div style="display:flex; flex-direction:column; gap:7px; padding-top:10px; border-top:1px solid rgba(239,234,225,0.08)">
+            <sc-for list="{{ g.items }}" as="x" hint-placeholder-count="5"><span style="font-size:13px; line-height:1.5; color:rgba(239,234,225,0.8)">{{ x }}</span></sc-for>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+    <p style="margin:0; font-size:13.5px; line-height:1.7; color:rgba(239,234,225,0.6)">入口：首页右上角齿轮（PC）/ 时钟右侧齿轮（手机）；首页右键菜单、长按操作表中的「在设置中编辑」直达对应应用。设置搜索覆盖 23 个设置项，回车跳转到第一项所在页面。</p>
+  </section>
+
+  <section style="display:flex; flex-direction:column; gap:24px">
+    <div style="display:flex; align-items:baseline; gap:14px"><span style="font-size:13px; color:#e6c08a">02</span><h2 style="margin:0; font-size:24px; font-weight:500">保存模型</h2></div>
+    <div style="display:flex; flex-direction:column; border-radius:18px; background:rgba(239,234,225,0.045); overflow:hidden">
+      <sc-for list="{{ save }}" as="r" hint-placeholder-count="4">
+        <div style="display:grid; grid-template-columns:180px minmax(0,1fr) minmax(0,1fr); gap:24px; padding:18px 22px; border-top:{{ r.bt }}; font-size:13.5px; line-height:1.65">
+          <span style="font-weight:500">{{ r.t }}</span><span style="color:rgba(239,234,225,0.72)">{{ r.where }}</span><span style="color:rgba(239,234,225,0.72)">{{ r.fb }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="display:flex; flex-direction:column; gap:24px">
+    <div style="display:flex; align-items:baseline; gap:14px"><span style="font-size:13px; color:#e6c08a">03</span><h2 style="margin:0; font-size:24px; font-weight:500">PC 与手机</h2></div>
+    <div style="display:flex; flex-direction:column; border-radius:18px; background:rgba(239,234,225,0.045); overflow:hidden">
+      <div style="display:grid; grid-template-columns:160px minmax(0,1fr) minmax(0,1fr); gap:24px; padding:14px 22px; font-size:12px; color:rgba(239,234,225,0.5)"><span></span><span>PC</span><span>手机</span></div>
+      <sc-for list="{{ diff }}" as="r" hint-placeholder-count="6">
+        <div style="display:grid; grid-template-columns:160px minmax(0,1fr) minmax(0,1fr); gap:24px; padding:16px 22px; border-top:1px solid rgba(239,234,225,0.06); font-size:13.5px; line-height:1.65">
+          <span style="font-weight:500">{{ r.t }}</span><span style="color:rgba(239,234,225,0.72)">{{ r.pc }}</span><span style="color:rgba(239,234,225,0.72)">{{ r.m }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="display:flex; flex-direction:column; gap:24px">
+    <div style="display:flex; align-items:baseline; gap:14px"><span style="font-size:13px; color:#e6c08a">04</span><h2 style="margin:0; font-size:24px; font-weight:500">组件</h2></div>
+    <div style="display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:14px">
+      <div style="display:flex; flex-direction:column; gap:14px; padding:20px; border-radius:18px; background:rgba(239,234,225,0.045)">
+        <span style="font-size:15px; font-weight:500">开关</span>
+        <div style="display:flex; gap:14px; align-items:center">
+          <span style="position:relative; width:44px; height:26px; border-radius:13px; background:#e6c08a"><span style="position:absolute; top:3px; left:21px; width:20px; height:20px; border-radius:50%; background:#f7f3ec; box-shadow:0 1px 3px rgba(0,0,0,.35)"></span></span>
+          <span style="position:relative; width:44px; height:26px; border-radius:13px; background:rgba(239,234,225,0.16)"><span style="position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:50%; background:#f7f3ec"></span></span>
+          <span style="position:relative; width:44px; height:26px; border-radius:13px; background:rgba(239,234,225,0.16); opacity:.6"><span style="position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:50%; background:#c9c3b8"></span></span>
+        </div>
+        <span style="font-size:12.5px; line-height:1.65; color:rgba(239,234,225,0.6)">PC 44 × 26，手机 51 × 31。开为琥珀，关为 16% 暖白，不可用降到 60% 并配「尚未实现」标签。role="switch"，过渡 .2s。</span>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:14px; padding:20px; border-radius:18px; background:rgba(239,234,225,0.045)">
+        <span style="font-size:15px; font-weight:500">分段控件</span>
+        <div style="display:flex; gap:2px; padding:3px; border-radius:11px; background:rgba(239,234,225,0.06); align-self:flex-start"><span style="height:32px; display:flex; align-items:center; padding:0 14px; border-radius:9px; background:rgba(239,234,225,0.14); font-size:13px">深色</span><span style="height:32px; display:flex; align-items:center; padding:0 14px; font-size:13px; color:rgba(239,234,225,0.62)">浅色</span><span style="height:32px; display:flex; align-items:center; padding:0 14px; font-size:13px; color:rgba(239,234,225,0.62)">跟随系统</span></div>
+        <span style="font-size:12.5px; line-height:1.65; color:rgba(239,234,225,0.6)">2–4 个互斥选项。PC 内容宽，手机撑满整行、高 38。选中项不使用琥珀，以免与主按钮竞争。</span>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:14px; padding:20px; border-radius:18px; background:rgba(239,234,225,0.045)">
+        <span style="font-size:15px; font-weight:500">输入框与错误</span>
+        <div style="display:flex; flex-direction:column; gap:6px">
+          <span style="height:40px; display:flex; align-items:center; padding:0 12px; border-radius:11px; background:rgba(239,234,225,0.06); box-shadow:inset 0 0 0 1.5px rgba(233,118,95,0.7); font-family:'JetBrains Mono',monospace; font-size:12.5px">jellyfin.home</span>
+          <span style="font-size:12px; color:#f0a594">请输入完整网址，以 http:// 或 https:// 开头</span>
+        </div>
+        <span style="font-size:12.5px; line-height:1.65; color:rgba(239,234,225,0.6)">失焦或点保存后才校验；错误为珊瑚描边 + 下方文字，警告为琥珀文字且不阻止保存。网址类字段用等宽字体，失焦时自动补全 https://。</span>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:14px; padding:20px; border-radius:18px; background:rgba(239,234,225,0.045)">
+        <span style="font-size:15px; font-weight:500">按钮</span>
+        <div style="display:flex; gap:8px; flex-wrap:wrap">
+          <span style="height:38px; display:flex; align-items:center; padding:0 16px; border-radius:11px; background:#e6c08a; color:#2b2318; font-size:13px; font-weight:600">保存</span>
+          <span style="height:38px; display:flex; align-items:center; padding:0 16px; border-radius:11px; background:rgba(239,234,225,0.09); font-size:13px">取消</span>
+          <span style="height:38px; display:flex; align-items:center; padding:0 14px; border-radius:11px; color:#f1d3a6; font-size:13px">+ 添加</span>
+          <span style="height:38px; display:flex; align-items:center; padding:0 16px; border-radius:11px; background:rgba(233,118,95,0.16); color:#f4b2a3; font-size:13px">删除</span>
+        </div>
+        <span style="font-size:12.5px; line-height:1.65; color:rgba(239,234,225,0.6)">主要（琥珀实底，每个视图最多一个）、次要、文字、危险。PC 高 32–40，手机 50。危险操作的确认按钮用珊瑚实底。</span>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:14px; padding:20px; border-radius:18px; background:rgba(239,234,225,0.045)">
+        <span style="font-size:15px; font-weight:500">标签</span>
+        <div style="display:flex; gap:8px; flex-wrap:wrap">
+          <span style="height:22px; display:flex; align-items:center; padding:0 8px; border-radius:6px; background:rgba(239,234,225,0.1); font-size:11.5px; color:rgba(239,234,225,0.75)">尚未实现</span>
+          <span style="height:22px; display:flex; align-items:center; padding:0 8px; border-radius:6px; background:rgba(239,234,225,0.1); font-size:11.5px; color:rgba(239,234,225,0.75)">演示</span>
+          <span style="height:22px; display:flex; align-items:center; padding:0 8px; border-radius:6px; background:rgba(230,192,138,0.14); color:#f1d3a6; font-size:11.5px">默认</span>
+          <span style="height:22px; display:flex; align-items:center; padding:0 8px; border-radius:6px; background:rgba(227,163,91,0.13); color:#f1c690; font-size:11.5px">仅手机</span>
+        </div>
+        <span style="font-size:12.5px; line-height:1.65; color:rgba(239,234,225,0.6)">「尚未实现」用于界面已设计、能力未开发的项；「演示」用于有交互但结果为假数据的项（测试连接、令牌）。</span>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:14px; padding:20px; border-radius:18px; background:rgba(239,234,225,0.045)">
+        <span style="font-size:15px; font-weight:500">提示条</span>
+        <div style="display:flex; align-items:center; gap:12px; height:44px; padding:0 6px 0 16px; border-radius:14px; background:rgba(44,42,37,0.96); box-shadow:inset 0 1px 0 rgba(255,255,255,0.07); font-size:13.5px"><span style="width:7px; height:7px; border-radius:50%; background:#a7bf9f"></span><span style="flex:1">已删除 Vercel</span><span style="height:32px; display:flex; align-items:center; padding:0 12px; border-radius:9px; background:rgba(230,192,138,0.16); color:#f1d3a6; font-size:13px">撤销</span></div>
+        <span style="font-size:12.5px; line-height:1.65; color:rgba(239,234,225,0.6)">底部居中，role="status"。可撤销的保留 6 秒，悬停暂停；同时只显示一条，新提示替换旧提示。</span>
+      </div>
+    </div>
+    <div style="display:flex; flex-direction:column; border-radius:18px; background:rgba(239,234,225,0.045); overflow:hidden">
+      <sc-for list="{{ comps }}" as="r" hint-placeholder-count="6">
+        <div style="display:grid; grid-template-columns:180px minmax(0,1fr); gap:24px; padding:16px 22px; border-top:{{ r.bt }}; font-size:13.5px; line-height:1.65">
+          <span style="font-weight:500">{{ r.t }}</span><span style="color:rgba(239,234,225,0.72)">{{ r.d }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="display:flex; flex-direction:column; gap:24px">
+    <div style="display:flex; align-items:baseline; gap:14px"><span style="font-size:13px; color:#e6c08a">05</span><h2 style="margin:0; font-size:24px; font-weight:500">交互说明</h2></div>
+    <div style="display:flex; flex-direction:column; border-radius:18px; background:rgba(239,234,225,0.045); overflow:hidden">
+      <div style="display:grid; grid-template-columns:170px minmax(0,1.1fr) minmax(0,1.3fr) 110px; gap:20px; padding:14px 22px; font-size:12px; color:rgba(239,234,225,0.5)"><span>交互</span><span>触发</span><span>反馈</span><span>时长</span></div>
+      <sc-for list="{{ ix }}" as="r" hint-placeholder-count="10">
+        <div style="display:grid; grid-template-columns:170px minmax(0,1.1fr) minmax(0,1.3fr) 110px; gap:20px; padding:15px 22px; border-top:1px solid rgba(239,234,225,0.06); font-size:13.5px; line-height:1.6">
+          <span style="font-weight:500">{{ r.t }}</span><span style="color:rgba(239,234,225,0.72)">{{ r.on }}</span><span style="color:rgba(239,234,225,0.72)">{{ r.fb }}</span><span style="font-family:'JetBrains Mono',monospace; font-size:12px; color:rgba(239,234,225,0.6)">{{ r.ms }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="display:flex; flex-direction:column; gap:24px">
+    <div style="display:flex; align-items:baseline; gap:14px"><span style="font-size:13px; color:#e6c08a">06</span><h2 style="margin:0; font-size:24px; font-weight:500">反馈状态</h2></div>
+    <div style="display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:14px">
+      <sc-for list="{{ states }}" as="s" hint-placeholder-count="5">
+        <div style="display:flex; flex-direction:column; gap:10px; padding:18px; border-radius:18px; background:rgba(239,234,225,0.045)">
+          <span style="display:flex; align-items:center; gap:8px; font-size:15px; font-weight:500"><span style="width:7px; height:7px; border-radius:50%; background:{{ s.c }}"></span>{{ s.t }}</span>
+          <sc-for list="{{ s.items }}" as="x" hint-placeholder-count="3"><span style="font-size:12.5px; line-height:1.6; color:rgba(239,234,225,0.72)">{{ x }}</span></sc-for>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="display:flex; flex-direction:column; gap:24px">
+    <div style="display:flex; align-items:baseline; gap:14px"><span style="font-size:13px; color:#e6c08a">07</span><h2 style="margin:0; font-size:24px; font-weight:500">尚未实现的能力</h2></div>
+    <div style="display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:0 40px">
+      <sc-for list="{{ todo }}" as="r" hint-placeholder-count="6">
+        <div style="display:flex; flex-direction:column; gap:4px; padding:14px 0; border-top:1px solid rgba(239,234,225,0.08)">
+          <span style="font-size:14px; font-weight:500">{{ r.t }}</span><span style="font-size:13px; line-height:1.6; color:rgba(239,234,225,0.6)">{{ r.d }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const bt = i => i ? '1px solid rgba(239,234,225,0.06)' : '0';
+    return {
+      ia: [
+        { t: '外观与个性化', model: '预览后应用', items: ['壁纸：图库 / 上传 / 删除上传', '色调：暖调单色 / 保留原色', '画面焦点（手机裁切）', '遮罩强度 · 亮度 · 模糊', '主题：深色 / 浅色 / 跟随系统', '时间格式 · 显示秒 · 显示日期', '图标尺寸 · 动画强度', '每日轮换（尚未实现）'] },
+        { t: '首页与快捷方式', model: '即时保存', items: ['固定的网站：排序 / 移除 / 添加', '桌面 Dock 网站数量 3–7', '手机首页行数 2 / 3', '显示我的服务', '显示图标名称', '搜索时显示最近使用', '已隐藏的应用：恢复'] },
+        { t: '应用与服务', model: '表单手动保存', items: ['列表：分类筛选 · 搜索', '新增 / 编辑 / 删除', '类型 · 名称 · 地址', '内网地址 · 默认打开', '图标：自动 / 图标库 / 上传 / 字母', '分类 · 固定 · 打开方式', '健康检查（可选）', '管理分类'] },
+        { t: '搜索', model: '即时保存', items: ['默认引擎', '引擎顺序', '自定义引擎（%s + 前缀）', '搜索建议', '搜索历史 · 保留时长 · 清除', '在结果中显示应用', 'Linkwarden 收藏搜索'] },
+        { t: '数据、同步与安全', model: '即时保存 + 确认', items: ['配置同步状态（尚未实现）', '导出配置 JSON', '导入配置（预览 → 替换）', '访客模式 · 最近使用 · 图标缓存', '登录状态（尚未实现）', '重置外观 / 首页 / 全部'] },
+      ],
+      save: [
+        { t: '即时保存', where: '开关、分段、排序、固定 / 隐藏', fb: '顶栏显示「正在保存…」→「所有更改已保存 · 时间」；结构性变化（移除、隐藏）另给可撤销提示' },
+        { t: '预览后应用', where: '外观页全部设置', fb: '右侧 / 顶部预览即时变化；底部浮条显示更改数量，「还原」或「应用到首页」；应用后可撤销' },
+        { t: '表单手动保存', where: '新增 / 编辑应用、自定义引擎、管理分类', fb: '编辑模式未改动时保存按钮置灰；有改动时关闭或返回会先在底栏确认「放弃更改？」' },
+        { t: '确认 + 撤销', where: '删除应用、删除引擎、导入、重置', fb: '对话框说明影响范围；执行后 6 秒内可撤销。「恢复全部默认」需输入「重置」；清除搜索历史不可撤销并明确写出' },
+      ].map((r, i) => ({ ...r, bt: bt(i) })),
+      diff: [
+        { t: '结构', pc: '独立工作区：264px 左侧分组导航 + 右侧内容，最大宽度 880–1080', m: '设置首页列表 → 子页面推入；顶栏返回按钮显示上一级名称' },
+        { t: '实时预览', pc: '外观与首页页右侧 456px 粘性预览，可切换桌面 / 手机', m: '外观页顶部 232px 预览，壁纸横向滑动，底部浮条应用' },
+        { t: '新增 / 编辑', pc: '右侧 560px 抽屉，列表仍可见；esc 或点背景关闭（有改动先确认）', m: '整页表单，标签在左、值在右；取消 / 保存固定在底部拇指区' },
+        { t: '行操作', pc: '行尾「编辑」+ ⋯ 菜单；固定图标可直接点按', m: '整行点按进入编辑；⋯ 打开底部操作表' },
+        { t: '排序', pc: '拖动把手或 ↑↓ 按钮；键盘可用', m: '− 移除、↑↓ 移动；首页长按图标同样可调' },
+        { t: '复杂编辑', pc: '自定义引擎、分类管理在此完成', m: '只提供默认引擎与开关，说明「在电脑上编辑更方便」' },
+      ],
+      comps: [
+        { t: '导航项', d: '高 42，圆角 12，图标 16；当前项 10% 暖白底，其他 68% 文字。右侧数字为该组条目数。顶部「搜索设置」按名称与关键词过滤。' },
+        { t: '设置分组卡', d: '分组标题 12.5 / 500 / 52%；卡片圆角 20（手机 16），4.5% 底 + 5% 内描边；行高 ≥ 64（手机 ≥ 52），行间 1px 6% 分隔线。' },
+        { t: '滑块', d: '轨道 4px、滑块 18px（手机 26px）；数值在右侧固定 52px 宽、等宽数字。拖动时预览实时更新。' },
+        { t: '壁纸卡', d: 'PC 16:10，手机竖向 92 × 148；选中为 2px 底色间隙 + 2px 琥珀环与右下角勾。上传卡为虚线框，拖入时变琥珀。' },
+        { t: '编辑抽屉', d: '560px，背景 97% 暗面 + blur 40；顶部标题与改动状态，底部操作栏固定；从右侧 40px 处滑入，.36s cubic-bezier(.32,.72,0,1)。' },
+        { t: '对话框 / 操作表', d: 'PC 对话框 440–520px、圆角 24；手机操作表距底 30，选项高 56，取消独立成块。危险项文字珊瑚色。' },
+      ].map((r, i) => ({ ...r, bt: bt(i) })),
+      ix: [
+        { t: '进入设置', on: '首页齿轮；右键 / 长按「在设置中编辑」', fb: '后者直接打开对应应用的编辑抽屉 / 页面', ms: '.2s' },
+        { t: '设置搜索', on: '在左栏或设置首页输入', fb: '分组列表替换为匹配项，显示所在分组；↵ 跳转第一项；无结果给出原文', ms: '即时' },
+        { t: '更换壁纸', on: '点壁纸卡', fb: '预览立即替换并重置焦点；底部浮条出现更改数', ms: '.2s' },
+        { t: '上传壁纸', on: '点上传卡、拖入图片', fb: '处理中显示转圈；格式 / 大小不符给出错误；分辨率 < 1920 给出警告但允许使用', ms: '≈ .5s' },
+        { t: '设置焦点', on: '点预览画面', fb: '琥珀圆环移动到点击处，图片按新焦点裁切', ms: '即时' },
+        { t: '应用外观', on: '浮条「应用到首页」', fb: '浮条消失，提示「外观已应用到首页」可撤销', ms: '.2s' },
+        { t: '排序快捷方式', on: '拖动把手 / ↑↓', fb: '行实时换位，拖动中的行半透明；每行「桌面 · 手机 / 仅手机」随位置更新', ms: '.14s' },
+        { t: '图标库匹配', on: '输入名称或图标名', fb: '停止输入 300ms 后查询；命中显示图标，未命中显示原因与替代方案', ms: '300ms' },
+        { t: '测试连接', on: '编辑中点「测试连接」', fb: '按钮转圈，返回状态码与耗时或失败原因（演示结果）', ms: '≈ .9s' },
+        { t: '保存应用', on: '点保存', fb: '有错误：标红并汇总数量，不关闭；成功：抽屉关闭，列表更新，提示可撤销', ms: '.36s' },
+        { t: '放弃更改', on: '有改动时关闭 / 返回 / esc', fb: '底栏变为「有未保存的更改，确定放弃？」，二次确认后关闭', ms: '.2s' },
+        { t: '删除', on: '编辑底部或行菜单「删除」', fb: '确认对话框写明影响范围 → 删除 → 6 秒撤销', ms: '.2s' },
+      ],
+      states: [
+        { t: '错误', c: '#e9765f', items: ['字段：珊瑚描边 + 文字，失焦后才显示', '表单：底栏「还有 n 项需要修正」', '文件：格式 / 大小直接说明数值'] },
+        { t: '警告', c: '#e3a35b', items: ['地址重复：提示但允许保存', '壁纸分辨率偏低', '超出首页容量：标「仅手机 / 超出」'] },
+        { t: '空状态', c: 'rgba(239,234,225,0.5)', items: ['筛选无结果：复述关键词 + 新增入口', '没有隐藏的应用：说明如何隐藏', '首页无固定：说明添加后出现在哪'] },
+        { t: '成功', c: '#a7bf9f', items: ['顶栏「所有更改已保存 · 时间」', '提示条：已添加 / 已保存 / 已导出', '测试连接：200 OK · 耗时'] },
+        { t: '取消与撤销', c: '#e6c08a', items: ['外观「还原」回到已应用状态', '表单放弃需二次确认', '结构性改动 6 秒撤销；不可撤销的操作在确认框写明'] },
+      ],
+      todo: [
+        { t: '服务端配置同步', d: '界面预留：开关、四种同步状态。当前配置只存在浏览器本地。' },
+        { t: '统一认证 / 登录', d: '只显示「本地模式 · 未登录」，登录按钮不可用。' },
+        { t: '按网络自动切换内外网地址', d: '可填写两个地址并选择默认，自动切换不在本轮。' },
+        { t: '健康检查执行', d: '配置与「测试连接」为界面演示，结果由地址规则生成。' },
+        { t: '浅色主题首页', d: '设置中可预览示意效果，首页尚未实现浅色版本。' },
+        { t: '每日轮换壁纸', d: '开关不可用。' },
+        { t: 'Linkwarden 令牌更换', d: '连接状态与令牌为演示数据。' },
+        { t: '设置持久化', d: '原型中刷新页面会恢复演示数据；导出 / 导入的 JSON 为真实文件。' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

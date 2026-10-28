@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Noto+Sans+SC:wght@400;500&display=swap">
+<script src="nexus-r1-data.js"></script>
+<style>
+body{margin:0;background:#d8d4cc}
+a{color:#2b2926;text-underline-offset:3px}a:hover{color:#8a5a1c}
+</style>
+</helmet>
+<div style="box-sizing:border-box; padding:56px 72px 120px; display:flex; flex-direction:column; gap:72px; font-family:Manrope,'Noto Sans SC',system-ui,sans-serif; color:#2b2926; width:max-content">
+  <header style="display:flex; flex-direction:column; gap:14px; width:2944px">
+    <div style="display:flex; align-items:baseline; gap:24px; font-size:14px">
+      <span style="font-weight:600">R1.5 · 交互收尾与视觉封版</span>
+      <span style="color:#6f695f">基于 R1 Atmospheric v2 · 首页视觉自本版起冻结</span>
+      <span style="flex:1"></span>
+      <a href="Nexus%20R2%20Settings.dc.html">R2 设置中心 →</a>
+      <a href="Nexus%20R1%20Atmospheric%20v2.dc.html" style="color:#6f695f">R1 v2（变更前）</a>
+      <a href="Nexus%20R1%20Spec.dc.html" style="color:#6f695f">图标与动效规范</a>
+    </div>
+    <p style="margin:0; max-width:1100px; font-size:15px; line-height:1.7; color:#4d4842">本版只修复影响日常使用的交互问题，配色、背景、字体和图标保持不变。所有画板均可操作：右键 Dock 或抽屉中的图标打开管理菜单；手机端长按图标打开操作表；改动后的提示条提供 5 秒撤销。</p>
+  </header>
+
+  <section style="display:flex; flex-direction:column; gap:24px; width:2944px">
+    <span style="font-size:13px; font-weight:600; color:#6f695f">1 · 关键修订清单</span>
+    <div style="display:grid; grid-template-columns:repeat(7, minmax(0,1fr)); border-top:2px solid #2b2926">
+      <sc-for list="{{ fixes }}" as="f" hint-placeholder-count="7">
+        <div style="display:flex; flex-direction:column; gap:14px; padding:20px 22px 24px 0; margin-right:22px; border-bottom:1px solid #bdb6aa">
+          <div style="display:flex; align-items:baseline; gap:10px"><span style="font-size:12px; font-weight:600; background:#2b2926; color:#efeae1; padding:3px 8px; border-radius:6px">{{ f.n }}</span><span style="font-size:18px; font-weight:500">{{ f.title }}</span></div>
+          <div style="display:flex; flex-direction:column; gap:4px"><span style="font-size:11.5px; font-weight:600; color:#8f8779">变更前</span><span style="font-size:13.5px; line-height:1.65; color:#6f695f; text-wrap:pretty">{{ f.before }}</span></div>
+          <div style="display:flex; flex-direction:column; gap:4px"><span style="font-size:11.5px; font-weight:600; color:#8a5a1c">R1.5</span><span style="font-size:13.5px; line-height:1.65; color:#2b2926; text-wrap:pretty">{{ f.after }}</span></div>
+          <a href="{{ f.href }}" style="font-size:12.5px">{{ f.link }}</a>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section id="search" style="display:flex; flex-direction:column; gap:24px">
+    <span style="font-size:13px; font-weight:600; color:#6f695f">2 · 搜索键盘操作 · 变更前后</span>
+    <div style="display:grid; grid-template-columns:repeat(2, 1440px); gap:56px 64px">
+      <div style="display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; align-items:baseline; gap:12px"><span style="font-size:12px; font-weight:600; background:#8f8779; color:#efeae1; padding:3px 8px; border-radius:6px">前</span><span style="font-size:20px; font-weight:500">v2 · Tab 被拦截</span><span style="font-size:13px; color:#6f695f">按 Tab 只会切换引擎，焦点无法离开搜索框</span></div>
+        <dc-import name="R1 Desktop" view="focus" query="lin" hint-size="1440px,984px"></dc-import>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; align-items:baseline; gap:12px"><span style="font-size:12px; font-weight:600; background:#8a5a1c; color:#efeae1; padding:3px 8px; border-radius:6px">后</span><span style="font-size:20px; font-weight:500">R1.5 · 标准焦点顺序</span><span style="font-size:13px; color:#6f695f">Alt ↑↓ 切换引擎；Tab 离开到 Dock；Shift+Tab 回到引擎按钮，Enter 打开列表</span></div>
+        <dc-import name="R15 Desktop" view="focus" query="lin" status-scenario="{{ scn }}" hotkeys="{{ true }}" hint-size="1440px,984px"></dc-import>
+      </div>
+    </div>
+  </section>
+
+  <section id="shortcuts" style="display:flex; flex-direction:column; gap:24px">
+    <span style="font-size:13px; font-weight:600; color:#6f695f">3 · 快捷方式管理与反馈</span>
+    <div style="display:grid; grid-template-columns:repeat(2, 1440px); gap:56px 64px">
+      <div style="display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; align-items:baseline; gap:12px"><span style="font-size:12px; font-weight:600; background:#2b2926; color:#efeae1; padding:3px 8px; border-radius:6px">S1</span><span style="font-size:20px; font-weight:500">Dock 右键菜单</span><span style="font-size:13px; color:#6f695f">移动、移除、隐藏、进入编辑；首末位的移动项禁用</span></div>
+        <dc-import name="R15 Desktop" menu-demo="dock" status-scenario="{{ scn }}" hint-size="1440px,984px"></dc-import>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; align-items:baseline; gap:12px"><span style="font-size:12px; font-weight:600; background:#2b2926; color:#efeae1; padding:3px 8px; border-radius:6px">S2</span><span style="font-size:20px; font-weight:500">编辑首页</span><span style="font-size:13px; color:#6f695f">拖动排序 · − 移除 · 空位可添加；服务区与「全部应用」淡出，表示不可在此编辑</span></div>
+        <dc-import name="R15 Desktop" view="edit" status-scenario="{{ scn }}" hint-size="1440px,984px"></dc-import>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; align-items:baseline; gap:12px"><span style="font-size:12px; font-weight:600; background:#2b2926; color:#efeae1; padding:3px 8px; border-radius:6px">S3</span><span style="font-size:20px; font-weight:500">撤销提示</span><span style="font-size:13px; color:#6f695f">每次结构性改动后 5 秒内可撤销；悬停时暂停计时</span></div>
+        <dc-import name="R15 Desktop" toast-demo="{{ true }}" status-scenario="{{ scn }}" hint-size="1440px,984px"></dc-import>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; align-items:baseline; gap:12px"><span style="font-size:12px; font-weight:600; background:#8a5a1c; color:#efeae1; padding:3px 8px; border-radius:6px">S4</span><span style="font-size:20px; font-weight:500">抽屉右键菜单</span><span style="font-size:13px; color:#6f695f">固定时显示当前占用 n / 5；已满时给出上限提示并引导到编辑首页</span></div>
+        <dc-import name="R15 Desktop" menu-demo="drawer" status-scenario="{{ scn }}" hint-size="1440px,984px"></dc-import>
+      </div>
+    </div>
+  </section>
+
+  <section id="drawer" style="display:flex; flex-direction:column; gap:24px">
+    <span style="font-size:13px; font-weight:600; color:#6f695f">4 · 应用抽屉</span>
+    <div style="display:grid; grid-template-columns:repeat(2, 1440px); gap:56px 64px">
+      <div style="display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; align-items:baseline; gap:12px"><span style="font-size:12px; font-weight:600; background:#2b2926; color:#efeae1; padding:3px 8px; border-radius:6px">C1</span><span style="font-size:20px; font-weight:500">筛选与键盘导航</span><span style="font-size:13px; color:#6f695f">输入即筛选，首项自动高亮；↑↓←→ 在网格中移动，↵ 打开</span></div>
+        <dc-import name="R15 Desktop" filter="g" status-scenario="{{ scn }}" hint-size="1440px,984px"></dc-import>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; align-items:baseline; gap:12px"><span style="font-size:12px; font-weight:600; background:#2b2926; color:#efeae1; padding:3px 8px; border-radius:6px">C2</span><span style="font-size:20px; font-weight:500">空结果</span><span style="font-size:13px; color:#6f695f">给出下一步：网页搜索，或带着名称去添加新应用</span></div>
+        <dc-import name="R15 Desktop" filter="jellyfin" status-scenario="{{ scn }}" hint-size="1440px,984px"></dc-import>
+      </div>
+    </div>
+  </section>
+
+  <section id="status" style="display:flex; flex-direction:column; gap:24px; width:2944px">
+    <span style="font-size:13px; font-weight:600; color:#6f695f">5 · 服务状态 · 五种状态与展示逻辑</span>
+    <div style="display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:20px">
+      <sc-for list="{{ states }}" as="s" hint-placeholder-count="5">
+        <div style="display:flex; flex-direction:column; gap:16px; padding:22px; border-radius:20px; background:#1f1d1a; color:#efeae1">
+          <div style="display:flex; align-items:center; gap:10px">
+            <span style="width:9px; height:9px; border-radius:50%; background:{{ s.color }}; box-shadow:{{ s.ring }}"></span>
+            <span style="font-size:18px; font-weight:500">{{ s.label }}</span>
+            <span style="flex:1"></span>
+            <span style="display:flex; align-items:center; gap:8px; height:30px; padding:0 12px; border-radius:999px; background:{{ s.pill.bg }}; box-shadow:{{ s.pill.ring }}; color:{{ s.pill.fg }}; font-size:12px"><span style="width:6px; height:6px; border-radius:50%; background:{{ s.pill.color }}"></span>{{ s.pill.text }}<span style="opacity:.66">{{ s.pill.more }}</span></span>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:10px; font-size:13px; line-height:1.6">
+            <div style="display:grid; grid-template-columns:64px minmax(0,1fr); gap:8px"><span style="color:rgba(239,234,225,0.46)">触发</span><span>{{ s.when }}</span></div>
+            <div style="display:grid; grid-template-columns:64px minmax(0,1fr); gap:8px"><span style="color:rgba(239,234,225,0.46)">图标</span><span>{{ s.icon }}</span></div>
+            <div style="display:grid; grid-template-columns:64px minmax(0,1fr); gap:8px"><span style="color:rgba(239,234,225,0.46)">胶囊</span><span>{{ s.pillRule }}</span></div>
+            <div style="display:grid; grid-template-columns:64px minmax(0,1fr); gap:8px"><span style="color:rgba(239,234,225,0.46)">操作</span><span>{{ s.action }}</span></div>
+          </div>
+          <div style="display:flex; align-items:center; gap:12px; padding:10px; border-radius:13px; background:rgba(239,234,225,0.045)">
+            <span style="position:relative; flex:none; width:34px; height:34px; border-radius:10px; background:{{ s.row.tileBg }}; box-shadow:{{ s.row.tileShadow }}"><span style="position:absolute; inset:0; background:{{ s.row.glyph }} center/{{ s.row.gsize }} no-repeat"></span></span>
+            <span style="display:flex; flex-direction:column; gap:2px; min-width:0"><span style="font-size:13.5px; font-weight:500">{{ s.row.name }}</span><span style="display:flex; align-items:center; gap:6px; font-size:12px; color:{{ s.row.textColor }}"><span style="flex:none; width:6px; height:6px; border-radius:50%; background:{{ s.row.color }}; box-shadow:{{ s.row.dotRing }}"></span>{{ s.row.text }}</span></span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+    <p style="margin:0; max-width:1200px; font-size:13.5px; line-height:1.7; color:#4d4842">优先级：异常 &gt; 警告 &gt; 未知 &gt; 正常。胶囊只显示最严重的一项，其余以「另有 n 项提醒」附注；「未监测」不计入正常数量，也不触发任何颜色。只有异常使用呼吸动效，开启「减少动态效果」后改为静态描边。检查频率、阈值与历史记录属于运行概览，不在本轮范围内。</p>
+  </section>
+
+  <section id="responsive" style="display:flex; flex-direction:column; gap:24px">
+    <span style="font-size:13px; font-weight:600; color:#6f695f">6 · 响应式 · 1280 × 720</span>
+    <div style="display:grid; grid-template-columns:repeat(2, 1280px); gap:56px 64px">
+      <div style="display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; align-items:baseline; gap:12px"><span style="font-size:12px; font-weight:600; background:#2b2926; color:#efeae1; padding:3px 8px; border-radius:6px">R1</span><span style="font-size:20px; font-weight:500">首页</span><span style="font-size:13px; color:#6f695f">搜索区顶部由 228 改为视口高度 24%（720 → 173）</span></div>
+        <dc-import name="R15 Desktop" width="{{ 1280 }}" height="{{ 720 }}" status-scenario="{{ scn }}" hint-size="1280px,804px"></dc-import>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; align-items:baseline; gap:12px"><span style="font-size:12px; font-weight:600; background:#2b2926; color:#efeae1; padding:3px 8px; border-radius:6px">R2</span><span style="font-size:20px; font-weight:500">输入中</span><span style="font-size:13px; color:#6f695f">结果面板限高，内部滚动，底部快捷键说明始终可见</span></div>
+        <dc-import name="R15 Desktop" width="{{ 1280 }}" height="{{ 720 }}" view="focus" query="lin" status-scenario="{{ scn }}" hint-size="1280px,804px"></dc-import>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; align-items:baseline; gap:12px"><span style="font-size:12px; font-weight:600; background:#2b2926; color:#efeae1; padding:3px 8px; border-radius:6px">R3</span><span style="font-size:20px; font-weight:500">抽屉</span><span style="font-size:13px; color:#6f695f">上下边距收紧到 64 / 32，内容区滚动，标题和底栏固定</span></div>
+        <dc-import name="R15 Desktop" width="{{ 1280 }}" height="{{ 720 }}" view="drawer" status-scenario="{{ scn }}" hint-size="1280px,804px"></dc-import>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; align-items:baseline; gap:12px"><span style="font-size:12px; font-weight:600; background:#2b2926; color:#efeae1; padding:3px 8px; border-radius:6px">R4</span><span style="font-size:20px; font-weight:500">状态面板</span><span style="font-size:13px; color:#6f695f">五态混合时的展开效果</span></div>
+        <dc-import name="R15 Desktop" width="{{ 1280 }}" height="{{ 720 }}" status-scenario="all" status-open="{{ true }}" hint-size="1280px,804px"></dc-import>
+      </div>
+    </div>
+  </section>
+
+  <section id="mobile" style="display:flex; flex-direction:column; gap:24px">
+    <span style="font-size:13px; font-weight:600; color:#6f695f">7 · 移动端 · 390 / 375</span>
+    <div style="display:flex; gap:56px; align-items:flex-start">
+      <div style="display:flex; flex-direction:column; gap:12px; width:390px">
+        <div style="display:flex; align-items:baseline; gap:10px"><span style="font-size:12px; font-weight:600; background:#2b2926; color:#efeae1; padding:3px 8px; border-radius:6px">M1</span><span style="font-size:18px; font-weight:500">390 × 844 首页</span></div>
+        <span style="font-size:12.5px; line-height:1.6; color:#6f695f; min-height:40px">长按任一图标打开操作表；状态胶囊热区扩到 44pt</span>
+        <dc-import name="R15 Mobile" status-scenario="{{ scn }}" hint-size="390px,844px"></dc-import>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px; width:390px">
+        <div style="display:flex; align-items:baseline; gap:10px"><span style="font-size:12px; font-weight:600; background:#8a5a1c; color:#efeae1; padding:3px 8px; border-radius:6px">M2</span><span style="font-size:18px; font-weight:500">长按操作表</span></div>
+        <span style="font-size:12.5px; line-height:1.6; color:#6f695f; min-height:40px">从底部升起，所有操作在拇指区；危险操作用珊瑚色</span>
+        <dc-import name="R15 Mobile" view="sheet" status-scenario="{{ scn }}" hint-size="390px,844px"></dc-import>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px; width:390px">
+        <div style="display:flex; align-items:baseline; gap:10px"><span style="font-size:12px; font-weight:600; background:#2b2926; color:#efeae1; padding:3px 8px; border-radius:6px">M3</span><span style="font-size:18px; font-weight:500">撤销提示 · 空位</span></div>
+        <span style="font-size:12.5px; line-height:1.6; color:#6f695f; min-height:40px">移除后出现「添加」空位；提示条贴在搜索栏上方</span>
+        <dc-import name="R15 Mobile" toast-demo="{{ true }}" status-scenario="{{ scn }}" hint-size="390px,844px"></dc-import>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px; width:375px">
+        <div style="display:flex; align-items:baseline; gap:10px"><span style="font-size:12px; font-weight:600; background:#2b2926; color:#efeae1; padding:3px 8px; border-radius:6px">M4</span><span style="font-size:18px; font-weight:500">375 × 667 首页</span></div>
+        <span style="font-size:12.5px; line-height:1.6; color:#6f695f; min-height:40px">小屏：时钟 50px、图标 56px，下 40% 布局不变</span>
+        <dc-import name="R15 Mobile" width="{{ 375 }}" height="{{ 667 }}" status-scenario="{{ scn }}" hint-size="375px,667px"></dc-import>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px; width:375px">
+        <div style="display:flex; align-items:baseline; gap:10px"><span style="font-size:12px; font-weight:600; background:#8a5a1c; color:#efeae1; padding:3px 8px; border-radius:6px">M5</span><span style="font-size:18px; font-weight:500">375 · 键盘弹出</span></div>
+        <span style="font-size:12.5px; line-height:1.6; color:#6f695f; min-height:40px">搜索栏跟随 visualViewport 贴在键盘上方，结果从下往上排</span>
+        <dc-import name="R15 Mobile" width="{{ 375 }}" height="{{ 667 }}" view="search" query="lin" status-scenario="{{ scn }}" hint-size="375px,667px"></dc-import>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px; width:375px">
+        <div style="display:flex; align-items:baseline; gap:10px"><span style="font-size:12px; font-weight:600; background:#2b2926; color:#efeae1; padding:3px 8px; border-radius:6px">M6</span><span style="font-size:18px; font-weight:500">全部应用 · 五态</span></div>
+        <span style="font-size:12.5px; line-height:1.6; color:#6f695f; min-height:40px">服务按状态显示操作；列表 overscroll 不带动页面</span>
+        <dc-import name="R15 Mobile" width="{{ 375 }}" height="{{ 667 }}" view="apps" status-scenario="all" hint-size="375px,667px"></dc-import>
+      </div>
+    </div>
+    <div style="display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:0 40px; width:2944px; border-top:2px solid #2b2926">
+      <sc-for list="{{ mobileNotes }}" as="m" hint-placeholder-count="4">
+        <div style="display:flex; flex-direction:column; gap:8px; padding:18px 0; border-bottom:1px solid #bdb6aa">
+          <span style="font-size:15px; font-weight:500">{{ m.t }}</span>
+          <span style="font-size:13.5px; line-height:1.7; color:#4d4842; text-wrap:pretty">{{ m.d }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section id="a11y" style="display:flex; flex-direction:column; gap:24px; width:2944px">
+    <span style="font-size:13px; font-weight:600; color:#6f695f">8 · 无障碍与性能</span>
+    <div style="display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:0 40px; border-top:2px solid #2b2926">
+      <sc-for list="{{ a11y }}" as="m" hint-placeholder-count="8">
+        <div style="display:flex; flex-direction:column; gap:8px; padding:18px 0; border-bottom:1px solid #bdb6aa">
+          <span style="font-size:15px; font-weight:500">{{ m.t }}</span>
+          <span style="font-size:13.5px; line-height:1.7; color:#4d4842; text-wrap:pretty">{{ m.d }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section id="freeze" style="display:flex; flex-direction:column; gap:24px; width:2944px">
+    <div style="display:flex; align-items:baseline; gap:16px"><span style="font-size:13px; font-weight:600; color:#6f695f">9 · 首页视觉冻结</span><span style="font-size:13px; color:#6f695f">以下数值自 R1.5 起锁定；变更须有明确的可用性理由，并同步更新本页与 R2 设置中心</span></div>
+    <div style="display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:20px">
+      <sc-for list="{{ freeze }}" as="g" hint-placeholder-count="4">
+        <div style="display:flex; flex-direction:column; padding:20px 22px; border-radius:18px; background:#efeae1">
+          <span style="font-size:15px; font-weight:600; padding-bottom:12px; border-bottom:2px solid #2b2926">{{ g.t }}</span>
+          <sc-for list="{{ g.rows }}" as="r" hint-placeholder-count="5">
+            <div style="display:flex; align-items:center; gap:12px; min-height:40px; border-bottom:1px solid #d6cfc3; font-size:13px">
+              <span style="flex:none; width:16px; height:16px; border-radius:5px; background:{{ r.sw }}; box-shadow:inset 0 0 0 1px rgba(0,0,0,0.12); display:{{ r.swD }}"></span>
+              <span style="flex:1; color:#4d4842">{{ r.k }}</span>
+              <span style="font-variant-numeric:tabular-nums; font-weight:500">{{ r.v }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;statusScenario&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;ok&quot;,&quot;warn&quot;,&quot;error&quot;,&quot;unknown&quot;,&quot;off&quot;,&quot;all&quot;],&quot;default&quot;:&quot;ok&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;服务状态&quot;}}">
+class Component extends DCLogic {
+  componentDidMount() { if (!window.NX_R1) this.poll = setInterval(() => { if (window.NX_R1) { clearInterval(this.poll); this.forceUpdate(); } }, 50); }
+  componentWillUnmount() { clearInterval(this.poll); }
+  renderVals() {
+    const D = window.NX_R1;
+    const meta = {
+      ok: { label: '正常', when: '最近一次检查成功，指标在阈值内', icon: '无角标', pillRule: '「n 项服务正常」，绿点', action: '打开' },
+      warn: { label: '警告', when: '检查成功，但有需要处理的事项（同步冲突、证书将到期、磁盘偏满）', icon: '琥珀色角标', pillRule: '「X 需要处理」，琥珀底', action: '针对性操作，如「处理冲突」' },
+      error: { label: '异常', when: '连续 2 次检查失败，或核心指标越界', icon: '珊瑚色角标', pillRule: '「X 节点离线」，珊瑚底 + 慢速呼吸', action: '查看节点 / 详情' },
+      unknown: { label: '未知', when: '检查端点超时、返回无法解析，或 Nexus 本身离线', icon: '无角标（无法确认，不制造警报）', pillRule: '「X 状态未知」，灰点 + 描边', action: '重试' },
+      off: { label: '未监测', when: '用户没有为该服务配置健康检查', icon: '无', pillRule: '不计入正常数量，附注「n 项未监测」', action: '开启（跳转设置）' },
+    };
+    const pick = { ok: ['ok', 'litebox'], warn: ['warn', 'obsync'], error: ['error', 'litebox'], unknown: ['unknown', 'linkwarden'], off: ['off', 'obsync'] };
+    const states = Object.keys(meta).map(k => {
+      const [scn, id] = pick[k];
+      const row = D ? D.hosted(scn).find(h => h.id === id) : {};
+      const pill = D ? D.summary(scn) : {};
+      return { ...meta[k], color: k === 'off' ? 'transparent' : (D ? D.LEVEL[k].color : '#999'), ring: k === 'off' ? 'inset 0 0 0 1.5px rgba(239,234,225,0.45)' : 'none', pill, row };
+    });
+    const fixes = [
+      { n: '01', title: '搜索键盘操作', before: 'Tab 被拦截用来切换搜索引擎，键盘用户无法离开搜索框去 Dock 或其他控件。', after: 'Tab / Shift+Tab 恢复标准焦点顺序（引擎按钮 → 输入框 → Dock）。引擎切换改为 Alt+↑↓，或聚焦引擎按钮后 Enter / ↓ 打开列表。结果按 combobox 模式用 ↑↓ 选择，不占用 Tab。', href: '#search', link: '对照画板 →' },
+      { n: '02', title: '快捷方式管理', before: '抽屉底部写着「拖动可排序、右键可固定或隐藏」，但没有任何实际行为。', after: 'Dock 与抽屉都支持右键 / Shift+F10 菜单：固定、移除、左右移动、隐藏、取消隐藏。「编辑首页」支持拖动、− 移除、Alt+←→、Delete。每次改动出现 5 秒可撤销提示，超过 5 个网站给出上限提示。', href: '#shortcuts', link: 'S1–S4 →' },
+      { n: '03', title: '应用抽屉', before: '打开后焦点不进入抽屉；筛选无结果时只有空白；关闭后焦点丢失。', after: '打开即聚焦筛选框，首项自动高亮；方向键在网格中二维移动，↵ 打开；esc 先清空再关闭，关闭后焦点回到「全部应用」。空结果给出网页搜索与「添加为新应用」。隐藏的应用可在底栏临时显示并恢复。', href: '#drawer', link: 'C1–C2 →' },
+      { n: '04', title: '移动端', before: '清除、引擎胶囊、状态胶囊的触控区只有 22–34px；未考虑 Safari 动态地址栏、键盘遮挡和小屏。', after: '所有触控目标 ≥ 44pt（视觉尺寸不变，扩大热区）。长按图标弹出底部操作表。375 × 667 下时钟与图标收小。地址栏、键盘、安全区的实现约定见第 7 节。', href: '#mobile', link: 'M1–M6 →' },
+      { n: '05', title: '服务状态', before: '只有正常 / 警告 / 异常三态，检查失败与未配置无法区分。', after: '新增「未知」（灰点，不加图标角标）与「未监测」（空心环，不计入正常数量）。胶囊按 异常 > 警告 > 未知 > 正常 显示最严重的一项。', href: '#status', link: '五态说明 →' },
+      { n: '06', title: '响应式', before: '只在 1440 × 900 和 390 × 844 下验证。', after: '1280 × 720：搜索区上移、结果面板限高滚动、抽屉边距收紧。1440 × 900 保持原样。375 / 390 宽度逐一检查。', href: '#responsive', link: 'R1–R4 →' },
+      { n: '07', title: '无障碍与性能', before: '依赖浏览器默认焦点环；隐藏的浮层仍可被 Tab 到；动效无降级；壁纸直接加载原图。', after: '统一 2px 琥珀色 :focus-visible 环；隐藏浮层移出 Tab 序列并标记 aria-hidden；prefers-reduced-motion 下关闭位移与呼吸；壁纸分级加载。', href: '#a11y', link: '第 8 节 →' },
+    ];
+    const mobileNotes = [
+      { t: 'Safari 地址栏', d: '页面高度用 100dvh，不用 100vh；底部面板 position: fixed 贴底，地址栏收起 / 展开时不重排首页，只改变面板与时钟之间的空白。' },
+      { t: '软键盘', d: '监听 visualViewport resize，把搜索栏和结果列表的底边对齐到 visualViewport 高度；输入框字号 16px 以避免 iOS 自动放大；enterkeyhint="go"。' },
+      { t: '安全区', d: 'viewport-fit=cover；面板 bottom = max(12px, env(safe-area-inset-bottom) − 10px)；全屏抽屉内容底部再加 env(safe-area-inset-bottom)。' },
+      { t: '单手与手势', d: '所有操作在屏幕下 40% 内；长按 480ms 触发操作表并轻震动；列表 overscroll-behavior: contain，避免带动页面回弹和下拉刷新。' },
+    ];
+    const a11y = [
+      { t: '焦点样式', d: '所有可交互元素使用 2px #e6c08a 描边、3px 偏移的 :focus-visible；搜索框与筛选框已有琥珀描边，不再叠加。' },
+      { t: '焦点管理', d: '打开抽屉 / 菜单时焦点移入，关闭后回到触发元素；隐藏的面板设 tabindex = −1 与 aria-hidden。' },
+      { t: '语义', d: '搜索框为 combobox + listbox；引擎选择为 listbox；状态胶囊带 aria-expanded 与完整状态文本；提示条为 role="status"。' },
+      { t: '触控区域', d: '桌面点击目标 ≥ 32px，手机 ≥ 44pt；相邻目标间距 ≥ 8px。' },
+      { t: '减少动态效果', d: 'prefers-reduced-motion: reduce 时所有过渡缩短为瞬时，异常呼吸改为静态描边；R2 设置中提供「动画强度」覆盖系统设置。' },
+      { t: '对比度', d: '正文 rgba(239,234,225,.8) 以上；次要文字不低于 .46，并且只用于辅助说明，壁纸上方始终有 ≥ .48 的磨砂底。' },
+      { t: '壁纸加载', d: '先绘制底色，再显示内联的 32px 模糊缩略图；正式图按视口宽度提供 1280 / 1920 / 2560 三档，AVIF → WebP → JPEG；decode() 完成后 .4s 淡入。' },
+      { t: '资源策略', d: '壁纸 fetchpriority="high"，其余图标 lazy；下一张壁纸在空闲时预取；开启省流量或低电量时只用纯色 + 渐变。磨砂层数量限制在同屏 3 层以内。' },
+    ];
+    const freeze = [
+      { t: '颜色', rows: [['底色', '#1b1a17'], ['正文', '#efeae1'], ['强调 · 琥珀', '#e6c08a'], ['正常', '#a7bf9f'], ['警告', '#e3a35b'], ['异常', '#e9765f'], ['未知', '#9a948a']].map(([k, v]) => ({ k, v, sw: v, swD: 'block' })) },
+      { t: '字体', rows: [['字体', 'Manrope + Noto Sans SC'], ['时钟', '60 / 300 / −0.035em'], ['搜索输入', '18 / 400'], ['图标名称', '12 / 400'], ['分组标题', '11.5 / 400'], ['抽屉标题', '22 / 500']].map(([k, v]) => ({ k, v, sw: 'none', swD: 'none' })) },
+      { t: '尺寸与圆角', rows: [['Dock 图标', '56 / 圆角 16'], ['抽屉图标', '60 / 圆角 17'], ['手机图标', '60（小屏 56）'], ['搜索面板', '760 宽 / 圆角 24'], ['抽屉', '1040 宽 / 圆角 30'], ['浮层菜单', '圆角 16']].map(([k, v]) => ({ k, v, sw: 'none', swD: 'none' })) },
+      { t: '材质与动效', rows: [['搜索面板磨砂', 'blur 32 · 底 .48'], ['抽屉磨砂', 'blur 44 · 底 .66'], ['悬停 / 按下', '.14s / .09s'], ['浮层出现', '.2s cubic-bezier(.2,.7,.2,1)'], ['面板与抽屉', '.32–.42s cubic-bezier(.32,.72,0,1)'], ['唯一循环动画', '异常呼吸 2.4s']].map(([k, v]) => ({ k, v, sw: 'none', swD: 'none' })) },
+    ];
+    return { scn: this.props.statusScenario ?? 'ok', fixes, states, mobileNotes, a11y, freeze };
+  }
+}
+</script>
+</body>
+</html>

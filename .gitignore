@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+data/
+test-results/
+playwright-report/
+.idea/workspace.xml
+
+# 设计稿压缩包与解压目录内容重复
+docs/*.zip

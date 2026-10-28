@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600&family=Noto+Sans+SC:wght@300;400;500&display=swap">
+<script src="nexus-icons.js"></script>
+<script src="nexus-r1-data.js"></script>
+<style>
+@keyframes nx-breathe{0%,100%{box-shadow:0 0 0 0 rgba(233,118,95,0.55)}50%{box-shadow:0 0 0 5px rgba(233,118,95,0)}}
+.nx-in::placeholder{color:rgba(239,234,225,0.46)}
+[data-nx] :focus-visible{outline:2px solid #e6c08a;outline-offset:3px}
+[data-nx] input:focus-visible{outline:none}
+[data-nx] a,[data-nx] button{-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;user-select:none}
+@media (prefers-reduced-motion:reduce){[data-nx] *{transition-duration:.01s!important;animation:none!important}}
+</style>
+</helmet>
+<x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" width="{{ W }}" height="{{ H }}" dark="{{ true }}" keyboard="{{ kb }}" hint-size="390px,844px">
+<div data-nx="1" style="position:relative; height:100%; overflow:hidden; background:#1b1a17; color:#efeae1; font-family:Manrope,'Noto Sans SC',system-ui,sans-serif">
+  <div style="position:absolute; inset:0; transform:{{ photoT }}; filter:{{ photoF }}; transition:transform .42s cubic-bezier(.32,.72,0,1), filter .42s cubic-bezier(.32,.72,0,1)">
+    <div style="position:absolute; inset:0; isolation:isolate; background:#a69e8e">
+      <img src="assets/wallpaper.jpg" alt="" decoding="async" style="position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:46% center; filter:grayscale(1) contrast(1.08); mix-blend-mode:multiply">
+      <div style="position:absolute; inset:0; background:#221f1b; mix-blend-mode:lighten"></div>
+    </div>
+    <div style="position:absolute; inset:0; background:linear-gradient(180deg, rgba(17,16,14,0.62) 0%, rgba(17,16,14,0.05) 32%, rgba(17,16,14,0.1) 50%, rgba(17,16,14,0.6) 100%)"></div>
+  </div>
+
+  <div style="position:absolute; top:{{ clockTop }}; left:26px; right:22px; display:flex; align-items:flex-start; opacity:{{ topO }}; transition:opacity .2s cubic-bezier(.2,.7,.2,1)">
+    <div style="display:flex; flex-direction:column; gap:6px">
+      <span style="font-size:{{ clockSize }}; font-weight:300; line-height:1; letter-spacing:-0.04em; font-variant-numeric:tabular-nums">9:41</span>
+      <span style="font-size:14px; color:rgba(239,234,225,0.7)">10月28日 星期三</span>
+    </div>
+    <span style="flex:1"></span>
+    <a href="R2%20Settings%20Mobile.dc.html" aria-label="设置" style="width:44px; height:44px; border-radius:50%; background:rgba(26,25,22,0.36); backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px); color:rgba(239,234,225,0.85); display:grid; place-items:center">
+      <span style="width:18px; height:18px; background:currentColor; mask:{{ i.settings }} center/contain no-repeat; -webkit-mask:{{ i.settings }} center/contain no-repeat"></span>
+    </a>
+  </div>
+
+  <div style="position:absolute; left:{{ sheetX }}; right:{{ sheetX }}; bottom:{{ sheetB }}; height:{{ sheetH }}; border-radius:{{ sheetR }}; background:{{ sheetBg }}; backdrop-filter:blur(36px) saturate(1.15); -webkit-backdrop-filter:blur(36px) saturate(1.15); box-shadow:0 20px 50px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.07); overflow:hidden; transition:left .42s cubic-bezier(.32,.72,0,1), right .42s cubic-bezier(.32,.72,0,1), bottom .42s cubic-bezier(.32,.72,0,1), height .42s cubic-bezier(.32,.72,0,1), border-radius .42s cubic-bezier(.32,.72,0,1), background .42s">
+    <button onClick="{{ grab }}" aria-label="{{ grabLabel }}" style="position:absolute; left:50%; top:0; width:160px; height:26px; transform:translateX(-50%); border:0; background:transparent; display:grid; place-items:center; cursor:pointer"><span style="width:36px; height:5px; border-radius:3px; background:rgba(239,234,225,0.28)"></span></button>
+
+    <div style="position:absolute; top:26px; left:14px; right:14px; bottom:{{ contentB }}; opacity:{{ homeO }}; transform:{{ homeT }}; pointer-events:{{ homePE }}; transition:opacity .2s cubic-bezier(.2,.7,.2,1), transform .32s cubic-bezier(.2,.7,.2,1)">
+      <div style="display:flex; align-items:center; padding:0 2px">
+        <button onClick="{{ openApps }}" aria-label="{{ pillLabel }}" style="display:flex; align-items:center; height:44px; margin:-6px 0; padding:0; border:0; background:transparent; font:inherit; cursor:pointer">
+          <span style="display:flex; align-items:center; gap:8px; height:32px; padding:0 12px 0 11px; border-radius:999px; background:{{ pill.bg }}; box-shadow:{{ pill.ring }}; color:{{ pill.fg }}; font-size:12.5px">{{ pillDot }}<span>{{ pill.text }}</span><span style="opacity:0.66">{{ pill.more }}</span><span style="opacity:0.6">›</span></span>
+        </button>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); row-gap:16px; margin-top:16px">
+        <sc-for list="{{ homeApps }}" as="a" hint-placeholder-count="8">
+          <a href="#" aria-label="{{ a.aria }}" onClick="{{ a.tap }}" onPointerDown="{{ a.down }}" onPointerUp="{{ lpCancel }}" onPointerLeave="{{ lpCancel }}" onPointerCancel="{{ lpCancel }}" onContextMenu="{{ a.menu }}" style="display:flex; flex-direction:column; align-items:center; gap:7px; color:#efeae1; text-decoration:none; transform:{{ a.t }}; transition:transform .16s cubic-bezier(.2,.7,.2,1)" style-active="transform:scale(.94)">
+            <span style="position:relative; width:{{ tile }}; height:{{ tile }}; border-radius:17px; background:{{ a.tileBg }}; box-shadow:{{ a.tileShadow }}">
+              <span style="position:absolute; inset:0; background:{{ a.glyph }} center/{{ a.gsize }} no-repeat"></span>
+              <span style="position:absolute; top:-3px; right:-3px; width:13px; height:13px; border-radius:50%; background:{{ a.color }}; box-shadow:0 0 0 2.5px #2b2925; display:{{ a.badgeD }}"></span>
+            </span>
+            <span style="font-size:11.5px; color:rgba(239,234,225,0.82); white-space:nowrap">{{ a.name }}</span>
+          </a>
+        </sc-for>
+        <sc-if value="{{ showAdd }}" hint-placeholder-val="{{ false }}">
+          <a href="#" onClick="{{ openApps }}" aria-label="添加到首页" style="display:flex; flex-direction:column; align-items:center; gap:7px; color:#efeae1; text-decoration:none">
+            <span style="width:{{ tile }}; height:{{ tile }}; box-sizing:border-box; border-radius:17px; border:1.5px dashed rgba(239,234,225,0.3); display:grid; place-items:center"><span style="width:20px; height:20px; background:rgba(239,234,225,0.66); mask:{{ i.plus }} center/contain no-repeat; -webkit-mask:{{ i.plus }} center/contain no-repeat"></span></span>
+            <span style="font-size:11.5px; color:rgba(239,234,225,0.56)">添加</span>
+          </a>
+        </sc-if>
+      </div>
+    </div>
+
+    <div style="position:absolute; top:26px; left:10px; right:10px; bottom:{{ contentB }}; display:flex; flex-direction:column; justify-content:flex-end; opacity:{{ searchO }}; transform:{{ searchT }}; pointer-events:{{ searchPE }}; transition:opacity .2s cubic-bezier(.2,.7,.2,1) .06s, transform .32s cubic-bezier(.2,.7,.2,1) .06s">
+      <div style="overflow-y:auto; overflow-x:hidden; scrollbar-width:none; min-height:0; overscroll-behavior:contain">
+        <sc-for list="{{ sections }}" as="sec" hint-placeholder-count="2">
+          <div style="padding:14px 10px 6px; font-size:11.5px; color:rgba(239,234,225,0.46)">{{ sec.title }}</div>
+          <sc-for list="{{ sec.rows }}" as="r" hint-placeholder-count="3">
+            <a href="#" onClick="{{ r.go }}" style="display:flex; align-items:center; gap:12px; min-height:54px; padding:0 10px; border-radius:14px; background:{{ r.bg }}; color:#efeae1; text-decoration:none" style-active="background:rgba(239,234,225,0.1)">
+              <span style="position:relative; flex:none; width:34px; height:34px; border-radius:10px; background:{{ r.tileBg }}; box-shadow:{{ r.tileShadow }}">
+                <span style="position:absolute; inset:0; background:{{ r.glyph }} center/{{ r.gsize }} no-repeat"></span>
+                <span style="position:absolute; inset:8px; background:{{ r.maskBg }}; mask:{{ r.mask }} center/contain no-repeat; -webkit-mask:{{ r.mask }} center/contain no-repeat"></span>
+              </span>
+              <span style="display:flex; flex-direction:column; gap:2px; min-width:0; flex:1">
+                <span style="font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ r.title }}</span>
+                <span style="font-size:12px; color:rgba(239,234,225,0.48); white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ r.sub }}</span>
+              </span>
+              <span style="flex:none; font-size:11.5px; color:rgba(239,234,225,0.44)">{{ r.meta }}</span>
+            </a>
+          </sc-for>
+        </sc-for>
+      </div>
+      <div style="flex:none; display:flex; gap:2px; margin-top:4px; padding:0 2px; overflow-x:auto; scrollbar-width:none">
+        <sc-for list="{{ engines }}" as="e" hint-placeholder-count="4">
+          <button onClick="{{ e.pick }}" onMouseDown="{{ keep }}" aria-pressed="{{ e.selS }}" style="flex:none; height:44px; padding:0 2px; border:0; background:transparent; font:inherit; cursor:pointer">
+            <span style="display:flex; align-items:center; gap:7px; height:34px; padding:0 11px 0 7px; border-radius:999px; background:{{ e.bg }}; box-shadow:{{ e.ring }}; color:{{ e.fg }}; font-size:12.5px; white-space:nowrap">
+              <span style="position:relative; width:20px; height:20px; border-radius:6px; background:{{ e.tileBg }}; box-shadow:{{ e.tileShadow }}"><span style="position:absolute; inset:0; background:{{ e.glyph }} center/{{ e.gsize }} no-repeat"></span></span>{{ e.name }}
+            </span>
+          </button>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="position:absolute; top:26px; left:0; right:0; bottom:{{ contentB }}; display:flex; flex-direction:column; opacity:{{ appsO }}; transform:{{ appsT }}; pointer-events:{{ appsPE }}; transition:opacity .2s cubic-bezier(.2,.7,.2,1) .06s, transform .32s cubic-bezier(.2,.7,.2,1) .06s">
+      <div style="flex:none; display:flex; align-items:baseline; gap:10px; padding:8px 24px 4px">
+        <span style="font-size:22px; font-weight:500; letter-spacing:-0.01em">全部应用</span>
+        <span style="font-size:12.5px; color:rgba(239,234,225,0.46)">{{ countText }}</span>
+        <span style="flex:1"></span>
+        <span style="font-size:12px; color:rgba(239,234,225,0.46)">长按管理</span>
+      </div>
+      <div style="flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; scrollbar-width:none; overscroll-behavior:contain; padding:0 14px 8px">
+        <sc-if value="{{ showHostedM }}" hint-placeholder-val="{{ true }}">
+          <div style="padding:16px 10px 6px; font-size:11.5px; color:rgba(239,234,225,0.5)">我的服务</div>
+          <sc-for list="{{ hostedM }}" as="s" hint-placeholder-count="3">
+            <div style="display:flex; align-items:center; gap:12px; min-height:62px; padding:0 10px; border-radius:16px; background:{{ s.rowBg }}">
+              <span style="position:relative; flex:none; width:44px; height:44px; border-radius:13px; background:{{ s.tileBg }}; box-shadow:{{ s.tileShadow }}"><span style="position:absolute; inset:0; background:{{ s.glyph }} center/{{ s.gsize }} no-repeat"></span></span>
+              <span style="display:flex; flex-direction:column; gap:3px; min-width:0; flex:1">
+                <span style="display:flex; align-items:baseline; gap:8px"><span style="font-size:15px; font-weight:500">{{ s.name }}</span><span style="font-size:11.5px; color:rgba(239,234,225,0.42)">{{ s.levelLabel }}</span></span>
+                <span style="display:flex; align-items:center; gap:6px; font-size:12.5px; color:{{ s.textColor }}"><span style="flex:none; width:6px; height:6px; border-radius:50%; background:{{ s.color }}; box-shadow:{{ s.dotRing }}"></span>{{ s.text }}</span>
+              </span>
+              <a href="#" style="flex:none; height:44px; display:flex; align-items:center; padding:0 14px; border-radius:12px; background:{{ s.actBg }}; color:{{ s.actFg }}; font-size:13px; text-decoration:none">{{ s.action }}</a>
+            </div>
+          </sc-for>
+        </sc-if>
+        <sc-for list="{{ cats }}" as="c" hint-placeholder-count="3">
+          <div style="padding:20px 10px 12px; font-size:11.5px; color:rgba(239,234,225,0.5)">{{ c.label }}</div>
+          <div style="display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); row-gap:16px">
+            <sc-for list="{{ c.apps }}" as="a" hint-placeholder-count="4">
+              <a href="#" aria-label="{{ a.aria }}" onClick="{{ a.tap }}" onPointerDown="{{ a.down }}" onPointerUp="{{ lpCancel }}" onPointerLeave="{{ lpCancel }}" onPointerCancel="{{ lpCancel }}" onContextMenu="{{ a.menu }}" style="display:flex; flex-direction:column; align-items:center; gap:7px; color:#efeae1; text-decoration:none; transition:transform .09s" style-active="transform:scale(.94)">
+                <span style="position:relative; width:56px; height:56px; border-radius:16px; background:{{ a.tileBg }}; box-shadow:{{ a.tileShadow }}"><span style="position:absolute; inset:0; background:{{ a.glyph }} center/{{ a.gsize }} no-repeat"></span></span>
+                <span style="font-size:11.5px; color:rgba(239,234,225,0.82); white-space:nowrap">{{ a.name }}</span>
+                <span style="width:4px; height:4px; margin-top:-3px; border-radius:50%; background:{{ a.pinDot }}"></span>
+              </a>
+            </sc-for>
+          </div>
+        </sc-for>
+        <sc-if value="{{ appsEmpty }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex; flex-direction:column; align-items:center; gap:8px; padding:64px 20px 20px; text-align:center">
+            <span style="font-size:16px; font-weight:500">没有匹配「{{ q }}」的应用</span>
+            <span style="font-size:13px; line-height:1.6; color:rgba(239,234,225,0.5)">可按名称、域名或别名筛选</span>
+            <button onClick="{{ toWeb }}" style="margin-top:10px; height:44px; padding:0 18px; border:0; border-radius:14px; background:rgba(239,234,225,0.1); color:#efeae1; font:inherit; font-size:14px">改为网页搜索</button>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+
+    <div style="position:absolute; left:14px; right:14px; bottom:{{ rowB }}; display:flex; gap:10px; transition:bottom .42s cubic-bezier(.32,.72,0,1)">
+      <div style="flex:1; min-width:0; display:flex; align-items:center; gap:11px; height:52px; padding:0 4px 0 14px; border-radius:18px; background:{{ fieldBg }}; box-shadow:{{ fieldRing }}; transition:background .2s, box-shadow .2s">
+        <span style="position:relative; flex:none; width:22px; height:22px; border-radius:7px; background:{{ lead.tileBg }}; box-shadow:{{ lead.tileShadow }}">
+          <span style="position:absolute; inset:0; background:{{ lead.glyph }} center/{{ lead.gsize }} no-repeat"></span>
+          <span style="position:absolute; inset:2px; background:{{ lead.maskBg }}; mask:{{ lead.mask }} center/contain no-repeat; -webkit-mask:{{ lead.mask }} center/contain no-repeat"></span>
+        </span>
+        <input class="nx-in" ref="{{ inRef }}" value="{{ q }}" onChange="{{ onQ }}" onFocus="{{ onFocus }}" placeholder="{{ placeholder }}" type="search" enterkeyhint="go" autocapitalize="off" autocomplete="off" spellcheck="false" aria-label="搜索" style="flex:1; min-width:0; height:100%; background:transparent; border:0; outline:none; font:inherit; font-size:16px; color:#efeae1; caret-color:#e6c08a; -webkit-appearance:none">
+        <sc-if value="{{ hasQ }}" hint-placeholder-val="{{ false }}">
+          <button onClick="{{ clearQ }}" onMouseDown="{{ keep }}" aria-label="清除" style="flex:none; width:44px; height:44px; border:0; background:transparent; display:grid; place-items:center; padding:0"><span style="width:20px; height:20px; border-radius:50%; background:rgba(239,234,225,0.22); color:#1b1a17; font-size:11px; line-height:20px; text-align:center">✕</span></button>
+        </sc-if>
+      </div>
+      <button onClick="{{ sideAct }}" aria-label="{{ sideLabel }}" style="flex:none; min-width:52px; height:52px; padding:0 {{ sidePad }}; border:0; border-radius:18px; background:{{ sideBg }}; box-shadow:{{ sideRing }}; color:#efeae1; font:inherit; font-size:15px; display:grid; place-items:center; cursor:pointer; transition:background .2s" style-active="transform:scale(.96)">
+        <span style="width:22px; height:22px; background:{{ allTile.glyph }} center/contain no-repeat; display:{{ sideIconD }}"></span>
+        <span style="display:{{ sideTextD }}">{{ sideText }}</span>
+      </button>
+    </div>
+  </div>
+
+  <div role="status" aria-live="polite" style="position:absolute; z-index:20; left:16px; right:16px; bottom:{{ toastB }}; display:flex; align-items:center; gap:10px; min-height:48px; padding:0 4px 0 16px; border-radius:16px; background:rgba(40,38,34,0.94); backdrop-filter:blur(30px); -webkit-backdrop-filter:blur(30px); box-shadow:0 14px 40px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.07); font-size:14px; opacity:{{ toastO }}; transform:{{ toastT }}; pointer-events:{{ toastPE }}; transition:opacity .2s cubic-bezier(.2,.7,.2,1), transform .24s cubic-bezier(.2,.7,.2,1), bottom .42s cubic-bezier(.32,.72,0,1)">
+    <span style="flex:none; width:7px; height:7px; border-radius:50%; background:{{ toast.dot }}"></span>
+    <span style="flex:1; min-width:0">{{ toast.msg }}</span>
+    <button onClick="{{ toast.act }}" style="flex:none; height:44px; padding:0 14px; border:0; border-radius:12px; background:transparent; color:#f1d3a6; font:inherit; font-size:14px; font-weight:600; display:{{ toast.actD }}">{{ toast.actLabel }}</button>
+  </div>
+
+  <div aria-hidden="{{ sheetHidden }}" style="position:absolute; inset:0; z-index:40; pointer-events:{{ asPE }}">
+    <div onClick="{{ closeSheet }}" style="position:absolute; inset:0; background:rgba(10,9,8,0.46); opacity:{{ asO }}; transition:opacity .24s"></div>
+    <div role="dialog" aria-label="{{ as.name }}" style="position:absolute; left:10px; right:10px; bottom:{{ asB }}; display:flex; flex-direction:column; gap:8px; transform:{{ asT }}; transition:transform .38s cubic-bezier(.32,.72,0,1)">
+      <div style="border-radius:24px; background:rgba(40,38,34,0.92); backdrop-filter:blur(36px); -webkit-backdrop-filter:blur(36px); box-shadow:inset 0 1px 0 rgba(255,255,255,0.07); overflow:hidden">
+        <div style="display:flex; align-items:center; gap:12px; padding:16px 18px 14px; border-bottom:1px solid rgba(239,234,225,0.07)">
+          <span style="position:relative; flex:none; width:44px; height:44px; border-radius:13px; background:{{ as.tileBg }}; box-shadow:{{ as.tileShadow }}"><span style="position:absolute; inset:0; background:{{ as.glyph }} center/{{ as.gsize }} no-repeat"></span></span>
+          <span style="display:flex; flex-direction:column; gap:2px; min-width:0"><span style="font-size:16px; font-weight:500">{{ as.name }}</span><span style="font-size:12.5px; color:rgba(239,234,225,0.5)">{{ as.sub }}</span></span>
+        </div>
+        <sc-for list="{{ asItems }}" as="m" hint-placeholder-count="4">
+          <button onClick="{{ m.fn }}" disabled="{{ m.disabled }}" style="width:100%; display:flex; align-items:center; gap:14px; height:54px; padding:0 18px; border:0; border-top:1px solid rgba(239,234,225,0.05); background:transparent; color:{{ m.fg }}; font:inherit; font-size:15.5px; text-align:left; opacity:{{ m.op }}" style-active="background:rgba(239,234,225,0.08)">
+            <span style="flex:none; width:18px; height:18px; background:currentColor; mask:{{ m.icon }} center/contain no-repeat; -webkit-mask:{{ m.icon }} center/contain no-repeat; opacity:0.8"></span>
+            <span style="flex:1">{{ m.label }}</span>
+            <span style="font-size:12.5px; color:rgba(239,234,225,0.42)">{{ m.hint }}</span>
+          </button>
+        </sc-for>
+      </div>
+      <button onClick="{{ closeSheet }}" style="height:56px; border:0; border-radius:20px; background:rgba(40,38,34,0.92); backdrop-filter:blur(36px); -webkit-backdrop-filter:blur(36px); color:#efeae1; font:inherit; font-size:16px; font-weight:600" style-active="background:rgba(60,56,50,0.95)">取消</button>
+    </div>
+  </div>
+</div>
+</x-import>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:390,&quot;height&quot;:844},&quot;view&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;home&quot;,&quot;search&quot;,&quot;apps&quot;,&quot;sheet&quot;],&quot;default&quot;:&quot;home&quot;,&quot;tsType&quot;:&quot;'home'|'search'|'apps'|'sheet'&quot;},&quot;query&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;statusScenario&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;ok&quot;,&quot;warn&quot;,&quot;error&quot;,&quot;unknown&quot;,&quot;off&quot;,&quot;all&quot;],&quot;default&quot;:&quot;ok&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;toastDemo&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;width&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:390,&quot;tsType&quot;:&quot;number&quot;},&quot;height&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:844,&quot;tsType&quot;:&quot;number&quot;}}">
+const EMPTY = { APPS: [], HOSTED: [], CATS: [], ENGINES: [{ id: 'google', name: 'Google' }], tileOf: () => ({}), hosted: () => [], summary: () => ({ text: '' }), search: () => [], engIcon: () => ({}) };
+const MAXPIN = 5;
+const DOT = { ok: '#a7bf9f', warn: '#e3a35b', info: 'rgba(239,234,225,0.5)' };
+
+class Component extends DCLogic {
+  state = (() => { const p = this.props || {}; return { mode: p.view === 'sheet' ? 'home' : (p.view || 'home'), q: p.query ?? '', engine: 'google', pins: null, hidden: [], sheet: null, toast: null, pressed: null }; })();
+  inRef = React.createRef();
+  componentDidMount() { if (window.NX_R1) this.ready(); else this.poll = setInterval(() => { if (window.NX_R1) { clearInterval(this.poll); this.ready(); } }, 50); }
+  componentWillUnmount() { clearInterval(this.poll); clearTimeout(this.tt); clearTimeout(this.lp); }
+  ready() {
+    const D = window.NX_R1, p = this.props, st = {}, def = D.APPS.filter(a => a.pin).map(a => a.id);
+    if (p.view === 'sheet') st.sheet = { id: 'github', from: 'home' };
+    if (p.toastDemo) { st.pins = def.filter(x => x !== 'notion'); st.toast = { msg: '已从首页移除 Notion', undo: { pins: def, hidden: [] } }; }
+    this.setState(st);
+  }
+  home() { this.setState({ mode: 'home', q: '' }); this.inRef.current && this.inRef.current.blur(); }
+  pinsOf() { const D = window.NX_R1 || EMPTY; return this.state.pins ?? D.APPS.filter(a => a.pin).map(a => a.id); }
+  app(id) { const D = window.NX_R1 || EMPTY; return D.APPS.find(a => a.id === id) || D.HOSTED.find(a => a.id === id) || { name: id }; }
+  armToast() { clearTimeout(this.tt); this.tt = setTimeout(() => this.setState({ toast: null }), 5000); }
+  say(t) { this.setState({ toast: t, sheet: null }); this.armToast(); }
+  commit(next, msg) { const snap = { pins: this.pinsOf(), hidden: this.state.hidden }; this.setState({ ...next, sheet: null, toast: { msg, undo: snap } }); this.armToast(); }
+  move(id, d) { const ps = [...this.pinsOf()], i = ps.indexOf(id), j = i + d; if (j < 0 || j >= ps.length) return; [ps[i], ps[j]] = [ps[j], ps[i]]; this.setState({ pins: ps, sheet: null }); }
+  pin(id) { const ps = this.pinsOf(); if (ps.length >= MAXPIN) return this.say({ msg: `首页网站已满 ${MAXPIN} 个，先移除一个`, tone: 'warn' }); this.commit({ pins: [...ps, id] }, `已添加 ${this.app(id).name} 到首页`); }
+  longPress(id, from) { return e => { this.lpFired = false; clearTimeout(this.lp); this.setState({ pressed: id }); this.lp = setTimeout(() => { this.lpFired = true; navigator.vibrate && navigator.vibrate(8); this.setState({ sheet: { id, from }, pressed: null }); }, 480); }; }
+
+  renderVals() {
+    const D = window.NX_R1 || EMPTY, I = window.NX_ICONS || {};
+    const scn = this.props.statusScenario ?? 'ok';
+    const W = this.props.width ?? 390, H = this.props.height ?? 844, small = H < 760;
+    const { mode, q, engine, hidden, sheet, toast, pressed } = this.state;
+    const home = mode === 'home', search = mode === 'search', apps = mode === 'apps';
+    const pins = this.pinsOf();
+    const pill = D.summary(scn);
+    const actOf = h => ({ warn: ['rgba(227,163,91,0.2)', h.color], error: ['rgba(233,118,95,0.22)', h.color], unknown: ['rgba(239,234,225,0.12)', '#efeae1'] }[h.level] || ['rgba(239,234,225,0.07)', 'rgba(239,234,225,0.8)']);
+    const hosted = D.hosted(scn).map(h => ({ ...h, rowBg: h.level === 'ok' || h.level === 'off' ? 'transparent' : 'rgba(239,234,225,0.045)', actBg: actOf(h)[0], actFg: actOf(h)[1] }));
+    const eng = D.ENGINES.find(e => e.id === engine) || D.ENGINES[0];
+    const tapOf = a => e => { e.preventDefault(); clearTimeout(this.lp); if (this.lpFired) { this.lpFired = false; return; } this.say({ msg: `演示 · 将打开 ${a.domain || a.name}`, tone: 'info' }); };
+    const menuOf = (id, from) => e => { e.preventDefault(); clearTimeout(this.lp); this.lpFired = true; this.setState({ sheet: { id, from }, pressed: null }); };
+
+    const sites = pins.map(id => D.APPS.find(a => a.id === id)).filter(Boolean).map(a => ({ ...a, ...D.tileOf(a), badgeD: 'none', color: 'transparent' }));
+    const homeApps = [...sites, ...hosted].map(a => ({ ...a, aria: a.hosted ? `${a.name}，${a.levelLabel}` : a.name, t: pressed === a.id ? 'scale(.92)' : 'none',
+      tap: tapOf(a), down: this.longPress(a.id, a.hosted ? 'hosted' : 'home'), menu: menuOf(a.id, a.hosted ? 'hosted' : 'home') }));
+
+    const fl = apps ? q.trim().toLowerCase() : '';
+    const match = a => !fl || (a.name + ' ' + a.domain + ' ' + (a.alias || '')).toLowerCase().includes(fl);
+    const cats = D.CATS.map(c => ({ label: c.label, apps: D.APPS.filter(a => a.cat === c.id && match(a) && !hidden.includes(a.id)).map(a => ({ ...a, ...D.tileOf(a), pinDot: pins.includes(a.id) ? '#e6c08a' : 'transparent', aria: a.name + (pins.includes(a.id) ? '，已在首页' : ''), tap: tapOf(a), down: this.longPress(a.id, 'apps'), menu: menuOf(a.id, 'apps') })) })).filter(c => c.apps.length);
+    const hostedM = hosted.filter(match);
+    const sections = search ? D.search(q, engine, { max: 2 }).map((sec, si) => ({ title: sec.title, rows: (q.trim() ? sec.rows : sec.rows.slice(0, 2)).map((r, ri) => ({ ...r, bg: si === 0 && ri === 0 && q.trim() ? 'rgba(239,234,225,0.08)' : 'transparent', go: e => { e.preventDefault(); this.home(); } })) })) : [];
+    const breathe = pill.level === 'error' ? 'nx-breathe 2.4s ease-in-out infinite' : 'none';
+    const contentPad = apps ? 40 : (search ? 10 : 14);
+    const searchMask = { tileBg: 'transparent', tileShadow: 'none', glyph: 'none', gsize: '0', mask: I.search || 'none', maskBg: 'rgba(239,234,225,0.6)' };
+
+    let asV = { name: '', sub: '' }, asItems = [];
+    if (sheet) {
+      const a = this.app(sheet.id), isH = sheet.from === 'hosted', i = pins.indexOf(sheet.id), pinned = i >= 0;
+      asV = { ...D.tileOf(isH ? { ...a, hosted: true } : a), name: a.name, sub: isH ? '自托管服务 · 在设置中管理' : a.domain };
+      const it = (label, icon, fn, o = {}) => ({ label, icon: I[icon] || 'none', fn, hint: o.hint || '', disabled: !!o.disabled, op: o.disabled ? 0.4 : 1, fg: o.danger ? '#f0a594' : '#efeae1' });
+      const toSet = it('在设置中编辑', 'pencil', () => this.say({ msg: `演示 · 设置 › 应用与服务 › ${a.name}`, tone: 'info' }), { hint: '›' });
+      if (isH) asItems = [it('查看状态', 'activity', () => this.setState({ sheet: null, mode: 'apps', q: '' })), toSet];
+      else if (sheet.from === 'home') asItems = [
+        it('向前移动', 'chevron-left', () => this.move(sheet.id, -1), { disabled: i <= 0 }),
+        it('向后移动', 'chevron-right', () => this.move(sheet.id, 1), { disabled: i >= pins.length - 1 }),
+        it('从首页移除', 'pin-off', () => this.commit({ pins: pins.filter(x => x !== sheet.id) }, `已从首页移除 ${a.name}`)),
+        it('隐藏此应用', 'eye-off', () => this.commit({ pins: pins.filter(x => x !== sheet.id), hidden: [...hidden, sheet.id] }, `已隐藏 ${a.name}`), { danger: true }), toSet];
+      else asItems = [
+        pinned ? it('从首页移除', 'pin-off', () => this.commit({ pins: pins.filter(x => x !== sheet.id) }, `已从首页移除 ${a.name}`), { hint: `${pins.length}/${MAXPIN}` })
+               : it('添加到首页', 'pin', () => this.pin(sheet.id), { hint: `${pins.length}/${MAXPIN}` }),
+        it('隐藏此应用', 'eye-off', () => this.commit({ pins: pins.filter(x => x !== sheet.id), hidden: [...hidden, sheet.id] }, `已隐藏 ${a.name}`), { danger: true }), toSet];
+    }
+    const tv = toast || {};
+    const toastV = { msg: tv.msg || '', dot: DOT[tv.tone] || (tv.undo ? '#e6c08a' : DOT.ok), actD: tv.undo ? 'block' : 'none', actLabel: '撤销',
+      act: () => { if (tv.undo) { this.setState({ pins: tv.undo.pins, hidden: tv.undo.hidden, toast: { msg: '已撤销', tone: 'ok' } }); this.armToast(); } } };
+    const sheetB = home ? 24 : 0, sheetHpx = 330;
+
+    return {
+      i: I, W: W + 'px', H: H + 'px', kb: search, tile: W < 380 ? '56px' : '60px',
+      clockTop: small ? '52px' : '72px', clockSize: small ? '50px' : '58px',
+      pill, pillLabel: `服务状态：${pill.text}，查看全部应用`,
+      pillDot: React.createElement('span', { style: { width: 6, height: 6, borderRadius: '50%', background: pill.color, animation: breathe, flex: 'none' } }),
+      homeApps, showAdd: sites.length < MAXPIN,
+      lpCancel: () => { clearTimeout(this.lp); if (this.state.pressed) this.setState({ pressed: null }); },
+      allTile: D.tileOf({ kind: 'all' }),
+      photoT: home ? 'none' : 'scale(1.05)', photoF: home ? 'none' : 'blur(10px) brightness(.7)',
+      topO: home ? 1 : 0,
+      sheetX: home ? '10px' : '0px', sheetB: sheetB + 'px', sheetH: home ? sheetHpx + 'px' : 'calc(100% - 52px)',
+      sheetR: home ? '34px 34px 34px 34px' : '30px 30px 0px 0px',
+      sheetBg: home ? 'rgba(26,25,22,0.5)' : 'rgba(28,26,23,0.72)',
+      rowB: contentPad + 'px', contentB: (contentPad + 52 + 8) + 'px',
+      toastB: (sheetB + contentPad + 52 + 12) + 'px',
+      homeO: home ? 1 : 0, homeT: home ? 'none' : 'translateY(-10px)', homePE: home ? 'auto' : 'none',
+      searchO: search ? 1 : 0, searchT: search ? 'none' : 'translateY(12px)', searchPE: search ? 'auto' : 'none',
+      appsO: apps ? 1 : 0, appsT: apps ? 'none' : 'translateY(12px)', appsPE: apps ? 'auto' : 'none',
+      sections,
+      engines: D.ENGINES.map(e => ({ ...e, ...D.engIcon(e), name: e.id === 'links' ? '收藏' : e.name, selS: String(e.id === engine), bg: e.id === engine ? 'rgba(239,234,225,0.16)' : 'rgba(239,234,225,0.06)', ring: e.id === engine ? 'inset 0 0 0 1px rgba(239,234,225,0.16)' : 'none', fg: e.id === engine ? '#efeae1' : 'rgba(239,234,225,0.7)', pick: () => this.setState({ engine: e.id }) })),
+      keep: e => e.preventDefault(),
+      lead: search ? D.engIcon(eng) : { ...searchMask },
+      inRef: this.inRef, q, hasQ: !!q,
+      placeholder: apps ? '筛选应用' : (engine === 'links' && search ? '在收藏中查找' : '搜索、网址或应用'),
+      onQ: e => this.setState({ q: e.target.value }),
+      onFocus: () => { if (this.state.mode === 'home') this.setState({ mode: 'search' }); },
+      clearQ: () => { this.setState({ q: '' }); this.inRef.current && this.inRef.current.focus(); },
+      fieldBg: home ? 'rgba(239,234,225,0.09)' : 'rgba(239,234,225,0.11)',
+      fieldRing: search ? 'inset 0 0 0 1px rgba(230,192,138,0.4)' : 'none',
+      sideAct: () => home ? this.setState({ mode: 'apps', q: '' }) : this.home(),
+      sideLabel: home ? '全部应用' : (search ? '取消' : '完成'),
+      sideText: search ? '取消' : '完成',
+      sideIconD: home ? 'block' : 'none', sideTextD: home ? 'none' : 'block',
+      sidePad: home ? '0px' : '16px',
+      sideBg: home && D.GLASS ? D.GLASS.bg : 'transparent',
+      sideRing: home && D.GLASS ? D.GLASS.shadow : 'none',
+      openApps: e => { e && e.preventDefault && e.preventDefault(); this.setState({ mode: 'apps', q: '' }); },
+      grab: () => this.setState(s => ({ mode: s.mode === 'home' ? 'apps' : 'home', q: '' })), grabLabel: home ? '展开全部应用' : '收起',
+      cats, hostedM, showHostedM: hostedM.length > 0, appsEmpty: !!fl && !cats.length && !hostedM.length,
+      toWeb: () => this.setState({ mode: 'search' }),
+      countText: `${D.APPS.length + D.HOSTED.length - hidden.length} 个`,
+      toast: toastV, toastO: toast ? 1 : 0, toastT: toast ? 'none' : 'translateY(8px)', toastPE: toast ? 'auto' : 'none',
+      as: asV, asItems, sheetHidden: String(!sheet), asPE: sheet ? 'auto' : 'none', asO: sheet ? 1 : 0,
+      asT: sheet ? 'none' : 'translateY(calc(100% + 60px))', asB: '30px',
+      closeSheet: () => this.setState({ sheet: null }),
+    };
+  }
+}
+</script>
+</body>
+</html>

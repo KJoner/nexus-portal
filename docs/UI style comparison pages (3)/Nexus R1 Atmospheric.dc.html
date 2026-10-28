@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600&family=Noto+Sans+SC:wght@300;400;500&display=swap">
+<script src="nexus-icons.js"></script>
+<style>
+body{margin:0;background:#dcd8d1}
+a{color:inherit;text-decoration:none}a:hover{color:#e6c08a}
+input::placeholder{color:rgba(239,234,225,0.5)}
+</style>
+</helmet>
+<div style="min-height:100vh; box-sizing:border-box; padding:48px 64px 96px; display:flex; flex-direction:column; gap:28px; font-family:Manrope,'Noto Sans SC',system-ui,sans-serif; color:#2b2926">
+  <div style="display:flex; align-items:baseline; gap:20px; font-size:13px; width:1894px">
+    <span style="font-weight:600; letter-spacing:0.04em">R1 · Atmospheric Desktop 氛围感数字桌面</span>
+    <span style="color:#6f695f">首页原型 · 桌面 1440 × 900 视口 / 手机 390 × 844</span>
+    <span style="flex:1"></span>
+    <a href="Nexus%20Redesign%20Brief.dc.html" style="color:#2b2926; text-decoration:underline; text-underline-offset:3px">诊断与方向说明</a>
+    <a href="Nexus%20R2%20Editorial.dc.html" style="color:#2b2926; text-decoration:underline; text-underline-offset:3px">R2 Editorial →</a>
+  </div>
+  <div style="display:flex; gap:64px; align-items:flex-start; width:max-content">
+    <x-import component-from-global-scope="ChromeWindow" from="./browser-window.jsx" width="1440px" height="984px" url="nexus.home" tabs="{{ tabs }}" hint-size="1440px,984px">
+      <div id="r1-desktop" data-screen-label="R1 桌面首页" style="position:relative; width:1440px; height:900px; overflow:hidden; background:#1b1a17; color:#efeae1; font-family:Manrope,'Noto Sans SC',system-ui,sans-serif">
+        <div style="position:absolute; inset:0; isolation:isolate; background:#a69e8e">
+          <img src="assets/wallpaper.jpg" alt="" style="position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:center 42%; filter:grayscale(1) contrast(1.08); mix-blend-mode:multiply">
+          <div style="position:absolute; inset:0; background:#221f1b; mix-blend-mode:lighten"></div>
+        </div>
+        <div style="position:absolute; inset:0; background:radial-gradient(ellipse 52% 50% at 50% 50%, rgba(17,16,14,0.5), rgba(17,16,14,0) 75%), linear-gradient(180deg, rgba(17,16,14,0.6) 0%, rgba(17,16,14,0) 20%, rgba(17,16,14,0) 72%, rgba(17,16,14,0.6) 100%)"></div>
+
+        <div style="position:absolute; top:0; left:0; right:0; display:flex; align-items:center; gap:36px; padding:24px 36px">
+          <div style="display:flex; align-items:center; gap:10px; font-size:15px; font-weight:600; letter-spacing:0.01em">
+            <span style="width:8px; height:8px; border-radius:50%; background:#e6c08a; box-shadow:0 0 14px rgba(230,192,138,0.75)"></span>Nexus
+          </div>
+          <nav style="display:flex; gap:24px; font-size:13.5px; color:rgba(239,234,225,0.6)">
+            <a href="#" style="color:#efeae1">首页</a>
+            <a href="#">应用</a>
+            <a href="#">运行概览</a>
+          </nav>
+          <span style="flex:1"></span>
+          <button onClick="{{ toggleStatus }}" style="display:flex; align-items:center; gap:9px; height:36px; padding:0 15px 0 13px; border:0; border-radius:999px; background:rgba(26,25,22,0.4); backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px); color:#efeae1; font:inherit; font-size:13px; cursor:pointer; transition:background .2s" style-hover="background:rgba(40,38,34,0.6)">
+            <span style="width:7px; height:7px; border-radius:50%; background:{{ pillDot }}"></span>{{ pillText }}
+          </button>
+          <button title="设置" style="width:36px; height:36px; border:0; border-radius:50%; background:rgba(26,25,22,0.4); backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px); color:rgba(239,234,225,0.8); display:grid; place-items:center; cursor:pointer" style-hover="background:rgba(40,38,34,0.6)">
+            <span style="width:16px; height:16px; background:currentColor; mask:{{ i.settings }} center/contain no-repeat; -webkit-mask:{{ i.settings }} center/contain no-repeat"></span>
+          </button>
+        </div>
+
+        <sc-if value="{{ statusOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute; z-index:5; top:70px; right:84px; width:320px; padding:8px; border-radius:18px; background:rgba(30,28,25,0.78); backdrop-filter:blur(30px); -webkit-backdrop-filter:blur(30px); box-shadow:0 24px 60px rgba(0,0,0,0.45)">
+            <sc-for list="{{ hosted }}" as="s" hint-placeholder-count="3">
+              <a href="#" style="display:flex; align-items:center; gap:12px; padding:11px 12px; border-radius:11px; color:#efeae1" style-hover="background:rgba(239,234,225,0.06)">
+                <span style="width:7px; height:7px; border-radius:50%; background:{{ s.dot }}"></span>
+                <span style="font-size:14px; font-weight:500">{{ s.name }}</span>
+                <span style="flex:1"></span>
+                <span style="font-size:12.5px; color:{{ s.detailColor }}">{{ s.detail }}</span>
+              </a>
+            </sc-for>
+            <a href="#" style="display:block; margin-top:4px; padding:11px 12px 6px; border-top:1px solid rgba(239,234,225,0.08); font-size:12.5px; color:rgba(239,234,225,0.62)">打开运行概览 →</a>
+          </div>
+        </sc-if>
+
+        <div style="position:absolute; left:50%; top:236px; width:724px; transform:translateX(-50%)">
+          <div style="display:flex; align-items:baseline; gap:16px; padding:0 8px 20px">
+            <span style="font-size:60px; font-weight:300; line-height:1; letter-spacing:-0.035em; font-variant-numeric:tabular-nums">21:14</span>
+            <span style="font-size:15px; color:rgba(239,234,225,0.66)">10月27日 星期二</span>
+          </div>
+          <div style="border-radius:24px; background:rgba(26,25,22,0.46); backdrop-filter:blur(32px) saturate(1.15); -webkit-backdrop-filter:blur(32px) saturate(1.15); box-shadow:{{ slabShadow }}; transition:box-shadow .3s; overflow:hidden">
+            <div style="display:flex; align-items:center; gap:14px; height:66px; padding:0 14px 0 22px">
+              <span style="flex:none; width:19px; height:19px; background:rgba(239,234,225,0.6); mask:{{ i.search }} center/contain no-repeat; -webkit-mask:{{ i.search }} center/contain no-repeat"></span>
+              <input ref="{{ dRef }}" value="{{ qD }}" onChange="{{ onQD }}" onFocus="{{ focusD }}" onBlur="{{ blurD }}" placeholder="搜索，或输入网址" style="flex:1; min-width:0; height:100%; background:transparent; border:0; outline:none; font:inherit; font-size:18px; color:#efeae1; caret-color:#e6c08a">
+              <button style="flex:none; display:flex; align-items:center; gap:7px; height:34px; padding:0 10px; border:0; border-radius:10px; background:rgba(239,234,225,0.07); color:rgba(239,234,225,0.82); font:inherit; font-size:13px; cursor:pointer" style-hover="background:rgba(239,234,225,0.12)">
+                <img src="https://cdn.simpleicons.org/google/efeae1" alt="" style="width:13px; height:13px">Google
+                <span style="font-size:10px; opacity:0.55">▾</span>
+              </button>
+              <span style="flex:none; width:24px; height:24px; display:grid; place-items:center; border-radius:7px; box-shadow:inset 0 0 0 1px rgba(239,234,225,0.2); font-size:12px; color:rgba(239,234,225,0.55)">/</span>
+            </div>
+            <div style="height:1px; margin:0 22px; background:rgba(239,234,225,0.08)"></div>
+            <sc-if value="{{ showDock }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex; align-items:flex-start; justify-content:space-between; padding:22px 26px 18px">
+                <sc-for list="{{ sites }}" as="a" hint-placeholder-count="6">
+                  <a href="#" title="{{ a.domain }}" style="display:flex; flex-direction:column; align-items:center; gap:9px; width:66px; color:#efeae1; transition:transform .25s cubic-bezier(.2,.7,.3,1)" style-hover="transform:translateY(-4px)">
+                    <span style="position:relative; width:52px; height:52px; border-radius:15px; background:{{ a.tileBg }}; box-shadow:0 8px 18px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.4)">
+                      <span style="position:absolute; inset:0; border-radius:15px; background:{{ a.img }} center/26px no-repeat"></span>
+                    </span>
+                    <span style="font-size:12px; color:rgba(239,234,225,0.8); white-space:nowrap; opacity:{{ labelOpacity }}">{{ a.name }}</span>
+                  </a>
+                </sc-for>
+                <span style="align-self:flex-start; width:1px; height:40px; margin-top:6px; background:rgba(239,234,225,0.14)"></span>
+                <sc-for list="{{ hosted }}" as="a" hint-placeholder-count="3">
+                  <a href="#" title="{{ a.detail }}" style="display:flex; flex-direction:column; align-items:center; gap:9px; width:66px; color:#efeae1; transition:transform .25s cubic-bezier(.2,.7,.3,1)" style-hover="transform:translateY(-4px)">
+                    <span style="position:relative; width:52px; height:52px; border-radius:15px; background:{{ a.tileBg }}; box-shadow:0 8px 18px rgba(0,0,0,0.3), inset 0 0 0 1px rgba(255,255,255,0.07); display:grid; place-items:center; font-size:17px; font-weight:600; letter-spacing:-0.02em; color:{{ a.monoColor }}">
+                      {{ a.mono }}
+                      <span style="position:absolute; inset:0; border-radius:15px; background:{{ a.img }} center/30px no-repeat"></span>
+                      <span style="position:absolute; right:-3px; bottom:-3px; width:10px; height:10px; border-radius:50%; background:{{ a.dot }}; box-shadow:0 0 0 2.5px #2a2824"></span>
+                    </span>
+                    <span style="font-size:12px; color:rgba(239,234,225,0.8); white-space:nowrap; opacity:{{ labelOpacity }}">{{ a.name }}</span>
+                  </a>
+                </sc-for>
+              </div>
+            </sc-if>
+            <sc-if value="{{ hasQD }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:8px">
+                <sc-for list="{{ resD }}" as="r" hint-placeholder-count="3">
+                  <a href="#" style="display:flex; align-items:center; gap:14px; height:52px; padding:0 14px; border-radius:13px; background:{{ r.rowBg }}; color:#efeae1" style-hover="background:rgba(239,234,225,0.08)">
+                    <span style="position:relative; flex:none; width:30px; height:30px; border-radius:9px; background:{{ r.tileBg }}; display:grid; place-items:center; font-size:11px; font-weight:600; color:{{ r.monoColor }}">{{ r.mono }}<span style="position:absolute; inset:0; border-radius:9px; background:{{ r.img }} center/16px no-repeat"></span></span>
+                    <span style="font-size:15px">{{ r.title }}</span>
+                    <span style="font-size:12.5px; color:rgba(239,234,225,0.5)">{{ r.sub }}</span>
+                    <span style="flex:1"></span>
+                    <span style="font-size:11.5px; color:rgba(239,234,225,0.5)">{{ r.tag }}</span>
+                  </a>
+                </sc-for>
+                <div style="display:flex; gap:18px; padding:10px 14px 6px; font-size:11.5px; color:rgba(239,234,225,0.42)"><span>↵ 打开</span><span>↑↓ 选择</span><span>esc 清除</span></div>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+
+        <div style="position:absolute; left:36px; bottom:26px; display:flex; gap:12px; font-size:12px; color:rgba(239,234,225,0.5)">
+          <span>流水别墅 · 宾夕法尼亚</span><span>·</span><a href="#" style="color:rgba(239,234,225,0.7)">换一张</a>
+        </div>
+      </div>
+    </x-import>
+
+    <x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" width="390px" height="844px" dark="{{ true }}" keyboard="{{ fM }}" hint-size="390px,844px">
+      <div id="r1-mobile" data-screen-label="R1 手机首页" style="position:relative; height:100%; min-height:100%; overflow:hidden; background:#1b1a17; color:#efeae1; font-family:Manrope,'Noto Sans SC',system-ui,sans-serif">
+        <div style="position:absolute; inset:0; isolation:isolate; background:#a69e8e">
+          <img src="assets/wallpaper.jpg" alt="" style="position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:46% center; filter:grayscale(1) contrast(1.08); mix-blend-mode:multiply">
+          <div style="position:absolute; inset:0; background:#221f1b; mix-blend-mode:lighten"></div>
+        </div>
+        <div style="position:absolute; inset:0; background:linear-gradient(180deg, rgba(17,16,14,0.62) 0%, rgba(17,16,14,0.05) 34%, rgba(17,16,14,0.1) 50%, rgba(17,16,14,0.6) 100%)"></div>
+        <div style="position:absolute; top:72px; left:26px; right:22px; display:flex; align-items:flex-start">
+          <div style="display:flex; flex-direction:column; gap:6px">
+            <span style="font-size:58px; font-weight:300; line-height:1; letter-spacing:-0.04em; font-variant-numeric:tabular-nums">21:14</span>
+            <span style="font-size:14px; color:rgba(239,234,225,0.7)">10月27日 星期二</span>
+          </div>
+          <span style="flex:1"></span>
+          <button title="设置" style="width:44px; height:44px; border:0; border-radius:50%; background:rgba(26,25,22,0.4); backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px); color:rgba(239,234,225,0.85); display:grid; place-items:center">
+            <span style="width:18px; height:18px; background:currentColor; mask:{{ i.settings }} center/contain no-repeat; -webkit-mask:{{ i.settings }} center/contain no-repeat"></span>
+          </button>
+        </div>
+        <div style="position:absolute; left:10px; right:10px; bottom:26px; padding:22px 14px 12px; border-radius:32px; background:rgba(26,25,22,0.5); backdrop-filter:blur(32px) saturate(1.15); -webkit-backdrop-filter:blur(32px) saturate(1.15); box-shadow:0 20px 50px rgba(0,0,0,0.4)">
+          <sc-if value="{{ showGridM }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex; align-items:center; gap:8px; padding:0 8px 16px; font-size:12.5px; color:rgba(239,234,225,0.72)">
+              <span style="width:6px; height:6px; border-radius:50%; background:{{ pillDot }}"></span>{{ pillText }}
+              <span style="flex:1"></span><a href="#" style="color:rgba(239,234,225,0.55)">全部应用</a>
+            </div>
+            <div style="display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); row-gap:16px">
+              <sc-for list="{{ appsM }}" as="a" hint-placeholder-count="8">
+                <a href="#" style="display:flex; flex-direction:column; align-items:center; gap:7px; color:#efeae1">
+                  <span style="position:relative; width:58px; height:58px; border-radius:17px; background:{{ a.tileBg }}; box-shadow:0 8px 18px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.25); display:grid; place-items:center; font-size:18px; font-weight:600; letter-spacing:-0.02em; color:{{ a.monoColor }}">
+                    {{ a.mono }}
+                    <span style="position:absolute; inset:0; border-radius:17px; background:{{ a.img }} center/{{ a.imgSize }} no-repeat"></span>
+                    <span style="position:absolute; right:-2px; bottom:-2px; width:10px; height:10px; border-radius:50%; background:{{ a.dot }}; box-shadow:{{ a.dotRing }}"></span>
+                  </span>
+                  <span style="font-size:11.5px; color:rgba(239,234,225,0.82); white-space:nowrap">{{ a.name }}</span>
+                </a>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{ hasQM }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex; flex-direction:column">
+              <sc-for list="{{ resM }}" as="r" hint-placeholder-count="3">
+                <a href="#" style="display:flex; align-items:center; gap:12px; min-height:52px; padding:0 10px; border-radius:14px; background:{{ r.rowBg }}; color:#efeae1">
+                  <span style="position:relative; flex:none; width:32px; height:32px; border-radius:10px; background:{{ r.tileBg }}; display:grid; place-items:center; font-size:11px; font-weight:600; color:{{ r.monoColor }}">{{ r.mono }}<span style="position:absolute; inset:0; border-radius:10px; background:{{ r.img }} center/17px no-repeat"></span></span>
+                  <span style="display:flex; flex-direction:column; gap:2px; min-width:0">
+                    <span style="font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ r.title }}</span>
+                    <span style="font-size:12px; color:rgba(239,234,225,0.5)">{{ r.sub }}</span>
+                  </span>
+                </a>
+              </sc-for>
+            </div>
+          </sc-if>
+          <div style="display:flex; align-items:center; gap:12px; height:52px; margin-top:18px; padding:0 8px 0 16px; border-radius:18px; background:rgba(239,234,225,0.09)">
+            <span style="flex:none; width:18px; height:18px; background:rgba(239,234,225,0.6); mask:{{ i.search }} center/contain no-repeat; -webkit-mask:{{ i.search }} center/contain no-repeat"></span>
+            <input value="{{ qM }}" onChange="{{ onQM }}" onFocus="{{ focusM }}" onBlur="{{ blurM }}" placeholder="搜索，或输入网址" style="flex:1; min-width:0; height:100%; background:transparent; border:0; outline:none; font:inherit; font-size:16px; color:#efeae1; caret-color:#e6c08a">
+            <span style="flex:none; width:36px; height:36px; display:grid; place-items:center; border-radius:12px; background:rgba(239,234,225,0.07)"><img src="https://cdn.simpleicons.org/google/efeae1" alt="Google" style="width:14px; height:14px"></span>
+          </div>
+        </div>
+      </div>
+    </x-import>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;statusScenario&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;ok&quot;,&quot;issue&quot;],&quot;default&quot;:&quot;ok&quot;,&quot;tsType&quot;:&quot;'ok'|'issue'&quot;,&quot;section&quot;:&quot;状态&quot;},&quot;showLabels&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Dock&quot;}}">
+const SI = 'https://cdn.simpleicons.org/';
+const SITES = [
+  { name: 'GitHub', domain: 'github.com', slug: 'github' },
+  { name: 'Gmail', domain: 'mail.google.com', slug: 'gmail' },
+  { name: 'YouTube', domain: 'youtube.com', slug: 'youtube' },
+  { name: '哔哩哔哩', domain: 'bilibili.com', slug: 'bilibili', alias: 'bilibili b站' },
+  { name: 'Notion', domain: 'notion.so', slug: 'notion' },
+  { name: 'Figma', domain: 'figma.com', slug: 'figma' },
+];
+const LW_LOGO = 'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/linkwarden.png';
+const OK = '#a7bf9f', WARN = '#e3a35b';
+
+class Component extends DCLogic {
+  state = { qD: '', qM: '', fD: false, fM: false, statusOpen: false };
+  dRef = React.createRef();
+
+  componentDidMount() {
+    this.onKey = e => {
+      const tag = (document.activeElement && document.activeElement.tagName) || '';
+      if (e.key === '/' && tag !== 'INPUT') { e.preventDefault(); this.dRef.current && this.dRef.current.focus(); }
+      if (e.key === 'Escape') { this.setState({ qD: '', qM: '', statusOpen: false }); if (tag === 'INPUT') document.activeElement.blur(); }
+    };
+    window.addEventListener('keydown', this.onKey);
+  }
+  componentWillUnmount() { window.removeEventListener('keydown', this.onKey); }
+
+  hosted() {
+    const issue = (this.props.statusScenario ?? 'ok') === 'issue';
+    return [
+      { name: 'LiteBox', domain: 'litebox.home', mono: 'Lb', tileBg: '#34302a', monoColor: '#e6c08a', img: 'none', ok: true, detail: '12 个节点 · 无告警' },
+      { name: 'OBsync', domain: 'obsync.home', mono: 'Ob', tileBg: '#2b312c', monoColor: '#bcd0b6', img: 'none', ok: !issue, detail: issue ? '2 个文件同步冲突' : '20 分钟前已同步' },
+      { name: 'Linkwarden', domain: 'links.home', mono: 'Lw', tileBg: '#ebe6dc', monoColor: '#2b2926', img: `url(${LW_LOGO})`, ok: true, detail: '1,284 条收藏' },
+    ].map(h => ({ ...h, hosted: true, dot: h.ok ? OK : WARN, detailColor: h.ok ? 'rgba(239,234,225,0.55)' : WARN, imgSize: '32px', dotRing: '0 0 0 2.5px #2a2824' }));
+  }
+  sites() {
+    return SITES.map(s => ({ ...s, tileBg: '#ebe6dc', img: `url(${SI}${s.slug})`, mono: '', monoColor: '#2b2926', imgSize: '28px', dot: 'transparent', dotRing: 'none' }));
+  }
+  results(q, n) {
+    const s = q.trim().toLowerCase();
+    if (!s) return [];
+    const all = [...this.sites(), ...this.hosted()];
+    const m = all.filter(a => (a.name + ' ' + a.domain + ' ' + (a.alias || '')).toLowerCase().includes(s)).slice(0, n - 2)
+      .map(a => ({ ...a, title: a.name, sub: a.domain, tag: a.hosted ? '自托管' : '网站' }));
+    m.push({ title: `在 Google 中搜索「${q.trim()}」`, sub: 'google.com', tag: '网页', tileBg: '#ebe6dc', img: `url(${SI}google)`, mono: '', monoColor: '#2b2926' });
+    m.push({ title: '在 Linkwarden 收藏中查找', sub: `「${q.trim()}」· 1,284 条`, tag: '书签', tileBg: '#ebe6dc', img: `url(${LW_LOGO})`, mono: 'Lw', monoColor: '#2b2926' });
+    return m.map((r, i) => ({ ...r, rowBg: i === 0 ? 'rgba(239,234,225,0.08)' : 'transparent' }));
+  }
+
+  renderVals() {
+    const hosted = this.hosted();
+    const sites = this.sites();
+    const bad = hosted.filter(h => !h.ok);
+    const { qD, qM, fD, fM } = this.state;
+    return {
+      i: window.NX_ICONS || {},
+      tabs: [{ title: '新标签页' }],
+      sites, hosted,
+      appsM: [...sites.slice(0, 5), ...hosted],
+      pillDot: bad.length ? WARN : OK,
+      pillText: bad.length ? `${bad[0].name} 需要留意` : '3 个服务运行中',
+      labelOpacity: (this.props.showLabels ?? true) ? 1 : 0,
+      statusOpen: this.state.statusOpen,
+      toggleStatus: () => this.setState(s => ({ statusOpen: !s.statusOpen })),
+      dRef: this.dRef,
+      qD, qM, fM,
+      onQD: e => this.setState({ qD: e.target.value }),
+      onQM: e => this.setState({ qM: e.target.value }),
+      focusD: () => this.setState({ fD: true, statusOpen: false }),
+      blurD: () => this.setState({ fD: false }),
+      focusM: () => this.setState({ fM: true }),
+      blurM: () => setTimeout(() => this.setState({ fM: false }), 120),
+      slabShadow: fD ? '0 30px 80px rgba(0,0,0,0.4), inset 0 0 0 1px rgba(230,192,138,0.38)' : '0 30px 80px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.07)',
+      hasQD: !!qD.trim(), showDock: !qD.trim(),
+      hasQM: !!qM.trim(), showGridM: !qM.trim(),
+      resD: this.results(qD, 6),
+      resM: this.results(qM, 5),
+    };
+  }
+}
+</script>
+</body>
+</html>

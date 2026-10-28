@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Noto+Sans+SC:wght@400;500&display=swap">
+<style>
+body{margin:0;background:#d8d4cc}
+a{color:#2b2926;text-underline-offset:3px}a:hover{color:#8a5a1c}
+</style>
+</helmet>
+<div style="box-sizing:border-box; padding:56px 72px 120px; display:flex; flex-direction:column; gap:56px; font-family:Manrope,'Noto Sans SC',system-ui,sans-serif; color:#2b2926; width:max-content">
+  <header style="display:flex; flex-direction:column; gap:14px; width:2944px">
+    <div style="display:flex; align-items:baseline; gap:24px; font-size:14px">
+      <span style="font-weight:600">R1 · Atmospheric Desktop · 深化版</span>
+      <span style="color:#6f695f">桌面视口 1440 × 900 · 手机 390 × 844 · 所有画板均可交互</span>
+      <span style="flex:1"></span>
+      <a href="Nexus%20R1%20Spec.dc.html">E · 图标与动效规范</a>
+      <a href="Nexus%20R1%20Atmospheric.dc.html" style="color:#6f695f">上一版 R1</a>
+      <a href="Nexus%20Redesign%20Brief.dc.html" style="color:#6f695f">诊断与方向</a>
+    </div>
+    <p style="margin:0; max-width:980px; font-size:15px; line-height:1.7; color:#4d4842">交互：按 / 聚焦搜索，↑↓ 选择，⇥ 切换引擎，↵ 打开，esc 关闭。Dock 最右的「全部应用」打开抽屉。手机端点搜索栏展开搜索面板，点右侧网格按钮或状态胶囊展开全部应用。右侧 Tweaks 可切换正常 / 警告 / 异常三种状态。</p>
+  </header>
+
+  <section style="display:flex; flex-direction:column; gap:24px">
+    <span style="font-size:13px; font-weight:600; color:#6f695f">PC 首页</span>
+    <div style="display:grid; grid-template-columns:repeat(2, 1440px); gap:56px 64px">
+      <div id="A1" data-screen-label="A1 PC 首页" style="display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; align-items:baseline; gap:12px"><span style="font-size:12px; font-weight:600; background:#2b2926; color:#efeae1; padding:3px 8px; border-radius:6px">A1</span><span style="font-size:20px; font-weight:500">首页 · 默认态</span><span style="font-size:13px; color:#6f695f">5 个高频网站 + 3 个自托管服务 + 全部应用</span></div>
+        <dc-import name="R1 Desktop" view="home" hotkeys="{{ true }}" status-scenario="{{ scn }}" hint-size="1440px,984px"></dc-import>
+      </div>
+      <div id="A2" data-screen-label="A2 PC 搜索聚焦" style="display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; align-items:baseline; gap:12px"><span style="font-size:12px; font-weight:600; background:#2b2926; color:#efeae1; padding:3px 8px; border-radius:6px">A2</span><span style="font-size:20px; font-weight:500">搜索聚焦 · 未输入</span><span style="font-size:13px; color:#6f695f">Dock 让位给最近使用和快捷操作</span></div>
+        <dc-import name="R1 Desktop" view="focus" status-scenario="{{ scn }}" hint-size="1440px,984px"></dc-import>
+      </div>
+      <div id="A3" data-screen-label="A3 PC 输入中" style="display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; align-items:baseline; gap:12px"><span style="font-size:12px; font-weight:600; background:#2b2926; color:#efeae1; padding:3px 8px; border-radius:6px">A3</span><span style="font-size:20px; font-weight:500">输入中 · 「lin」</span><span style="font-size:13px; color:#6f695f">应用、网页、收藏混合排序；输入网址时首行变为「前往」</span></div>
+        <dc-import name="R1 Desktop" view="focus" query="lin" status-scenario="{{ scn }}" hint-size="1440px,984px"></dc-import>
+      </div>
+      <div id="A4" data-screen-label="A4 PC 状态展开" style="display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; align-items:baseline; gap:12px"><span style="font-size:12px; font-weight:600; background:#2b2926; color:#efeae1; padding:3px 8px; border-radius:6px">A4</span><span style="font-size:20px; font-weight:500">状态展开 · 异常 + 警告</span><span style="font-size:13px; color:#6f695f">胶囊显示最严重的一项，展开后每项都有直接操作</span></div>
+        <dc-import name="R1 Desktop" view="home" status-scenario="error" status-open="{{ true }}" hint-size="1440px,984px"></dc-import>
+      </div>
+      <div id="C" data-screen-label="C PC 应用抽屉" style="display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; align-items:baseline; gap:12px"><span style="font-size:12px; font-weight:600; background:#8a5a1c; color:#efeae1; padding:3px 8px; border-radius:6px">C</span><span style="font-size:20px; font-weight:500">全部应用抽屉</span><span style="font-size:13px; color:#6f695f">壁纸后退并模糊；服务在最上方，下面按分类排列；琥珀色小点表示已固定在首页</span></div>
+        <dc-import name="R1 Desktop" view="drawer" status-scenario="{{ scn }}" hint-size="1440px,984px"></dc-import>
+      </div>
+    </div>
+  </section>
+
+  <section style="display:flex; flex-direction:column; gap:24px">
+    <span style="font-size:13px; font-weight:600; color:#6f695f">移动端</span>
+    <div style="display:flex; gap:56px; align-items:flex-start">
+      <div id="B1" data-screen-label="B1 手机首页" style="display:flex; flex-direction:column; gap:12px; width:390px">
+        <div style="display:flex; align-items:baseline; gap:10px"><span style="font-size:12px; font-weight:600; background:#2b2926; color:#efeae1; padding:3px 8px; border-radius:6px">B1</span><span style="font-size:18px; font-weight:500">首页</span></div>
+        <span style="font-size:12.5px; line-height:1.6; color:#6f695f; min-height:40px">8 个入口、搜索和全部应用都在屏幕下 40% 内</span>
+        <dc-import name="R1 Mobile" view="home" status-scenario="{{ scn }}" hint-size="390px,844px"></dc-import>
+      </div>
+      <div id="D1" data-screen-label="D1 手机搜索展开" style="display:flex; flex-direction:column; gap:12px; width:390px">
+        <div style="display:flex; align-items:baseline; gap:10px"><span style="font-size:12px; font-weight:600; background:#8a5a1c; color:#efeae1; padding:3px 8px; border-radius:6px">D1</span><span style="font-size:18px; font-weight:500">搜索展开 · 未输入</span></div>
+        <span style="font-size:12.5px; line-height:1.6; color:#6f695f; min-height:40px">面板升起，搜索栏贴在键盘上方；引擎切换就在拇指位</span>
+        <dc-import name="R1 Mobile" view="search" status-scenario="{{ scn }}" hint-size="390px,844px"></dc-import>
+      </div>
+      <div id="D2" data-screen-label="D2 手机搜索输入" style="display:flex; flex-direction:column; gap:12px; width:390px">
+        <div style="display:flex; align-items:baseline; gap:10px"><span style="font-size:12px; font-weight:600; background:#8a5a1c; color:#efeae1; padding:3px 8px; border-radius:6px">D2</span><span style="font-size:18px; font-weight:500">搜索展开 · 输入中</span></div>
+        <span style="font-size:12.5px; line-height:1.6; color:#6f695f; min-height:40px">结果列表贴着搜索栏排列，结果少时也在拇指范围内</span>
+        <dc-import name="R1 Mobile" view="search" query="lin" status-scenario="{{ scn }}" hint-size="390px,844px"></dc-import>
+      </div>
+      <div id="B2" data-screen-label="B2 手机全部应用" style="display:flex; flex-direction:column; gap:12px; width:390px">
+        <div style="display:flex; align-items:baseline; gap:10px"><span style="font-size:12px; font-weight:600; background:#2b2926; color:#efeae1; padding:3px 8px; border-radius:6px">B2</span><span style="font-size:18px; font-weight:500">全部应用</span></div>
+        <span style="font-size:12.5px; line-height:1.6; color:#6f695f; min-height:40px">上滑或点网格按钮进入；服务状态和操作排在最上</span>
+        <dc-import name="R1 Mobile" view="apps" status-scenario="warn" hint-size="390px,844px"></dc-import>
+      </div>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;statusScenario&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;ok&quot;,&quot;warn&quot;,&quot;error&quot;],&quot;default&quot;:&quot;ok&quot;,&quot;tsType&quot;:&quot;'ok'|'warn'|'error'&quot;,&quot;section&quot;:&quot;服务状态&quot;}}">
+class Component extends DCLogic {
+  renderVals() { return { scn: this.props.statusScenario ?? 'ok' }; }
+}
+</script>
+</body>
+</html>

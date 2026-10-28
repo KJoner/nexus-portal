@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600&family=Noto+Sans+SC:wght@300;400;500&display=swap">
+<script src="nexus-icons.js"></script>
+<script src="nexus-r1-data.js"></script>
+<style>
+@keyframes nx-breathe{0%,100%{box-shadow:0 0 0 0 rgba(233,118,95,0.55)}50%{box-shadow:0 0 0 5px rgba(233,118,95,0)}}
+.nx-in::placeholder{color:rgba(239,234,225,0.46)}
+</style>
+</helmet>
+<x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" width="390px" height="844px" dark="{{ true }}" keyboard="{{ kb }}" hint-size="390px,844px">
+<div style="position:relative; height:100%; overflow:hidden; background:#1b1a17; color:#efeae1; font-family:Manrope,'Noto Sans SC',system-ui,sans-serif">
+  <div style="position:absolute; inset:0; transform:{{ photoT }}; filter:{{ photoF }}; transition:transform .42s cubic-bezier(.32,.72,0,1), filter .42s cubic-bezier(.32,.72,0,1)">
+    <div style="position:absolute; inset:0; isolation:isolate; background:#a69e8e">
+      <img src="assets/wallpaper.jpg" alt="" style="position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:46% center; filter:grayscale(1) contrast(1.08); mix-blend-mode:multiply">
+      <div style="position:absolute; inset:0; background:#221f1b; mix-blend-mode:lighten"></div>
+    </div>
+    <div style="position:absolute; inset:0; background:linear-gradient(180deg, rgba(17,16,14,0.62) 0%, rgba(17,16,14,0.05) 32%, rgba(17,16,14,0.1) 50%, rgba(17,16,14,0.6) 100%)"></div>
+  </div>
+
+  <div style="position:absolute; top:72px; left:26px; right:22px; display:flex; align-items:flex-start; opacity:{{ topO }}; transition:opacity .2s cubic-bezier(.2,.7,.2,1)">
+    <div style="display:flex; flex-direction:column; gap:6px">
+      <span style="font-size:58px; font-weight:300; line-height:1; letter-spacing:-0.04em; font-variant-numeric:tabular-nums">9:41</span>
+      <span style="font-size:14px; color:rgba(239,234,225,0.7)">10月28日 星期三</span>
+    </div>
+    <span style="flex:1"></span>
+    <button title="设置" style="width:44px; height:44px; border:0; border-radius:50%; background:rgba(26,25,22,0.36); backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px); color:rgba(239,234,225,0.85); display:grid; place-items:center">
+      <span style="width:18px; height:18px; background:currentColor; mask:{{ i.settings }} center/contain no-repeat; -webkit-mask:{{ i.settings }} center/contain no-repeat"></span>
+    </button>
+  </div>
+
+  <div style="position:absolute; left:{{ sheetX }}; right:{{ sheetX }}; bottom:{{ sheetB }}; height:{{ sheetH }}; border-radius:{{ sheetR }}; background:{{ sheetBg }}; backdrop-filter:blur(36px) saturate(1.15); -webkit-backdrop-filter:blur(36px) saturate(1.15); box-shadow:0 20px 50px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.07); overflow:hidden; transition:left .42s cubic-bezier(.32,.72,0,1), right .42s cubic-bezier(.32,.72,0,1), bottom .42s cubic-bezier(.32,.72,0,1), height .42s cubic-bezier(.32,.72,0,1), border-radius .42s cubic-bezier(.32,.72,0,1), background .42s">
+    <button onClick="{{ grab }}" aria-label="展开或收起" style="position:absolute; left:50%; top:0; width:120px; height:24px; transform:translateX(-50%); border:0; background:transparent; display:grid; place-items:center; cursor:pointer"><span style="width:36px; height:5px; border-radius:3px; background:rgba(239,234,225,0.28)"></span></button>
+
+    <div style="position:absolute; top:26px; left:14px; right:14px; bottom:{{ contentB }}; opacity:{{ homeO }}; transform:{{ homeT }}; pointer-events:{{ homePE }}; transition:opacity .2s cubic-bezier(.2,.7,.2,1), transform .32s cubic-bezier(.2,.7,.2,1)">
+      <div style="display:flex; align-items:center; padding:0 2px">
+        <button onClick="{{ openApps }}" style="display:flex; align-items:center; gap:8px; height:32px; padding:0 12px 0 11px; border:0; border-radius:999px; background:{{ pill.bg }}; box-shadow:{{ pill.ring }}; color:{{ pill.fg }}; font:inherit; font-size:12.5px; cursor:pointer">
+          {{ pillDot }}<span>{{ pill.text }}</span><span style="opacity:0.6">›</span>
+        </button>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); row-gap:16px; margin-top:16px">
+        <sc-for list="{{ homeApps }}" as="a" hint-placeholder-count="8">
+          <a href="#" style="display:flex; flex-direction:column; align-items:center; gap:7px; color:#efeae1; text-decoration:none; transition:transform .09s" style-active="transform:scale(.94)">
+            <span style="position:relative; width:60px; height:60px; border-radius:17px; background:{{ a.tileBg }}; box-shadow:{{ a.tileShadow }}">
+              <span style="position:absolute; inset:0; background:{{ a.glyph }} center/{{ a.gsize }} no-repeat"></span>
+              <span style="position:absolute; top:-3px; right:-3px; width:13px; height:13px; border-radius:50%; background:{{ a.color }}; box-shadow:0 0 0 2.5px #2b2925; display:{{ a.badgeD }}"></span>
+            </span>
+            <span style="font-size:11.5px; color:rgba(239,234,225,0.82); white-space:nowrap">{{ a.name }}</span>
+          </a>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="position:absolute; top:26px; left:10px; right:10px; bottom:{{ contentB }}; display:flex; flex-direction:column; justify-content:flex-end; opacity:{{ searchO }}; transform:{{ searchT }}; pointer-events:{{ searchPE }}; transition:opacity .2s cubic-bezier(.2,.7,.2,1) .06s, transform .32s cubic-bezier(.2,.7,.2,1) .06s">
+      <div style="overflow-y:auto; overflow-x:hidden; scrollbar-width:none; min-height:0">
+        <sc-for list="{{ sections }}" as="sec" hint-placeholder-count="2">
+          <div style="padding:14px 10px 6px; font-size:11.5px; color:rgba(239,234,225,0.46)">{{ sec.title }}</div>
+          <sc-for list="{{ sec.rows }}" as="r" hint-placeholder-count="3">
+            <a href="#" onClick="{{ r.go }}" style="display:flex; align-items:center; gap:12px; min-height:54px; padding:0 10px; border-radius:14px; background:{{ r.bg }}; color:#efeae1; text-decoration:none" style-active="background:rgba(239,234,225,0.1)">
+              <span style="position:relative; flex:none; width:34px; height:34px; border-radius:10px; background:{{ r.tileBg }}; box-shadow:{{ r.tileShadow }}">
+                <span style="position:absolute; inset:0; background:{{ r.glyph }} center/{{ r.gsize }} no-repeat"></span>
+                <span style="position:absolute; inset:8px; background:{{ r.maskBg }}; mask:{{ r.mask }} center/contain no-repeat; -webkit-mask:{{ r.mask }} center/contain no-repeat"></span>
+              </span>
+              <span style="display:flex; flex-direction:column; gap:2px; min-width:0; flex:1">
+                <span style="font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ r.title }}</span>
+                <span style="font-size:12px; color:rgba(239,234,225,0.48); white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{ r.sub }}</span>
+              </span>
+              <span style="flex:none; font-size:11.5px; color:rgba(239,234,225,0.44)">{{ r.meta }}</span>
+            </a>
+          </sc-for>
+        </sc-for>
+      </div>
+      <div style="flex:none; display:flex; gap:6px; margin-top:10px; padding:0 4px; overflow-x:auto; scrollbar-width:none">
+        <sc-for list="{{ engines }}" as="e" hint-placeholder-count="4">
+          <button onClick="{{ e.pick }}" onMouseDown="{{ keep }}" style="flex:none; display:flex; align-items:center; gap:7px; height:34px; padding:0 11px 0 7px; border:0; border-radius:999px; background:{{ e.bg }}; box-shadow:{{ e.ring }}; color:{{ e.fg }}; font:inherit; font-size:12.5px; white-space:nowrap">
+            <span style="position:relative; width:20px; height:20px; border-radius:6px; background:{{ e.tileBg }}; box-shadow:{{ e.tileShadow }}"><span style="position:absolute; inset:0; background:{{ e.glyph }} center/{{ e.gsize }} no-repeat"></span></span>{{ e.name }}
+          </button>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="position:absolute; top:26px; left:0; right:0; bottom:{{ contentB }}; display:flex; flex-direction:column; opacity:{{ appsO }}; transform:{{ appsT }}; pointer-events:{{ appsPE }}; transition:opacity .2s cubic-bezier(.2,.7,.2,1) .06s, transform .32s cubic-bezier(.2,.7,.2,1) .06s">
+      <div style="flex:none; display:flex; align-items:baseline; gap:10px; padding:8px 24px 4px">
+        <span style="font-size:22px; font-weight:500; letter-spacing:-0.01em">全部应用</span>
+        <span style="font-size:12.5px; color:rgba(239,234,225,0.46)">{{ countText }}</span>
+      </div>
+      <div style="flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; scrollbar-width:none; padding:0 14px 8px">
+        <sc-if value="{{ showHostedM }}" hint-placeholder-val="{{ true }}">
+          <div style="padding:16px 10px 6px; font-size:11.5px; color:rgba(239,234,225,0.5)">我的服务</div>
+          <sc-for list="{{ hostedM }}" as="s" hint-placeholder-count="3">
+            <div style="display:flex; align-items:center; gap:12px; min-height:62px; padding:0 10px; border-radius:16px; background:{{ s.rowBg }}">
+              <span style="position:relative; flex:none; width:44px; height:44px; border-radius:13px; background:{{ s.tileBg }}; box-shadow:{{ s.tileShadow }}"><span style="position:absolute; inset:0; background:{{ s.glyph }} center/{{ s.gsize }} no-repeat"></span></span>
+              <span style="display:flex; flex-direction:column; gap:3px; min-width:0; flex:1">
+                <span style="font-size:15px; font-weight:500">{{ s.name }}</span>
+                <span style="display:flex; align-items:center; gap:6px; font-size:12.5px; color:{{ s.textColor }}"><span style="width:6px; height:6px; border-radius:50%; background:{{ s.color }}"></span>{{ s.text }}</span>
+              </span>
+              <a href="#" style="flex:none; height:34px; display:flex; align-items:center; padding:0 13px; border-radius:11px; background:{{ s.actBg }}; color:{{ s.actFg }}; font-size:13px; text-decoration:none">{{ s.action }}</a>
+            </div>
+          </sc-for>
+        </sc-if>
+        <sc-for list="{{ cats }}" as="c" hint-placeholder-count="3">
+          <div style="padding:20px 10px 12px; font-size:11.5px; color:rgba(239,234,225,0.5)">{{ c.label }}</div>
+          <div style="display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); row-gap:16px">
+            <sc-for list="{{ c.apps }}" as="a" hint-placeholder-count="4">
+              <a href="#" style="display:flex; flex-direction:column; align-items:center; gap:7px; color:#efeae1; text-decoration:none; transition:transform .09s" style-active="transform:scale(.94)">
+                <span style="position:relative; width:56px; height:56px; border-radius:16px; background:{{ a.tileBg }}; box-shadow:{{ a.tileShadow }}"><span style="position:absolute; inset:0; background:{{ a.glyph }} center/{{ a.gsize }} no-repeat"></span></span>
+                <span style="font-size:11.5px; color:rgba(239,234,225,0.82); white-space:nowrap">{{ a.name }}</span>
+                <span style="width:4px; height:4px; margin-top:-3px; border-radius:50%; background:{{ a.pinDot }}"></span>
+              </a>
+            </sc-for>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="position:absolute; left:14px; right:14px; bottom:{{ rowB }}; display:flex; gap:10px; transition:bottom .42s cubic-bezier(.32,.72,0,1)">
+      <div style="flex:1; min-width:0; display:flex; align-items:center; gap:11px; height:52px; padding:0 14px; border-radius:18px; background:{{ fieldBg }}; box-shadow:{{ fieldRing }}; transition:background .2s, box-shadow .2s">
+        <span style="position:relative; flex:none; width:22px; height:22px; border-radius:7px; background:{{ lead.tileBg }}; box-shadow:{{ lead.tileShadow }}">
+          <span style="position:absolute; inset:0; background:{{ lead.glyph }} center/{{ lead.gsize }} no-repeat"></span>
+          <span style="position:absolute; inset:2px; background:{{ lead.maskBg }}; mask:{{ lead.mask }} center/contain no-repeat; -webkit-mask:{{ lead.mask }} center/contain no-repeat"></span>
+        </span>
+        <input class="nx-in" ref="{{ inRef }}" value="{{ q }}" onChange="{{ onQ }}" onFocus="{{ onFocus }}" placeholder="{{ placeholder }}" spellcheck="false" style="flex:1; min-width:0; height:100%; background:transparent; border:0; outline:none; font:inherit; font-size:16px; color:#efeae1; caret-color:#e6c08a">
+        <sc-if value="{{ hasQ }}" hint-placeholder-val="{{ false }}">
+          <button onClick="{{ clearQ }}" onMouseDown="{{ keep }}" aria-label="清除" style="flex:none; width:22px; height:22px; border:0; border-radius:50%; background:rgba(239,234,225,0.22); color:#1b1a17; font-size:12px; line-height:22px; padding:0">✕</button>
+        </sc-if>
+      </div>
+      <button onClick="{{ sideAct }}" aria-label="{{ sideLabel }}" style="flex:none; min-width:52px; height:52px; padding:0 {{ sidePad }}; border:0; border-radius:18px; background:{{ sideBg }}; box-shadow:{{ sideRing }}; color:#efeae1; font:inherit; font-size:15px; display:grid; place-items:center; cursor:pointer; transition:background .2s" style-active="transform:scale(.96)">
+        <span style="width:22px; height:22px; background:{{ allTile.glyph }} center/contain no-repeat; display:{{ sideIconD }}"></span>
+        <span style="display:{{ sideTextD }}">{{ sideText }}</span>
+      </button>
+    </div>
+  </div>
+</div>
+</x-import>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:390,&quot;height&quot;:844},&quot;view&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;home&quot;,&quot;search&quot;,&quot;apps&quot;],&quot;default&quot;:&quot;home&quot;,&quot;tsType&quot;:&quot;'home'|'search'|'apps'&quot;},&quot;query&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;statusScenario&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;ok&quot;,&quot;warn&quot;,&quot;error&quot;],&quot;default&quot;:&quot;ok&quot;,&quot;tsType&quot;:&quot;'ok'|'warn'|'error'&quot;}}">
+const EMPTY = { APPS: [], HOSTED: [], CATS: [], ENGINES: [{ id: 'google', name: 'Google' }], tileOf: () => ({}), hosted: () => [], summary: () => ({ text: '' }), search: () => [], engIcon: () => ({}) };
+
+class Component extends DCLogic {
+  state = (() => { const p = this.props || {}; return { mode: p.view || 'home', q: p.query ?? '', engine: 'google' }; })();
+  inRef = React.createRef();
+  componentDidMount() { if (!window.NX_R1) this.poll = setInterval(() => { if (window.NX_R1) { clearInterval(this.poll); this.forceUpdate(); } }, 50); }
+  componentWillUnmount() { clearInterval(this.poll); }
+  home() { this.setState({ mode: 'home', q: '' }); this.inRef.current && this.inRef.current.blur(); }
+
+  renderVals() {
+    const D = window.NX_R1 || EMPTY;
+    const I = window.NX_ICONS || {};
+    const scn = this.props.statusScenario ?? 'ok';
+    const { mode, q, engine } = this.state;
+    const home = mode === 'home', search = mode === 'search', apps = mode === 'apps';
+    const pill = D.summary(scn);
+    const hosted = D.hosted(scn).map(h => ({ ...h, rowBg: h.level === 'ok' ? 'transparent' : 'rgba(239,234,225,0.045)', actBg: h.level === 'ok' ? 'rgba(239,234,225,0.07)' : (h.level === 'error' ? 'rgba(233,118,95,0.22)' : 'rgba(227,163,91,0.2)'), actFg: h.level === 'ok' ? 'rgba(239,234,225,0.8)' : h.color }));
+    const eng = D.ENGINES.find(e => e.id === engine) || D.ENGINES[0];
+    const fl = apps ? q.trim().toLowerCase() : '';
+    const match = a => !fl || (a.name + ' ' + a.domain + ' ' + (a.alias || '')).toLowerCase().includes(fl);
+    const cats = D.CATS.map(c => ({ label: c.label, apps: D.APPS.filter(a => a.cat === c.id && match(a)).map(a => ({ ...a, ...D.tileOf(a), pinDot: a.pin ? '#e6c08a' : 'transparent' })) })).filter(c => c.apps.length);
+    const hostedM = hosted.filter(match);
+    const sections = search ? D.search(q, engine, { max: 2 }).map((sec, si) => ({ title: sec.title, rows: (q.trim() ? sec.rows : sec.rows.slice(0, 2)).map((r, ri) => ({ ...r, bg: si === 0 && ri === 0 && q.trim() ? 'rgba(239,234,225,0.08)' : 'transparent', go: e => { e.preventDefault(); this.home(); } })) })) : [];
+    const breathe = pill.level === 'error' ? 'nx-breathe 2.4s ease-in-out infinite' : 'none';
+    const contentPad = apps ? 40 : (search ? 10 : 14);
+    const searchMask = { tileBg: 'transparent', tileShadow: 'none', glyph: 'none', gsize: '0', mask: I.search || 'none', maskBg: 'rgba(239,234,225,0.6)' };
+
+    return {
+      i: I, kb: search,
+      pill,
+      pillDot: React.createElement('span', { style: { width: 6, height: 6, borderRadius: '50%', background: pill.color, animation: breathe, flex: 'none' } }),
+      homeApps: [...D.APPS.filter(a => a.pin), ...hosted].slice(0, 8).map(a => a.hosted ? a : { ...a, ...D.tileOf(a), badgeD: 'none', color: 'transparent' }),
+      allTile: D.tileOf({ kind: 'all' }),
+      photoT: home ? 'none' : 'scale(1.05)', photoF: home ? 'none' : 'blur(10px) brightness(.7)',
+      topO: home ? 1 : 0,
+      sheetX: home ? '10px' : '0px', sheetB: home ? '24px' : '0px', sheetH: home ? '330px' : 'calc(100% - 52px)',
+      sheetR: home ? '34px 34px 34px 34px' : '30px 30px 0px 0px',
+      sheetBg: home ? 'rgba(26,25,22,0.5)' : 'rgba(28,26,23,0.72)',
+      rowB: contentPad + 'px', contentB: (contentPad + 52 + 8) + 'px',
+      homeO: home ? 1 : 0, homeT: home ? 'none' : 'translateY(-10px)', homePE: home ? 'auto' : 'none',
+      searchO: search ? 1 : 0, searchT: search ? 'none' : 'translateY(12px)', searchPE: search ? 'auto' : 'none',
+      appsO: apps ? 1 : 0, appsT: apps ? 'none' : 'translateY(12px)', appsPE: apps ? 'auto' : 'none',
+      sections,
+      engines: D.ENGINES.map(e => ({ ...e, ...D.engIcon(e), name: e.id === 'links' ? '收藏' : e.name, bg: e.id === engine ? 'rgba(239,234,225,0.16)' : 'rgba(239,234,225,0.06)', ring: e.id === engine ? 'inset 0 0 0 1px rgba(239,234,225,0.16)' : 'none', fg: e.id === engine ? '#efeae1' : 'rgba(239,234,225,0.7)', pick: () => this.setState({ engine: e.id }) })),
+      keep: e => e.preventDefault(),
+      lead: search ? D.engIcon(eng) : { ...searchMask },
+      inRef: this.inRef, q, hasQ: !!q,
+      placeholder: apps ? '筛选应用' : (engine === 'links' && search ? '在收藏中查找' : '搜索、网址或应用'),
+      onQ: e => this.setState({ q: e.target.value }),
+      onFocus: () => { if (this.state.mode === 'home') this.setState({ mode: 'search' }); },
+      clearQ: () => this.setState({ q: '' }),
+      fieldBg: home ? 'rgba(239,234,225,0.09)' : 'rgba(239,234,225,0.11)',
+      fieldRing: search ? 'inset 0 0 0 1px rgba(230,192,138,0.4)' : 'none',
+      sideAct: () => home ? this.setState({ mode: 'apps', q: '' }) : this.home(),
+      sideLabel: home ? '全部应用' : (search ? '取消' : '完成'),
+      sideText: search ? '取消' : '完成',
+      sideIconD: home ? 'block' : 'none', sideTextD: home ? 'none' : 'block',
+      sidePad: home ? '0px' : '16px',
+      sideBg: home ? D.GLASS ? D.GLASS.bg : 'rgba(239,234,225,0.1)' : 'transparent',
+      sideRing: home && D.GLASS ? D.GLASS.shadow : 'none',
+      openApps: () => this.setState({ mode: 'apps', q: '' }),
+      grab: () => this.setState(s => ({ mode: s.mode === 'home' ? 'apps' : 'home', q: '' })),
+      cats, hostedM, showHostedM: hostedM.length > 0,
+      countText: `${D.APPS.length + D.HOSTED.length} 个`,
+    };
+  }
+}
+</script>
+</body>
+</html>

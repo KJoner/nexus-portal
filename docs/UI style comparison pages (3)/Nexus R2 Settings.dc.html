@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Noto+Sans+SC:wght@400;500&display=swap">
+<style>
+body{margin:0;background:#d8d4cc}
+a{color:#2b2926;text-underline-offset:3px}a:hover{color:#8a5a1c}
+</style>
+</helmet>
+<div style="box-sizing:border-box; padding:56px 72px 120px; display:flex; flex-direction:column; gap:72px; font-family:Manrope,'Noto Sans SC',system-ui,sans-serif; color:#2b2926; width:max-content">
+  <header style="display:flex; flex-direction:column; gap:14px; width:2944px">
+    <div style="display:flex; align-items:baseline; gap:24px; font-size:14px">
+      <span style="font-weight:600">R2 · 设置中心</span>
+      <span style="color:#6f695f">Atmospheric 设计语言 · 桌面 1440 × 900 · 手机 390 × 844 · 全部可交互，使用演示数据</span>
+      <span style="flex:1"></span>
+      <a href="Nexus%20R2%20Settings%20Spec.dc.html">信息架构、组件与交互说明 →</a>
+      <a href="Nexus%20R1.5%20Revisions.dc.html" style="color:#6f695f">R1.5 修订</a>
+    </div>
+    <p style="margin:0; max-width:1100px; font-size:15px; line-height:1.7; color:#4d4842">设置页把壁纸压暗、模糊到只剩氛围，内容放在低对比的磨砂卡片上。开关即时保存；外观在预览确认后应用；应用编辑需要手动保存；删除与重置先确认，再提供撤销。标有「尚未实现」或「演示」的能力只做了界面。</p>
+  </header>
+
+  <section style="display:flex; flex-direction:column; gap:24px">
+    <span style="font-size:13px; font-weight:600; color:#6f695f">PC · 设置中心首页与核心页面</span>
+    <div style="display:grid; grid-template-columns:repeat(2, 1440px); gap:56px 64px">
+      <div id="P1" data-screen-label="P1 设置概览" style="display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; align-items:baseline; gap:12px"><span style="font-size:12px; font-weight:600; background:#2b2926; color:#efeae1; padding:3px 8px; border-radius:6px">P1</span><span style="font-size:20px; font-weight:500">概览</span><span style="font-size:13px; color:#6f695f">五个分组的当前状态一眼可见；「需要注意」只列可在设置里解决的事</span></div>
+        <dc-import name="R2 Settings Desktop" page="overview" hint-size="1440px,984px"></dc-import>
+      </div>
+      <div id="P2" data-screen-label="P2 外观" style="display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; align-items:baseline; gap:12px"><span style="font-size:12px; font-weight:600; background:#8a5a1c; color:#efeae1; padding:3px 8px; border-radius:6px">P2</span><span style="font-size:20px; font-weight:500">外观 · 预览中</span><span style="font-size:13px; color:#6f695f">调整立即反映在右侧；点预览设焦点；确认前首页不变</span></div>
+        <dc-import name="R2 Settings Desktop" page="appearance" look-dirty="{{ true }}" hint-size="1440px,984px"></dc-import>
+      </div>
+      <div id="P3" data-screen-label="P3 首页与快捷方式" style="display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; align-items:baseline; gap:12px"><span style="font-size:12px; font-weight:600; background:#2b2926; color:#efeae1; padding:3px 8px; border-radius:6px">P3</span><span style="font-size:20px; font-weight:500">首页与快捷方式</span><span style="font-size:13px; color:#6f695f">一个顺序、两种容量：每行标出在桌面、手机还是都不显示</span></div>
+        <dc-import name="R2 Settings Desktop" page="home" hint-size="1440px,984px"></dc-import>
+      </div>
+      <div id="P4" data-screen-label="P4 应用与服务" style="display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; align-items:baseline; gap:12px"><span style="font-size:12px; font-weight:600; background:#8a5a1c; color:#efeae1; padding:3px 8px; border-radius:6px">P4</span><span style="font-size:20px; font-weight:500">应用与服务</span><span style="font-size:13px; color:#6f695f">按分类筛选；服务同时显示外网、内网与默认打开方式</span></div>
+        <dc-import name="R2 Settings Desktop" page="apps" hint-size="1440px,984px"></dc-import>
+      </div>
+      <div id="P5" data-screen-label="P5 搜索" style="display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; align-items:baseline; gap:12px"><span style="font-size:12px; font-weight:600; background:#2b2926; color:#efeae1; padding:3px 8px; border-radius:6px">P5</span><span style="font-size:20px; font-weight:500">搜索 · 添加自定义引擎出错</span><span style="font-size:13px; color:#6f695f">网址缺少 %s、前缀与 Google 冲突时就地提示</span></div>
+        <dc-import name="R2 Settings Desktop" page="search" eng-form="{{ true }}" hint-size="1440px,984px"></dc-import>
+      </div>
+      <div id="P6" data-screen-label="P6 数据同步与安全" style="display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; align-items:baseline; gap:12px"><span style="font-size:12px; font-weight:600; background:#2b2926; color:#efeae1; padding:3px 8px; border-radius:6px">P6</span><span style="font-size:20px; font-weight:500">数据、同步与安全</span><span style="font-size:13px; color:#6f695f">导出可直接下载；同步和登录只做界面，预留四种同步状态</span></div>
+        <dc-import name="R2 Settings Desktop" page="data" hint-size="1440px,984px"></dc-import>
+      </div>
+    </div>
+  </section>
+
+  <section style="display:flex; flex-direction:column; gap:24px">
+    <span style="font-size:13px; font-weight:600; color:#6f695f">PC · 新增与编辑应用</span>
+    <div style="display:grid; grid-template-columns:repeat(2, 1440px); gap:56px 64px">
+      <div id="E1" data-screen-label="E1 新增应用" style="display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; align-items:baseline; gap:12px"><span style="font-size:12px; font-weight:600; background:#8a5a1c; color:#efeae1; padding:3px 8px; border-radius:6px">E1</span><span style="font-size:20px; font-weight:500">新增应用</span><span style="font-size:13px; color:#6f695f">从右侧滑入，列表仍在背后；输入名称时图标库自动匹配</span></div>
+        <dc-import name="R2 Settings Desktop" page="apps" editor="new" hint-size="1440px,984px"></dc-import>
+      </div>
+      <div id="E2" data-screen-label="E2 编辑自托管服务" style="display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; align-items:baseline; gap:12px"><span style="font-size:12px; font-weight:600; background:#2b2926; color:#efeae1; padding:3px 8px; border-radius:6px">E2</span><span style="font-size:20px; font-weight:500">编辑 Linkwarden</span><span style="font-size:13px; color:#6f695f">外网 / 内网 / 默认打开；健康检查可测试连接（演示结果）</span></div>
+        <dc-import name="R2 Settings Desktop" page="apps" editor="edit" hint-size="1440px,984px"></dc-import>
+      </div>
+      <div id="E3" data-screen-label="E3 校验错误" style="display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; align-items:baseline; gap:12px"><span style="font-size:12px; font-weight:600; background:#2b2926; color:#efeae1; padding:3px 8px; border-radius:6px">E3</span><span style="font-size:20px; font-weight:500">保存时的校验错误</span><span style="font-size:13px; color:#6f695f">失焦或点保存后才标红；底栏汇总剩余错误数</span></div>
+        <dc-import name="R2 Settings Desktop" page="apps" editor="error" hint-size="1440px,984px"></dc-import>
+      </div>
+      <div id="E4" data-screen-label="E4 删除确认" style="display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; align-items:baseline; gap:12px"><span style="font-size:12px; font-weight:600; background:#2b2926; color:#efeae1; padding:3px 8px; border-radius:6px">E4</span><span style="font-size:20px; font-weight:500">删除确认</span><span style="font-size:13px; color:#6f695f">说明影响范围；确认后出现撤销提示</span></div>
+        <dc-import name="R2 Settings Desktop" page="apps" dialog="delete" hint-size="1440px,984px"></dc-import>
+      </div>
+    </div>
+  </section>
+
+  <section style="display:flex; flex-direction:column; gap:24px">
+    <span style="font-size:13px; font-weight:600; color:#6f695f">PC · 分类、重置与撤销反馈</span>
+    <div style="display:grid; grid-template-columns:repeat(2, 1440px); gap:56px 64px">
+      <div id="F1" data-screen-label="F1 管理分类" style="display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; align-items:baseline; gap:12px"><span style="font-size:12px; font-weight:600; background:#2b2926; color:#efeae1; padding:3px 8px; border-radius:6px">F1</span><span style="font-size:20px; font-weight:500">管理分类</span><span style="font-size:13px; color:#6f695f">重命名、排序、删除；删除前提示有多少应用会移到「未分类」</span></div>
+        <dc-import name="R2 Settings Desktop" page="apps" dialog="cats" hint-size="1440px,984px"></dc-import>
+      </div>
+      <div id="F2" data-screen-label="F2 撤销提示" style="display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; align-items:baseline; gap:12px"><span style="font-size:12px; font-weight:600; background:#2b2926; color:#efeae1; padding:3px 8px; border-radius:6px">F2</span><span style="font-size:20px; font-weight:500">删除后的撤销</span><span style="font-size:13px; color:#6f695f">6 秒内可撤销，悬停暂停计时；顶栏同步显示保存状态</span></div>
+        <dc-import name="R2 Settings Desktop" page="apps" toast-demo="{{ true }}" hint-size="1440px,984px"></dc-import>
+      </div>
+      <div id="F3" data-screen-label="F3 全部重置" style="display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; align-items:baseline; gap:12px"><span style="font-size:12px; font-weight:600; background:#2b2926; color:#efeae1; padding:3px 8px; border-radius:6px">F3</span><span style="font-size:20px; font-weight:500">恢复全部默认</span><span style="font-size:13px; color:#6f695f">唯一需要输入确认的操作</span></div>
+        <dc-import name="R2 Settings Desktop" page="data" dialog="reset" hint-size="1440px,984px"></dc-import>
+      </div>
+      <div id="F4" data-screen-label="F4 导入预览" style="display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; align-items:baseline; gap:12px"><span style="font-size:12px; font-weight:600; background:#2b2926; color:#efeae1; padding:3px 8px; border-radius:6px">F4</span><span style="font-size:20px; font-weight:500">导入配置</span><span style="font-size:13px; color:#6f695f">先显示将导入的数量，替换后可撤销</span></div>
+        <dc-import name="R2 Settings Desktop" page="data" dialog="import" hint-size="1440px,984px"></dc-import>
+      </div>
+    </div>
+  </section>
+
+  <section style="display:flex; flex-direction:column; gap:24px">
+    <span style="font-size:13px; font-weight:600; color:#6f695f">移动端 · 独立设置页与子页面</span>
+    <div style="display:flex; gap:56px; align-items:flex-start; flex-wrap:wrap; width:2944px">
+      <sc-for list="{{ mobile }}" as="m" hint-placeholder-count="10">
+        <div id="{{ m.id }}" data-screen-label="{{ m.label }}" style="display:flex; flex-direction:column; gap:12px; width:390px">
+          <div style="display:flex; align-items:baseline; gap:10px"><span style="font-size:12px; font-weight:600; background:{{ m.badge }}; color:#efeae1; padding:3px 8px; border-radius:6px">{{ m.id }}</span><span style="font-size:18px; font-weight:500">{{ m.title }}</span></div>
+          <span style="font-size:12.5px; line-height:1.6; color:#6f695f; min-height:40px">{{ m.note }}</span>
+          <dc-import name="R2 Settings Mobile" page="{{ m.page }}" editor="{{ m.editor }}" look-dirty="{{ m.dirty }}" sheet="{{ m.sheet }}" toast-demo="{{ m.toast }}" hint-size="390px,844px"></dc-import>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const m = (id, title, note, page, o = {}) => ({ id, title, note, page, label: `${id} ${title}`, editor: o.editor || 'edit', dirty: !!o.dirty, sheet: !!o.sheet, toast: !!o.toast, badge: o.accent ? '#8a5a1c' : '#2b2926' });
+    return { mobile: [
+      m('M1', '设置首页', '分组列表 + 设置搜索；每组副标题显示当前值', 'root'),
+      m('M2', '外观 · 预览中', '预览在顶部，壁纸横向滑动；底栏「还原 / 应用」在拇指区', 'appearance', { dirty: true, accent: true }),
+      m('M3', '首页与快捷方式', '− 移除、↑↓ 排序；每项标出手机第几位、是否进入桌面 Dock', 'home'),
+      m('M4', '应用与服务', '分类胶囊横滑；服务行显示监测状态', 'apps'),
+      m('M5', '编辑服务', '分组表单，标签在左、值在右；保存与取消在底部', 'edit', { accent: true }),
+      m('M6', '新增 · 校验错误', '出错的行左侧标红，错误文字集中在分组下方', 'edit', { editor: 'error' }),
+      m('M7', '行操作表', '点 ⋯ 从底部升起：编辑、固定、隐藏、删除', 'apps', { sheet: true }),
+      m('M8', '搜索', '默认引擎单选；建议、历史、收藏开关', 'search'),
+      m('M9', '数据与安全', '同步与登录标为尚未实现；导出直接生成文件', 'data'),
+      m('M10', '删除后撤销', '提示条贴在底部安全区上方', 'apps', { toast: true }),
+    ] };
+  }
+}
+</script>
+</body>
+</html>
