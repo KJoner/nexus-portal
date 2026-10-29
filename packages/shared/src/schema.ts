@@ -1,8 +1,10 @@
 import { z } from 'zod';
 
-export const MAX_PINS = 12;
+export const MAX_PINS = 36;
 export const DOCK_SIZE_MIN = 3;
 export const DOCK_SIZE_MAX = 7;
+export const PAGE_ROWS_MIN = 1;
+export const PAGE_ROWS_MAX = 3;
 export const LOCKED_CATEGORY = { hosted: 'hosted', none: 'none' } as const;
 
 const Id = z.string().min(1).max(64).regex(/^[a-z0-9][a-z0-9_-]*$/i, 'invalid id');
@@ -87,6 +89,21 @@ export const SettingsSchema = z.object({
     showServices: z.boolean(),
     labels: z.object({ desktop: z.boolean(), mobile: z.boolean() }),
     showRecent: z.boolean(),
+    /**
+     * Pinned sites beyond the first row (v0.2). `single`: first row only (the rest live in the
+     * drawer and on mobile); `expand`: a collapsed extension area; `double`: always expanded.
+     * Defaults keep documents written by v0.1 valid.
+     */
+    shortcuts: z
+      .object({
+        mode: z.enum(['single', 'expand', 'double']).default('expand'),
+        /** Desktop extension rows per page. */
+        pageRows: z.number().int().min(PAGE_ROWS_MIN).max(PAGE_ROWS_MAX).default(2),
+        pager: z.boolean().default(true),
+        /** Each browser remembers whether it left the extension open. */
+        remember: z.boolean().default(false),
+      })
+      .prefault({}),
   }),
   look: z.object({
     wallpaper: z.string().min(1).max(64),
@@ -110,9 +127,14 @@ export const SettingsSchema = z.object({
 });
 
 export const ConfigSchema = z.object({
+  /** Array order is the manual order inside each category (drawer, settings); it is never re-sorted. */
   apps: z.array(AppSchema).max(500),
+  /** Array order is the order of the category groups. */
   categories: z.array(CategorySchema).max(50),
-  /** Ordered ids of pinned sites; the Dock shows the first `dockSize`, mobile the first `rows × 4 − services`. */
+  /**
+   * Ordered ids of pinned sites. The Dock shows the first `dockSize`, mobile the first
+   * `rows × 4 − services`; the rest fill the extension pages. Independent of `apps` order.
+   */
   pins: z.array(Id).max(MAX_PINS),
   engines: z.array(EngineSchema).max(30),
   settings: SettingsSchema,

@@ -1,26 +1,35 @@
 import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS as DndCSS } from '@dnd-kit/utilities';
-import { DOCK_SIZE_MAX, DOCK_SIZE_MIN, hostOf, MAX_PINS, pinnedSites, shownServices, type AppEntry } from '@nexus/shared';
+import { DOCK_SIZE_MAX, DOCK_SIZE_MIN, hostOf, MAX_PINS, pinnedSites, shownServices, type AppEntry, type Settings } from '@nexus/shared';
 import { ChevronDown, ChevronUp, GripVertical, Minus, Plus } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useConfig } from '../../../data/config-store';
 import { AppTile } from '../../../icons/AppTile';
 import { cn } from '../../../lib/cn';
+import { dndAccessibility } from '../../../lib/dnd';
 import { apply, patch } from '../model';
 import { Button, Group, PageHeader, Row, Segmented, Switch, useCompact } from '../ui';
 
 type Where = { label: string; tone: 'both' | 'one' | 'none' };
+type Shortcuts = Settings['home']['shortcuts'];
 
-function whereOf(n: number, desktop: number, mobile: number): Where {
-  const pc = n <= desktop;
-  const mob = n <= mobile;
-  if (pc && mob) return { label: '桌面 · 手机', tone: 'both' };
+/** Where the n-th pin shows up: first row / extension on desktop, first or later page on mobile. */
+function whereOf(n: number, desktop: number, mobile: number, mobilePage: number, single: boolean): Where {
+  const pc = n <= desktop ? '首排' : single ? null : '扩展区';
+  const mob = n <= mobile ? '首页' : single ? null : `第 ${Math.ceil((n - mobile) / mobilePage) + 1} 页`;
+  if (pc && mob) return { label: n <= desktop && n <= mobile ? '桌面 · 手机' : `桌面${pc} · 手机${mob}`, tone: 'both' };
   if (pc) return { label: '仅桌面', tone: 'one' };
   if (mob) return { label: '仅手机', tone: 'one' };
-  return { label: '超出，均不显示', tone: 'none' };
+  return { label: '仅在全部应用中', tone: 'none' };
 }
+
+const MODE_SUB: Record<Shortcuts['mode'], string> = {
+  single: '首页只显示第一排，其余固定的网站在「全部应用」中',
+  expand: '其余固定的网站收在面板底部，点击「另有 N 个」展开',
+  double: '扩展区始终展开显示',
+};
 
 const whereStyle = { both: 'bg-ink/7 text-ink/66', one: 'bg-warn/13 text-[#f1c690]', none: 'bg-error/13 text-[#f4b2a3]' };
 const whereText = { both: 'text-ink/50', one: 'text-[#f1c690]', none: 'text-[#f4b2a3]' };
@@ -58,7 +67,7 @@ function PinRow({ app, index, count, where }: { app: AppEntry; index: number; co
       className={cn('flex h-[60px] items-center gap-3.5 pr-3.5 pl-2.5 transition-colors duration-140', s.isDragging && 'relative z-10 bg-ink/6 opacity-50')}
       style={{ transform: DndCSS.Translate.toString(s.transform), transition: s.transition }}
     >
-      <button ref={s.setActivatorNodeRef} type="button" {...s.listeners} {...s.attributes} aria-label={`拖动排序 ${app.name}`} className="grid h-9 w-7 flex-none cursor-grab touch-none place-items-center border-0 bg-transparent text-ink/40">
+      <button ref={s.setActivatorNodeRef} type="button" {...s.listeners} {...s.attributes} data-dnd-id={app.id} data-dnd-name={app.name} aria-label={`拖动排序 ${app.name}`} className="grid h-9 w-7 flex-none cursor-grab touch-none place-items-center border-0 bg-transparent text-ink/40">
         <GripVertical className="size-4" />
       </button>
       <span className="w-[18px] flex-none text-[12px] text-ink/40 tabular-nums">{index + 1}</span>
@@ -161,6 +170,7 @@ function Preview({ device }: { device: 'pc' | 'mobile' }) {
   const pins = pinnedSites(config);
   const services = shownServices(config);
   const mobileCap = Math.max(0, home.mobileRows * 4 - services.length);
+  const rest = home.shortcuts.mode === 'single' ? [] : pins.slice(home.dockSize);
   if (device === 'pc') {
     const items = [...pins.slice(0, home.dockSize).map((a) => ({ a, sep: false })), ...services.map((a) => ({ a, sep: false }))];
     return (
@@ -182,6 +192,16 @@ function Preview({ device }: { device: 'pc' | 'mobile' }) {
             {home.labels.desktop && <span className="text-[8.5px] text-ink/70">全部应用</span>}
           </span>
         </div>
+        {rest.length > 0 &&
+          (home.shortcuts.mode === 'double' ? (
+            <div className="grid grid-cols-9 justify-items-center gap-y-2 pt-3">
+              {rest.slice(0, 9 * home.shortcuts.pageRows).map((a) => (
+                <AppTile key={a.id} target={{ kind: 'app', app: a }} size={26} />
+              ))}
+            </div>
+          ) : (
+            <div className="pt-2 text-center text-[9px] text-ink/40">⌄ 另有 {rest.length} 个</div>
+          ))}
       </div>
     );
   }
@@ -218,6 +238,10 @@ export function HomeLayoutPage() {
   const mobileCap = Math.max(0, home.mobileRows * 4 - services.length);
   const hidden = config.apps.filter((a) => a.hidden);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
+  const { shortcuts } = home;
+  const single = shortcuts.mode === 'single';
+  const rest = single ? [] : pins.slice(home.dockSize);
+  const setShortcuts = (v: Partial<Shortcuts>) => patch('home', { shortcuts: { ...shortcuts, ...v } });
 
   const onDragEnd = (e: DragEndEvent) => {
     if (!e.over || e.active.id === e.over.id) return;
@@ -226,7 +250,10 @@ export function HomeLayoutPage() {
 
   const content = (
     <div className="flex min-w-0 flex-col gap-7">
-      <PageHeader title="首页与快捷方式" sub={`桌面与手机共用同一个顺序：桌面 Dock 显示前 ${home.dockSize} 个，手机首页显示前 ${mobileCap} 个。改动即时保存。`} />
+      <PageHeader
+        title="首页与快捷方式"
+        sub={`桌面与手机共用同一个顺序：桌面首排显示前 ${home.dockSize} 个，手机首页显示前 ${mobileCap} 个${single ? '' : '，其余在桌面扩展区和手机后续页面'}。改动即时保存。`}
+      />
       <Group
         title={compact ? `首页网站 · 手机显示前 ${mobileCap} 个` : '固定的网站'}
         extra={
@@ -239,10 +266,10 @@ export function HomeLayoutPage() {
           )
         }
       >
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+        <DndContext accessibility={dndAccessibility} sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
           <SortableContext items={pins.map((a) => a.id)} strategy={verticalListSortingStrategy}>
             {pins.map((a, i) => (
-              <PinRow key={a.id} app={a} index={i} count={pins.length} where={whereOf(i + 1, home.dockSize, mobileCap)} />
+              <PinRow key={a.id} app={a} index={i} count={pins.length} where={whereOf(i + 1, home.dockSize, mobileCap, home.mobileRows * 4, single)} />
             ))}
           </SortableContext>
         </DndContext>
@@ -251,9 +278,48 @@ export function HomeLayoutPage() {
       </Group>
       {compact && <p className="m-0 -mt-4 px-4 text-[12.5px] leading-[1.6] text-ink/46">用 − 移除、↑↓ 调整顺序；也可在首页长按图标。</p>}
 
+      <Group title="快捷方式区域">
+        <Row label="显示方式" sub={MODE_SUB[shortcuts.mode]} stacked>
+          <Segmented<Shortcuts['mode']>
+            label="快捷方式显示方式"
+            value={shortcuts.mode}
+            options={[
+              { value: 'single', label: '单排' },
+              { value: 'expand', label: '可展开' },
+              { value: 'double', label: '固定展开' },
+            ]}
+            onChange={(mode) => setShortcuts({ mode })}
+          />
+        </Row>
+        {!compact && !single && (
+          <Row label="扩展区每页行数" sub="屏幕较矮时会自动减少行数，避免面板超出窗口">
+            <Segmented
+              label="扩展区每页行数"
+              value={shortcuts.pageRows}
+              options={[
+                { value: 1, label: '1 行' },
+                { value: 2, label: '2 行' },
+                { value: 3, label: '3 行' },
+              ]}
+              onChange={(pageRows) => setShortcuts({ pageRows })}
+            />
+          </Row>
+        )}
+        {!single && (
+          <Row label="显示分页指示" sub={compact ? '手机首页下方的页码圆点' : '多页时显示页码与前后翻页按钮；也可用滚轮或 PageUp/PageDown 翻页'}>
+            <Switch label="显示分页指示" checked={shortcuts.pager} onChange={(pager) => setShortcuts({ pager })} />
+          </Row>
+        )}
+        {shortcuts.mode === 'expand' && (
+          <Row label="记住展开状态" sub="每个浏览器分别记住；关闭时每次打开首页都是收起的">
+            <Switch label="记住展开状态" checked={shortcuts.remember} onChange={(remember) => setShortcuts({ remember })} />
+          </Row>
+        )}
+      </Group>
+
       <Group title={compact ? '布局' : '布局偏好'}>
         {!compact && (
-          <Row label="桌面 Dock 网站数量" sub={`${DOCK_SIZE_MIN}–${DOCK_SIZE_MAX} 个；超过 ${DOCK_SIZE_MAX} 个会挤压搜索面板宽度`}>
+          <Row label="首排网站数量" sub={`桌面首排 ${DOCK_SIZE_MIN}–${DOCK_SIZE_MAX} 个；超过 ${DOCK_SIZE_MAX} 个会挤压搜索面板宽度`}>
             <div className="flex items-center gap-0.5 rounded-[11px] bg-ink/6 p-[3px]">
               <button type="button" aria-label="减少" disabled={home.dockSize <= DOCK_SIZE_MIN} onClick={() => patch('home', { dockSize: home.dockSize - 1 })} className="grid size-8 place-items-center rounded-[9px] border-0 bg-transparent text-ink hover:bg-ink/10 disabled:opacity-30">
                 <Minus className="size-3.5" />
@@ -331,7 +397,9 @@ export function HomeLayoutPage() {
           <Preview device={device} />
         </div>
         <span className="text-[12px] leading-[1.6] text-ink/46">
-          {device === 'pc' ? `Dock：前 ${home.dockSize} 个网站${home.showServices ? ` + ${services.length} 个服务` : ''} + 全部应用` : `手机首页：${home.mobileRows} 行 × 4 列；不足时显示空位，点按可添加`}
+          {device === 'pc'
+            ? `首排：前 ${home.dockSize} 个网站${home.showServices ? ` + ${services.length} 个服务` : ''} + 全部应用${rest.length ? ` · 扩展区 ${rest.length} 个` : ''}`
+            : `手机首页：${home.mobileRows} 行 × 4 列${pins.length > mobileCap && home.shortcuts.mode !== 'single' ? `，其余 ${pins.length - mobileCap} 个左右滑动或上拉查看` : '；不足时显示空位，点按可添加'}`}
         </span>
       </aside>
     </div>

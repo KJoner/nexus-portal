@@ -1,5 +1,5 @@
-import { appHref, hostOf, pinnedSites, shownServices, type AppEntry } from '@nexus/shared';
-import { Activity, ArrowUpRight, ChevronLeft, ChevronRight, Eye, EyeOff, GripVertical, Pencil, Pin, PinOff } from 'lucide-react';
+import { appHref, desktopShortcuts, hostOf, MAX_PINS, pinnedSites, shownServices, type AppEntry } from '@nexus/shared';
+import { Activity, ArrowUpRight, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, ExternalLink, Eye, EyeOff, GripVertical, Pencil, Pin, PinOff } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { ContextMenu, menuPoint, type MenuItem, type MenuState } from '../../../components/ContextMenu';
@@ -9,17 +9,20 @@ import { flush, useConfig, useConfigStore } from '../../../data/config-store';
 import { useServices } from '../../../data/status';
 import { useMotionLevel, useNow, useViewport } from '../../../lib/hooks';
 import { openApp } from '../../../lib/open';
+import { storage } from '../../../lib/storage';
 import { formatClock, formatDate } from '../../../lib/time';
 import { homeActions } from '../actions';
 import type { QuickActionId } from '../search-model';
 import { useWallpaper, Wallpaper } from '../Wallpaper';
-import { Dock, type MenuSource } from './Dock';
+import { Dock, dockHeights, extensionCols, type MenuSource } from './Dock';
 import { Drawer } from './Drawer';
 import { SearchSlab, type SearchSlabHandle } from './SearchSlab';
 import { StatusPopover } from './StatusPopover';
 import { TopBar } from './TopBar';
 
 const ICON = { s: 48, m: 56, l: 64 } as const;
+/** Per-browser memory of the extension being open (设置 · 记住展开状态). */
+const EXPANDED_KEY = 'nexus.home.expanded';
 
 type MenuEvent = MouseEvent<HTMLElement> | { currentTarget: HTMLElement; synthetic: true };
 
@@ -38,6 +41,7 @@ export function DesktopHome() {
   const [edit, setEdit] = useState(false);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [errorSeen, setErrorSeen] = useState(false);
+  const [expandedPref, setExpandedPref] = useState(() => home.shortcuts.remember && storage.get<boolean>(EXPANDED_KEY) === true);
   const slabRef = useRef<SearchSlabHandle>(null);
   const allRef = useRef<HTMLButtonElement>(null);
   const pillRef = useRef<HTMLButtonElement>(null);
@@ -47,7 +51,8 @@ export function DesktopHome() {
   const iconSize = ICON[look.iconSize];
   const labels = home.labels.desktop;
   const pinned = useMemo(() => pinnedSites(config), [config]);
-  const dockSites = pinned.slice(0, home.dockSize);
+  const { first: dockSites, extra } = useMemo(() => desktopShortcuts(config), [config]);
+  const { shortcuts } = home;
   const dockServices = useMemo(() => {
     const shown = new Set(shownServices(config).map((a) => a.id));
     return services.filter((s) => shown.has(s.app.id));
@@ -103,6 +108,7 @@ export function DesktopHome() {
         setStatusOpen(false);
         pillRef.current?.focus();
       } else if (edit) void exitEdit();
+      else if (canToggle && expanded) toggleExpanded();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -137,13 +143,22 @@ export function DesktopHome() {
     const pins = useConfigStore.getState().snapshot.config.pins;
     const i = pins.indexOf(app.id);
     const toSettings: MenuItem = { label: '在设置中编辑', icon: Pencil, hint: '↗', onSelect: () => navigate(`/settings/apps?edit=${app.id}`) };
+    const open: MenuItem[] = [
+      { label: '打开', icon: ArrowUpRight, onSelect: () => openApp(app) },
+      { label: '在新标签页打开', icon: ExternalLink, hint: '中键', onSelect: () => openApp(app, true) },
+    ];
     let items: MenuItem[];
     if (from === 'hosted') {
-      items = [{ label: '打开', icon: ArrowUpRight, onSelect: () => openApp(app) }, ...(showStatus ? [{ label: '查看状态', icon: Activity, onSelect: openStatus }] : []), 'sep', toSettings];
+      items = [...open, ...(showStatus ? [{ label: '查看状态', icon: Activity, onSelect: openStatus }] : []), 'sep', toSettings];
     } else if (from === 'dock') {
+      const last = (shortcuts.mode === 'single' ? Math.min(pins.length, home.dockSize) : pins.length) - 1;
       items = [
-        { label: '向左移动', icon: ChevronLeft, disabled: i <= 0, onSelect: () => homeActions.move(app.id, -1) },
-        { label: '向右移动', icon: ChevronRight, disabled: i >= Math.min(pins.length, home.dockSize) - 1, onSelect: () => homeActions.move(app.id, 1) },
+        ...open,
+        'sep',
+        { label: '向前移动', icon: ChevronLeft, disabled: i <= 0, onSelect: () => homeActions.move(app.id, -1) },
+        { label: '向后移动', icon: ChevronRight, disabled: i >= last, onSelect: () => homeActions.move(app.id, 1) },
+        { label: '移到最前', icon: ChevronFirst, disabled: i <= 0, onSelect: () => homeActions.moveTo(app.id, 0) },
+        { label: '移到最后', icon: ChevronLast, disabled: i >= pins.length - 1, onSelect: () => homeActions.moveTo(app.id, pins.length - 1) },
         { label: '从首页移除', icon: PinOff, onSelect: () => homeActions.unpin(app.id) },
         { label: '隐藏此应用', icon: EyeOff, onSelect: () => homeActions.hide(app.id) },
         'sep',
@@ -151,8 +166,10 @@ export function DesktopHome() {
         toSettings,
       ];
     } else {
-      const usage = `${Math.min(pins.length, home.dockSize)} / ${home.dockSize}`;
+      const usage = `${pins.length} / ${MAX_PINS}`;
       items = [
+        ...open,
+        'sep',
         i >= 0
           ? { label: '从首页移除', icon: PinOff, hint: usage, onSelect: () => homeActions.unpin(app.id) }
           : { label: '固定到首页', icon: Pin, hint: usage, disabled: app.hidden, onSelect: () => homeActions.pin(app.id, enterEdit) },
@@ -169,8 +186,28 @@ export function DesktopHome() {
     });
   };
 
+  // Extension area (v0.2): rows per page shrink until the open slab fits above the bottom edge,
+  // so expanding never moves the clock or the search field.
+  const addToExtension = edit && shortcuts.mode !== 'single' && dockSites.length >= home.dockSize && pinned.length < MAX_PINS;
+  const extItems = extra.length + (addToExtension ? 1 : 0);
+  const cols = extensionCols(iconSize);
+  const room = h - top - 80 - 67 - (edit ? 62 : 0) - 56;
+  const pagesFor = (r: number) => Math.max(1, Math.ceil(extItems / (cols * r)));
+  const heightFor = (r: number) => {
+    const m = dockHeights(iconSize, labels, Math.min(r, Math.ceil(extItems / cols) || 1), shortcuts.pager && pagesFor(r) > 1);
+    return { ...m, total: m.first + m.extension };
+  };
+  let rows = shortcuts.pageRows;
+  while (rows > 1 && heightFor(rows).total > room) rows--;
+  const metrics = heightFor(rows);
+  const expanded = extItems > 0 && (shortcuts.mode === 'double' || edit || expandedPref);
+  const toggleExpanded = () => {
+    setExpandedPref(!expanded);
+    if (shortcuts.remember) storage.set(EXPANDED_KEY, !expanded);
+  };
+  const canToggle = shortcuts.mode === 'expand' && extra.length > 0 && !edit;
+
   const drawerW = Math.min(1040, w - 160);
-  const extra = pinned.length - home.dockSize;
   const breathe = summary.level === 'error' && !errorSeen && motion === 'full';
 
   return (
@@ -208,7 +245,7 @@ export function DesktopHome() {
             ref={slabRef}
             edit={edit}
             maxPanel={h - top - 80 - 67 - 36}
-            dockHeight={(labels ? 64 : 40) + iconSize}
+            dockHeight={metrics.first + (expanded ? metrics.extension : 0)}
             onFocusSearch={() => {
               setStatusOpen(false);
               if (edit) setEdit(false);
@@ -217,6 +254,12 @@ export function DesktopHome() {
             dock={
               <Dock
                 sites={dockSites}
+                extra={extra}
+                expanded={expanded}
+                onToggleExpanded={canToggle ? toggleExpanded : undefined}
+                rows={rows}
+                showPager={shortcuts.pager}
+                addToExtension={addToExtension}
                 services={dockServices}
                 dockSize={home.dockSize}
                 edit={edit}
@@ -238,8 +281,8 @@ export function DesktopHome() {
               <span>拖动排序 · 点 − 移除 · 键盘 Alt ←→ 移动、Delete 移除</span>
               <span className="flex-1" />
               <span className="text-ink/50">
-                {Math.min(pinned.length, home.dockSize)} / {home.dockSize}
-                {extra > 0 && ` · 另有 ${extra} 个仅在手机显示`}
+                首排 {Math.min(pinned.length, home.dockSize)} / {home.dockSize} · 共 {pinned.length} / {MAX_PINS}
+                {shortcuts.mode === 'single' && pinned.length > home.dockSize && ` · 另有 ${pinned.length - home.dockSize} 个仅在手机显示`}
               </span>
               <button type="button" onClick={() => void exitEdit()} className="h-[34px] rounded-[10px] border-0 bg-amber px-4 text-[13.5px] font-semibold text-on-amber hover:bg-amber-hi">
                 完成

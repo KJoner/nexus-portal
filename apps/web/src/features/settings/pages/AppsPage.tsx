@@ -1,5 +1,5 @@
 import { appHref, displayUrl, LOCKED_CATEGORY, matchApps, type AppEntry, type Category } from '@nexus/shared';
-import { ChevronDown, ChevronUp, Copy, Ellipsis, Eye, EyeOff, Pencil, Pin, PinOff, Plus, Search, Trash2 } from 'lucide-react';
+import { ArrowDownUp, ChevronDown, ChevronUp, Copy, Ellipsis, Eye, EyeOff, Pencil, Pin, PinOff, Plus, Search, Trash2 } from 'lucide-react';
 import { DropdownMenu } from 'radix-ui';
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
@@ -13,6 +13,7 @@ import { dotStyle, LEVEL_COLOR } from '../../home/status-style';
 import { apply } from '../model';
 import { Button, Dialog, PageHeader, Tag, useCompact } from '../ui';
 import { AppEditor } from './AppEditor';
+import { SortMode } from './SortMode';
 
 const GRID = 'grid grid-cols-[260px_minmax(0,1fr)_112px_64px_150px_104px] items-center';
 
@@ -37,6 +38,7 @@ export function AppsPage() {
   const [del, setDel] = useState<string | null>(null);
   const [cats, setCats] = useState<Category[] | null>(null);
   const [sheet, setSheet] = useState<SheetState | null>(null);
+  const [sorting, setSorting] = useState(false);
 
   const editId = params.get('edit');
   const newName = params.get('new');
@@ -140,6 +142,25 @@ export function AppsPage() {
     </div>
   );
 
+  const sortHint = (
+    <p className={cn('m-0 text-[12.5px] leading-[1.6] text-ink/50', compact ? 'px-4' : 'px-1')}>
+      {compact ? '长按 ⋮⋮ 拖动，或点 ⋯ 选择位置与分类。' : '拖动 ⋮⋮ 调整分类与应用的顺序，可拖到其他分类；也可用 ⋯ 菜单，或聚焦 ⋮⋮ 后按空格拿起、方向键移动、空格放下。'}
+      顺序会同步到所有设备，首页固定的快捷方式顺序单独设置。
+    </p>
+  );
+
+  if (compact && sorting) {
+    return (
+      <>
+        {sortHint}
+        <SortMode />
+        <Button variant="primary" size="lg" className="w-full rounded-2xl" onClick={() => setSorting(false)}>
+          完成排序
+        </Button>
+      </>
+    );
+  }
+
   if (compact) {
     return (
       <>
@@ -192,9 +213,14 @@ export function AppsPage() {
           <Plus className="size-[18px]" />
           新增应用
         </Button>
-        <Button size="lg" className="w-full rounded-2xl" onClick={() => setCats(config.categories.map((c) => ({ ...c })))}>
-          管理分类
-        </Button>
+        <div className="flex gap-2.5">
+          <Button size="lg" className="flex-1 rounded-2xl" onClick={() => setSorting(true)}>
+            调整顺序
+          </Button>
+          <Button size="lg" className="flex-1 rounded-2xl" onClick={() => setCats(config.categories.map((c) => ({ ...c })))}>
+            管理分类
+          </Button>
+        </div>
         {dialogs}
       </>
     );
@@ -207,6 +233,10 @@ export function AppsPage() {
         sub="网站与自托管服务都在这里管理。点任一行编辑；自托管服务可分别填写外网与内网地址。"
         actions={
           <>
+            <Button className={cn('h-10 rounded-xl px-4 text-[13.5px]', sorting && 'bg-amber/16 text-amber-hi')} aria-pressed={sorting} onClick={() => setSorting((v) => !v)}>
+              <ArrowDownUp className="size-[15px]" />
+              {sorting ? '完成排序' : '排序'}
+            </Button>
             <Button className="h-10 rounded-xl px-4 text-[13.5px]" onClick={() => setCats(config.categories.map((c) => ({ ...c })))}>
               管理分类
             </Button>
@@ -217,12 +247,18 @@ export function AppsPage() {
           </>
         }
       />
-      <div className="flex items-center gap-2">
+      {sorting && (
+        <>
+          {sortHint}
+          <SortMode />
+        </>
+      )}
+      <div className={cn('flex items-center gap-2', sorting && 'hidden')}>
         {toolbar}
         <span className="flex-1" />
         {searchBox}
       </div>
-      <div className="flex flex-col rounded-[20px] bg-ink/[0.045] shadow-[inset_0_0_0_1px_rgba(239,234,225,0.05)]">
+      <div className={cn('flex flex-col rounded-[20px] bg-ink/[0.045] shadow-[inset_0_0_0_1px_rgba(239,234,225,0.05)]', sorting && 'hidden')}>
         <div className={cn(GRID, 'h-[42px] border-b border-ink/7 pr-4 pl-5 text-[12px] text-ink/46')}>
           <span>应用</span>
           <span>地址</span>

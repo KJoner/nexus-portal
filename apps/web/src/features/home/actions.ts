@@ -25,7 +25,8 @@ export const homeActions = {
   pin(appId: string, onFull?: () => void) {
     const position = cfg().pins.length + 1;
     const { desktop } = homeCapacity(cfg());
-    const extra = position > desktop ? `；桌面 Dock 只显示前 ${desktop} 个` : '';
+    const single = cfg().settings.home.shortcuts.mode === 'single';
+    const extra = position <= desktop ? '' : single ? `；桌面首排只显示前 ${desktop} 个` : '，位于桌面扩展区';
     commit({ type: 'pin.add', appId }, `已固定 ${nameOf(appId)} 到首页${extra}`, onFull);
   },
   unpin(appId: string) {

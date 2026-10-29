@@ -2,7 +2,7 @@ import { defaultConfig } from '@nexus/shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { runUndo, useToastStore } from '../components/toast-store';
 import { homeActions } from '../features/home/actions';
-import { flush, login, onSyncRejected, refresh, resetSync, useConfigStore } from './config-store';
+import { dispatch, flush, login, onSyncRejected, refresh, resetSync, useConfigStore } from './config-store';
 import { MemoryTransport, NetworkError } from './transport';
 
 let server: MemoryTransport;
@@ -128,7 +128,11 @@ describe('structural changes are undoable', () => {
 
   it('pinning beyond the Dock capacity explains where it appears', () => {
     homeActions.pin('figma');
-    expect(useToastStore.getState().current!.msg).toBe('已固定 Figma 到首页；桌面 Dock 只显示前 5 个');
+    expect(useToastStore.getState().current!.msg).toBe('已固定 Figma 到首页，位于桌面扩展区');
+    homeActions.unpin('figma');
+    dispatch({ type: 'settings.patch', section: 'home', patch: { shortcuts: { ...useConfigStore.getState().snapshot.config.settings.home.shortcuts, mode: 'single' } } });
+    homeActions.pin('figma');
+    expect(useToastStore.getState().current!.msg).toBe('已固定 Figma 到首页；桌面首排只显示前 5 个');
   });
 
   it('reordering does not raise a toast', () => {

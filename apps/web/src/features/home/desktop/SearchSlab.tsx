@@ -136,7 +136,7 @@ export const SearchSlab = forwardRef<SearchSlabHandle, Props>(function SearchSla
   return (
     <div
       onBlur={onSlabBlur}
-      className="relative rounded-3xl backdrop-blur-[32px] backdrop-saturate-[1.15] transition-shadow duration-200 ease-soft"
+      className="group/slab relative rounded-3xl backdrop-blur-[32px] backdrop-saturate-[1.15] transition-shadow duration-200 ease-soft"
       style={{
         background: 'rgba(26,25,22,0.48)',
         boxShadow: open
@@ -200,7 +200,7 @@ export const SearchSlab = forwardRef<SearchSlabHandle, Props>(function SearchSla
       <div className="mx-[22px] h-px bg-ink/8" />
       <div className="relative overflow-hidden transition-[height] duration-320 ease-emph" style={{ height: bodyH }}>
         <div
-          className="absolute top-0 right-0 left-0 transition-[opacity,transform] ease-soft"
+          className="absolute inset-0 transition-[opacity,transform] ease-soft"
           style={{ opacity: open ? 0 : 1, transform: open ? 'translateY(-6px)' : 'none', pointerEvents: open ? 'none' : 'auto', transitionDuration: '140ms, 200ms' }}
         >
           {dock}

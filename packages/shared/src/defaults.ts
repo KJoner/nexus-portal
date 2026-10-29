@@ -71,23 +71,24 @@ export const DEFAULT_ENGINES: readonly Engine[] = [
   { id: 'links', name: '我的收藏', urlTemplate: '', prefix: 'lw', builtin: true, kind: 'linkwarden', icon: '' },
 ];
 
+/** Apps are listed category by category (see `groupByCategory`). */
 export function defaultConfig(): Config {
   const apps: AppEntry[] = [
     service('litebox', 'LiteBox', '服务器探针', 'https://litebox.home', 0),
     service('obsync', 'OBsync', '笔记同步', 'https://obsync.home', 1),
     service('linkwarden', 'Linkwarden', '书签归档', 'https://links.home', 2),
     site('github', 'GitHub', 'https://github.com', 'dev', 'github'),
-    site('gmail', 'Gmail', 'https://mail.google.com', 'work', 'gmail'),
-    site('youtube', 'YouTube', 'https://youtube.com', 'media', 'youtube'),
-    site('bilibili', '哔哩哔哩', 'https://bilibili.com', 'media', 'si:bilibili', ['bilibili', 'b站']),
-    site('notion', 'Notion', 'https://notion.so', 'work', 'notion'),
     site('vercel', 'Vercel', 'https://vercel.com', 'dev', 'vercel'),
     site('cloudflare', 'Cloudflare', 'https://dash.cloudflare.com', 'dev', 'cloudflare'),
+    site('gmail', 'Gmail', 'https://mail.google.com', 'work', 'gmail'),
+    site('notion', 'Notion', 'https://notion.so', 'work', 'notion'),
     site('figma', 'Figma', 'https://figma.com', 'work', 'figma'),
     site('gdrive', '云端硬盘', 'https://drive.google.com', 'work', 'google-drive', ['google drive']),
     site('gcal', '日历', 'https://calendar.google.com', 'work', 'google-calendar', ['google calendar']),
     site('chatgpt', 'ChatGPT', 'https://chatgpt.com', 'work', 'chatgpt'),
     site('claude', 'Claude', 'https://claude.ai', 'work', 'claude-ai'),
+    site('youtube', 'YouTube', 'https://youtube.com', 'media', 'youtube'),
+    site('bilibili', '哔哩哔哩', 'https://bilibili.com', 'media', 'si:bilibili', ['bilibili', 'b站']),
     site('spotify', 'Spotify', 'https://open.spotify.com', 'media', 'spotify'),
     site('reddit', 'Reddit', 'https://reddit.com', 'media', 'reddit'),
     site('x', 'X', 'https://x.com', 'media', 'x', ['twitter']),
@@ -106,7 +107,14 @@ export function defaultConfig(): Config {
     engines: DEFAULT_ENGINES.map((e) => ({ ...e })),
     settings: {
       search: { defaultEngine: 'google', suggest: false, history: true, historyDays: 30, showApps: true, linkwarden: false },
-      home: { dockSize: 5, mobileRows: 2, showServices: true, labels: { desktop: true, mobile: true }, showRecent: true },
+      home: {
+        dockSize: 5,
+        mobileRows: 2,
+        showServices: true,
+        labels: { desktop: true, mobile: true },
+        showRecent: true,
+        shortcuts: { mode: 'expand', pageRows: 2, pager: true, remember: false },
+      },
       look: {
         wallpaper: 'fallingwater',
         tone: 'warm',

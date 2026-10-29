@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { defaultConfig } from './defaults';
-import { applyOp, applyOps, invertOp, OpError, type Op } from './ops';
+import { applyOp, applyOps, invertOp, normalizeConfig, OpError, type Op } from './ops';
 import { ConfigSchema, MAX_PINS } from './schema';
 
 const base = () => defaultConfig();
@@ -14,8 +14,35 @@ function roundTrip(op: Op, c = base()) {
 }
 
 describe('default config', () => {
-  it('is valid against the schema', () => {
+  it('is valid against the schema and already normalized', () => {
     expect(ConfigSchema.safeParse(base()).success).toBe(true);
+    expect(normalizeConfig(base())).toEqual(base());
+  });
+});
+
+describe('documents written by v0.1', () => {
+  // v0.1 had no `home.shortcuts` and at most 12 pins; both must load unchanged.
+  const v01 = () => {
+    const c = base() as unknown as { settings: { home: Record<string, unknown> }; pins: string[] };
+    delete c.settings.home.shortcuts;
+    c.pins = ['github', 'gmail', 'youtube', 'bilibili', 'notion', 'vercel', 'cloudflare', 'figma', 'gdrive', 'gcal', 'chatgpt', 'claude'];
+    return c;
+  };
+
+  it('parse with the new defaults and keep the pin order', () => {
+    const r = ConfigSchema.parse(v01());
+    expect(r.settings.home.shortcuts).toEqual({ mode: 'expand', pageRows: 2, pager: true, remember: false });
+    expect(normalizeConfig(r).pins).toEqual(v01().pins);
+  });
+
+  it('keep the order inside each category when apps are regrouped', () => {
+    const c = ConfigSchema.parse(v01());
+    const shuffled = { ...c, apps: [...c.apps].reverse() };
+    const byCat = (x: typeof c) => Object.fromEntries(x.categories.map((k) => [k.id, x.apps.filter((a) => a.categoryId === k.id).map((a) => a.id)]));
+    const out = normalizeConfig(shuffled);
+    expect(byCat(out)).toEqual(byCat(shuffled));
+    const rank = (id: string) => c.categories.findIndex((k) => k.id === id);
+    expect(out.apps.every((a, i) => i === 0 || rank(out.apps[i - 1]!.categoryId) <= rank(a.categoryId))).toBe(true);
   });
 });
 
@@ -32,11 +59,17 @@ describe('pins', () => {
     expect(() => applyOp(c, { type: 'pin.add', appId: 'litebox' })).toThrow(OpError);
     const hidden = applyOp(c, { type: 'app.setHidden', appId: 'vercel', hidden: true });
     expect(() => applyOp(hidden, { type: 'pin.add', appId: 'vercel' })).toThrow(/不能固定/);
-    const sites = c.apps.filter((a) => a.kind === 'site').map((a) => a.id);
-    const full = applyOps(c, sites.slice(0, MAX_PINS).map((appId): Op => ({ type: 'pin.add', appId })));
+    const gh = c.apps.find((a) => a.id === 'github')!;
+    const many = applyOps(
+      c,
+      Array.from({ length: MAX_PINS }, (_, i): Op => ({ type: 'app.upsert', app: { ...gh, id: `site-${i}`, name: `Site ${i}`, url: `https://s${i}.example.com` } })),
+    );
+    const sites = many.apps.filter((a) => a.kind === 'site' && !c.pins.includes(a.id)).map((a) => a.id);
+    const room = MAX_PINS - c.pins.length;
+    const full = applyOps(many, sites.slice(0, room).map((appId): Op => ({ type: 'pin.add', appId })));
     expect(full.pins).toHaveLength(MAX_PINS);
     try {
-      applyOp(full, { type: 'pin.add', appId: sites[MAX_PINS]! });
+      applyOp(full, { type: 'pin.add', appId: sites[room]! });
       expect.unreachable();
     } catch (e) {
       expect((e as OpError).code).toBe('pins_full');

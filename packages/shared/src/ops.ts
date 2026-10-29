@@ -29,7 +29,10 @@ export type Op =
   | { type: 'service.setShown'; appId: string; shown: boolean }
   | { type: 'app.upsert'; app: AppEntry; index?: number }
   | { type: 'app.delete'; appId: string }
+  /** Moves an app to `toIndex` among the apps of `categoryId` (default: its own category). */
+  | { type: 'app.move'; appId: string; toIndex: number; categoryId?: string }
   | { type: 'categories.replace'; categories: Category[] }
+  | { type: 'category.move'; categoryId: string; toIndex: number }
   | { type: 'engine.upsert'; engine: Engine; index?: number }
   | { type: 'engine.delete'; engineId: string }
   | { type: 'engine.move'; engineId: string; toIndex: number }
@@ -52,7 +55,9 @@ export const OpSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('service.setShown'), appId: IdRef, shown: z.boolean() }),
   z.object({ type: z.literal('app.upsert'), app: z.unknown(), index: Index.optional() }),
   z.object({ type: z.literal('app.delete'), appId: IdRef }),
+  z.object({ type: z.literal('app.move'), appId: IdRef, toIndex: Index, categoryId: IdRef.optional() }),
   z.object({ type: z.literal('categories.replace'), categories: z.array(z.unknown()).max(50) }),
+  z.object({ type: z.literal('category.move'), categoryId: IdRef, toIndex: Index }),
   z.object({ type: z.literal('engine.upsert'), engine: z.unknown(), index: Index.optional() }),
   z.object({ type: z.literal('engine.delete'), engineId: IdRef }),
   z.object({ type: z.literal('engine.move'), engineId: IdRef, toIndex: Index }),
@@ -90,6 +95,37 @@ function findApp(c: Config, id: string): AppEntry {
 function insertAt<T>(list: readonly T[], item: T, index: number | undefined): T[] {
   const out = [...list];
   out.splice(index === undefined ? out.length : clamp(index, 0, out.length), 0, item);
+  return out;
+}
+
+/**
+ * Stable sort of `apps` into contiguous blocks following the category order. Within a block the
+ * array order is the user's manual order; keeping the blocks contiguous makes every move (and its
+ * undo) land at one well-defined array position.
+ */
+export function groupByCategory(apps: readonly AppEntry[], categories: readonly Category[]): AppEntry[] {
+  const rank = new Map(categories.map((k, i) => [k.id, i]));
+  const r = (a: AppEntry) => rank.get(a.categoryId) ?? categories.length;
+  const sorted = apps.map((a, i) => ({ a, i })).sort((x, y) => r(x.a) - r(y.a) || x.i - y.i);
+  return sorted.every((x, i) => x.i === i) ? [...apps] : sorted.map((x) => x.a);
+}
+
+/** Inserts `app` as the `index`-th app of its category (clamped; `Infinity` = last) in grouped `apps`. */
+function placeIn(apps: AppEntry[], app: AppEntry, index: number, categories: readonly Category[]): AppEntry[] {
+  const peers = apps.filter((a) => a.categoryId === app.categoryId);
+  const j = Math.max(0, Math.min(index, peers.length));
+  let at: number;
+  if (j < peers.length) at = apps.indexOf(peers[j]!);
+  else if (peers.length) at = apps.indexOf(peers.at(-1)!) + 1;
+  else {
+    // Empty category: its block starts before the first app of a later category.
+    const rank = new Map(categories.map((k, i) => [k.id, i]));
+    const mine = rank.get(app.categoryId) ?? categories.length;
+    at = apps.findIndex((a) => (rank.get(a.categoryId) ?? categories.length) > mine);
+    if (at < 0) at = apps.length;
+  }
+  const out = [...apps];
+  out.splice(at, 0, app);
   return out;
 }
 
@@ -146,14 +182,46 @@ export function applyOp(c: Config, op: Op): Config {
     case 'app.upsert': {
       const app = parse(AppSchema, op.app);
       if (!c.categories.some((k) => k.id === app.categoryId)) app.categoryId = LOCKED_CATEGORY.none;
-      const exists = c.apps.some((a) => a.id === app.id);
-      const apps = exists ? c.apps.map((a) => (a.id === app.id ? app : a)) : insertAt(c.apps, app, op.index);
+      const prev = c.apps.find((a) => a.id === app.id);
+      let apps: AppEntry[];
+      if (prev && prev.categoryId === app.categoryId) apps = c.apps.map((a) => (a.id === app.id ? app : a));
+      // An explicit index is an exact array position (undo of a delete).
+      else if (!prev && op.index !== undefined) apps = insertAt(c.apps, app, op.index);
+      // New app, or a new category: join the end of that category.
+      else apps = placeIn(prev ? c.apps.filter((a) => a.id !== app.id) : c.apps, app, Infinity, c.categories);
       const unpin = app.kind !== 'site' || app.hidden;
       return { ...c, apps, pins: unpin ? c.pins.filter((x) => x !== app.id) : c.pins };
     }
     case 'app.delete': {
       if (!c.apps.some((a) => a.id === op.appId)) return c;
       return { ...c, apps: c.apps.filter((a) => a.id !== op.appId), pins: c.pins.filter((x) => x !== op.appId) };
+    }
+    case 'app.move': {
+      const app = findApp(c, op.appId);
+      const categoryId = op.categoryId ?? app.categoryId;
+      if (categoryId !== app.categoryId) {
+        if (!c.categories.some((k) => k.id === categoryId)) throw new OpError('not_found', '分类不存在');
+        // Services always live under 我的服务, sites never move into it.
+        if ((app.kind === 'service') !== (categoryId === LOCKED_CATEGORY.hosted)) throw new OpError('invalid', app.kind === 'service' ? '自托管服务只能放在「我的服务」' : '网站不能移到「我的服务」');
+      }
+      const moved = categoryId === app.categoryId ? app : { ...app, categoryId };
+      const apps = placeIn(
+        c.apps.filter((a) => a.id !== app.id),
+        moved,
+        op.toIndex,
+        c.categories,
+      );
+      return apps.every((a, k) => a === c.apps[k]) ? c : { ...c, apps };
+    }
+    case 'category.move': {
+      const i = c.categories.findIndex((k) => k.id === op.categoryId);
+      if (i < 0) return c;
+      const j = clamp(op.toIndex, 0, c.categories.length - 1);
+      if (i === j) return c;
+      const categories = [...c.categories];
+      const [k] = categories.splice(i, 1);
+      categories.splice(j, 0, k!);
+      return { ...c, categories, apps: groupByCategory(c.apps, categories) };
     }
     case 'categories.replace': {
       const categories = op.categories.map((k) => parse(CategorySchema, k));
@@ -162,7 +230,7 @@ export function applyOp(c: Config, op: Op): Config {
       }
       const ids = new Set(categories.map((k) => k.id));
       const apps = c.apps.map((a) => (ids.has(a.categoryId) ? a : { ...a, categoryId: LOCKED_CATEGORY.none }));
-      return { ...c, categories, apps };
+      return { ...c, categories, apps: groupByCategory(apps, categories) };
     }
     case 'engine.upsert': {
       const engine = parse(EngineSchema, op.engine);
@@ -215,12 +283,21 @@ export function normalizeConfig(c: Config): Config {
   if (!catIds.has(LOCKED_CATEGORY.hosted)) categories.unshift({ id: LOCKED_CATEGORY.hosted, label: '我的服务', locked: true });
   if (!catIds.has(LOCKED_CATEGORY.none)) categories.push({ id: LOCKED_CATEGORY.none, label: '未分类', locked: true });
   const allCats = new Set(categories.map((k) => k.id));
-  const apps = c.apps.map((a) => (allCats.has(a.categoryId) ? a : { ...a, categoryId: LOCKED_CATEGORY.none }));
+  const apps = groupByCategory(
+    c.apps.map((a) => (allCats.has(a.categoryId) ? a : { ...a, categoryId: LOCKED_CATEGORY.none })),
+    categories,
+  );
   const pinnable = new Set(apps.filter((a) => a.kind === 'site' && !a.hidden).map((a) => a.id));
   const pins = [...new Set(c.pins)].filter((id) => ids.has(id) && pinnable.has(id)).slice(0, MAX_PINS);
   const engines = c.engines.length ? c.engines : [];
   const defaultEngine = engines.some((e) => e.id === c.settings.search.defaultEngine) ? c.settings.search.defaultEngine : (engines[0]?.id ?? 'google');
   return { ...c, apps, categories, pins, settings: { ...c.settings, search: { ...c.settings.search, defaultEngine } } };
+}
+
+/** Moves `app` back to the category and position it has in `before`. */
+function restorePlace(before: Config, app: AppEntry): Op {
+  const index = before.apps.filter((a) => a.categoryId === app.categoryId).indexOf(app);
+  return { type: 'app.move', appId: app.id, categoryId: app.categoryId, toIndex: index };
 }
 
 /**
@@ -256,10 +333,21 @@ export function invertOp(before: Config, op: Op): Op[] {
     case 'app.upsert': {
       const i = before.apps.findIndex((a) => a.id === op.app.id);
       if (i < 0) return [{ type: 'app.delete', appId: op.app.id }];
-      const out: Op[] = [{ type: 'app.upsert', app: before.apps[i]! }];
+      const prev = before.apps[i]!;
+      const out: Op[] = [{ type: 'app.upsert', app: prev }];
+      // A category change moved it to the end of the new category; put it back where it was.
+      if (op.app.categoryId !== prev.categoryId) out.push(restorePlace(before, prev));
       const p = before.pins.indexOf(op.app.id);
       if (p >= 0) out.push({ type: 'pin.add', appId: op.app.id, index: p });
       return out;
+    }
+    case 'app.move': {
+      const app = before.apps.find((a) => a.id === op.appId);
+      return app ? [restorePlace(before, app)] : [];
+    }
+    case 'category.move': {
+      const i = before.categories.findIndex((k) => k.id === op.categoryId);
+      return i < 0 ? [] : [{ type: 'category.move', categoryId: op.categoryId, toIndex: i }];
     }
     case 'app.delete': {
       const i = before.apps.findIndex((a) => a.id === op.appId);
@@ -272,7 +360,7 @@ export function invertOp(before: Config, op: Op): Op[] {
     case 'categories.replace': {
       const ids = new Set(op.categories.map((k) => k.id));
       const moved = before.apps.filter((a) => !ids.has(a.categoryId));
-      return [{ type: 'categories.replace', categories: before.categories }, ...moved.map((a): Op => ({ type: 'app.upsert', app: a }))];
+      return [{ type: 'categories.replace', categories: before.categories }, ...moved.flatMap((a): Op[] => [{ type: 'app.upsert', app: a }, restorePlace(before, a)])];
     }
     case 'engine.upsert': {
       const i = before.engines.findIndex((e) => e.id === op.engine.id);

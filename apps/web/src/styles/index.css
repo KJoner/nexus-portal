@@ -109,6 +109,26 @@
   to { transform: none; }
 }
 
+/* Shortcut pages: a short slide in the paging direction; 减弱 keeps only the fade. */
+@keyframes nx-page-next {
+  from { transform: translateX(24px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes nx-page-prev {
+  from { transform: translateX(-24px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+.nx-page-next {
+  animation: nx-page-next 0.24s var(--ease-soft);
+}
+.nx-page-prev {
+  animation: nx-page-prev 0.24s var(--ease-soft);
+}
+[data-motion='reduced'] .nx-page-next,
+[data-motion='reduced'] .nx-page-prev {
+  animation-name: nx-fade;
+}
+
 /* R2 · 滑块: 4px track, 18px thumb (26px on phones). */
 .nx-range {
   -webkit-appearance: none;

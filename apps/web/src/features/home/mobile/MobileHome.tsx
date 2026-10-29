@@ -1,6 +1,6 @@
-import { hostOf, matchApps, pinnedSites, shownServices, type AppEntry, type SearchRow } from '@nexus/shared';
-import { Activity, ChevronLeft, ChevronRight, EyeOff, Pencil, Pin, PinOff, Plus, Search, Settings } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { hostOf, matchApps, MAX_PINS, mobileShortcuts, paginate, shownServices, type AppEntry, type SearchRow } from '@nexus/shared';
+import { Activity, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, ExternalLink, EyeOff, Pencil, Pin, PinOff, Plus, Search, Settings } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { ActionSheet, type SheetItem, type SheetState } from '../../../components/ActionSheet';
 import { ToastHost } from '../../../components/ToastHost';
@@ -10,7 +10,8 @@ import { AppTile } from '../../../icons/AppTile';
 import { ALL_APPS_GLYPH } from '../../../icons/glyphs';
 import { cn } from '../../../lib/cn';
 import { useMotionLevel, useNow, useViewport, useVisualViewport } from '../../../lib/hooks';
-import { appLinkProps, recordAppOpen } from '../../../lib/open';
+import { appLinkProps, openApp, recordAppOpen } from '../../../lib/open';
+import { storage } from '../../../lib/storage';
 import { formatClock, formatDate } from '../../../lib/time';
 import { homeActions } from '../actions';
 import { activateRow, rowTile, useSearchModel, type QuickActionId } from '../search-model';
@@ -26,6 +27,9 @@ const TILE = { s: 54, m: 60, l: 66 } as const;
 const GLASS: CSSProperties = { background: 'rgba(239,234,225,0.1)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), inset 0 0 0 1px rgba(239,234,225,0.08)' };
 const PANEL_BOTTOM = 'max(12px, calc(env(safe-area-inset-bottom) - 10px))';
 const SAFE_TOP = 'max(env(safe-area-inset-top), 20px)';
+/** Per-browser memory of the expanded shortcut sheet (设置 · 记住展开状态). */
+const EXPANDED_KEY = 'nexus.home.expanded.mobile';
+const DOTS_H = 18;
 
 export function MobileHome() {
   const config = useConfig();
@@ -39,6 +43,7 @@ export function MobileHome() {
   const [q, setQ] = useState('');
   const [engineId, setEngineId] = useState(config.settings.search.defaultEngine);
   const [sheet, setSheet] = useState<SheetState | null>(null);
+  const [expandedPref, setExpandedPref] = useState(() => config.settings.home.shortcuts.remember && storage.get<boolean>(EXPANDED_KEY) === true);
   const inputRef = useRef<HTMLInputElement>(null);
   const vv = useVisualViewport(mode === 'search');
 
@@ -46,13 +51,21 @@ export function MobileHome() {
   const tile = TILE[look.iconSize] - (w < 380 ? 4 : 0);
   const labels = home.labels.mobile;
   const showStatus = !privacy.guest;
-  const pinned = useMemo(() => pinnedSites(config), [config]);
   const shownIds = useMemo(() => new Set(shownServices(config).map((a) => a.id)), [config]);
   const homeServices = services.filter((s) => shownIds.has(s.app.id));
   const capacity = Math.max(0, home.mobileRows * 4 - homeServices.length);
-  const homeSites = pinned.slice(0, capacity);
+  const { first: homeSites, extra } = useMemo(() => mobileShortcuts(config), [config]);
   const showAdd = homeSites.length < capacity;
   const isHome = mode === 'home';
+  // v0.2: pinned sites beyond the first page live on swipeable pages, or all at once when the
+  // sheet is pulled up. Hover is never needed.
+  const extraPages = extra.length ? paginate(extra, home.mobileRows * 4) : [];
+  const hasExtra = extraPages.length > 0;
+  const expanded = hasExtra && (home.shortcuts.mode === 'double' || expandedPref);
+  const setExpanded = (v: boolean) => {
+    setExpandedPref(v);
+    if (home.shortcuts.remember) storage.set(EXPANDED_KEY, v);
+  };
 
   useEffect(() => setEngineId(config.settings.search.defaultEngine), [config.settings.search.defaultEngine]);
 
@@ -69,18 +82,23 @@ export function MobileHome() {
     const i = c.pins.indexOf(id);
     const toSettings: SheetItem = { label: '在设置中编辑', icon: Pencil, hint: '›', onSelect: () => navigate(`/settings/apps?edit=${id}`) };
     const hide: SheetItem = { label: '隐藏此应用', icon: EyeOff, danger: true, onSelect: () => homeActions.hide(id) };
-    const usage = `${Math.min(c.pins.length, capacity)}/${capacity}`;
+    const newTab: SheetItem = { label: '在新标签页打开', icon: ExternalLink, onSelect: () => openApp(app, true) };
+    const usage = `${c.pins.length}/${MAX_PINS}`;
+    const last = (c.settings.home.shortcuts.mode === 'single' ? Math.min(c.pins.length, capacity) : c.pins.length) - 1;
     let items: SheetItem[];
-    if (from === 'hosted') items = [...(showStatus ? [{ label: '查看状态', icon: Activity, onSelect: () => openApps() }] : []), toSettings];
+    if (from === 'hosted') items = [newTab, ...(showStatus ? [{ label: '查看状态', icon: Activity, onSelect: () => openApps() }] : []), toSettings];
     else if (from === 'home')
       items = [
+        newTab,
         { label: '向前移动', icon: ChevronLeft, disabled: i <= 0, onSelect: () => homeActions.move(id, -1) },
-        { label: '向后移动', icon: ChevronRight, disabled: i >= homeSites.length - 1, onSelect: () => homeActions.move(id, 1) },
+        { label: '向后移动', icon: ChevronRight, disabled: i >= last, onSelect: () => homeActions.move(id, 1) },
+        { label: '移到最前', icon: ChevronFirst, disabled: i <= 0, onSelect: () => homeActions.moveTo(id, 0) },
+        { label: '移到最后', icon: ChevronLast, disabled: i >= c.pins.length - 1, onSelect: () => homeActions.moveTo(id, c.pins.length - 1) },
         { label: '从首页移除', icon: PinOff, onSelect: () => homeActions.unpin(id) },
         hide,
         toSettings,
       ];
-    else items = [i >= 0 ? { label: '从首页移除', icon: PinOff, hint: usage, onSelect: () => homeActions.unpin(id) } : { label: '添加到首页', icon: Pin, hint: usage, onSelect: () => homeActions.pin(id) }, hide, toSettings];
+    else items = [newTab, i >= 0 ? { label: '从首页移除', icon: PinOff, hint: usage, onSelect: () => homeActions.unpin(id) } : { label: '添加到首页', icon: Pin, hint: usage, onSelect: () => homeActions.pin(id) }, hide, toSettings];
     setSheet({ header: { target: { kind: 'app', app }, name: app.name, sub: from === 'hosted' ? '自托管服务 · 在设置中管理' : hostOf(app.url) }, items });
   };
   const fromOf = (a: AppEntry, where: 'home' | 'apps'): From => (a.kind === 'service' ? 'hosted' : where);
@@ -101,8 +119,15 @@ export function MobileHome() {
   };
 
   // Sheet geometry: the floating home panel grows into a full-height sheet for search / apps.
-  const rowsH = home.mobileRows * (tile + (labels ? 22 : 0)) + (home.mobileRows - 1) * 16;
-  const homeH = 26 + 32 + 16 + rowsH + 8 + 14 + 52 + 14;
+  const rowH = tile + (labels ? 22 : 0);
+  const rowsH = home.mobileRows * rowH + (home.mobileRows - 1) * 16;
+  const dots = hasExtra && home.shortcuts.pager && !expanded;
+  const statusH = 32;
+  const homeH = 26 + statusH + 16 + rowsH + (dots ? DOTS_H : 0) + 8 + 14 + 52 + 14;
+  // Pulled up: every pinned site in one scrolling grid, never covering the clock.
+  const allRows = Math.ceil((homeSites.length + homeServices.length + (showAdd ? 1 : 0) + extra.length) / 4);
+  const expandedH = 26 + statusH + 16 + allRows * rowH + (allRows - 1) * 16 + 8 + 14 + 52 + 14;
+  const panelH = isHome ? (expanded ? `min(${expandedH}px, calc(100% - ${SAFE_TOP} - ${small ? 150 : 170}px))` : `${homeH}px`) : `calc(100% - ${SAFE_TOP} - 5px)`;
   const rowB = mode === 'apps' ? 'calc(max(env(safe-area-inset-bottom), 12px) + 6px)' : mode === 'search' ? '10px' : '14px';
   const contentB = `calc(${rowB} + 60px)`;
   const toastB = isHome ? `calc(${PANEL_BOTTOM} + 80px)` : `calc(${rowB} + 64px)`;
@@ -138,7 +163,7 @@ export function MobileHome() {
           left: isHome ? 10 : 0,
           right: isHome ? 10 : 0,
           bottom: isHome ? PANEL_BOTTOM : 0,
-          height: isHome ? homeH : `calc(100% - ${SAFE_TOP} - 5px)`,
+          height: panelH,
           borderRadius: isHome ? 34 : '30px 30px 0 0',
           background: isHome ? 'rgba(26,25,22,0.5)' : 'rgba(28,26,23,0.72)',
           boxShadow: '0 20px 50px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.07)',
@@ -146,17 +171,19 @@ export function MobileHome() {
           transitionDuration: '420ms',
         }}
       >
-        <button
-          type="button"
-          onClick={() => (isHome ? openApps() : goHome())}
-          aria-label={isHome ? '展开全部应用' : '收起'}
-          className="absolute top-0 left-1/2 grid h-[26px] w-40 -translate-x-1/2 place-items-center border-0 bg-transparent"
-        >
-          <span className="h-[5px] w-9 rounded-[3px] bg-ink/28" />
-        </button>
+        <Grabber
+          label={!isHome ? '收起' : hasExtra ? (expanded ? '收起快捷方式' : '展开更多快捷方式') : '展开全部应用'}
+          expanded={isHome && hasExtra ? expanded : undefined}
+          onTap={() => (!isHome ? goHome() : hasExtra && home.shortcuts.mode === 'expand' ? setExpanded(!expanded) : openApps())}
+          onSwipe={(dir) => {
+            if (!isHome) return dir === 'down' && goHome();
+            if (dir === 'up') return hasExtra && !expanded ? setExpanded(true) : openApps();
+            if (expanded && home.shortcuts.mode === 'expand') setExpanded(false);
+          }}
+        />
 
         {/* home */}
-        <div className="absolute top-[26px] right-3.5 left-3.5 transition-[opacity,transform] duration-200 ease-soft" style={{ bottom: contentB, ...layer(isHome, false) }} inert={!isHome}>
+        <div className="absolute top-[26px] right-3.5 left-3.5 flex flex-col transition-[opacity,transform] duration-200 ease-soft" style={{ bottom: contentB, ...layer(isHome, false) }} inert={!isHome}>
           {showStatus && (
             <div className="flex items-center px-0.5">
               <button type="button" onClick={openApps} aria-label={`服务状态：${summary.text}，查看全部应用`} className="-my-1.5 flex h-11 items-center border-0 bg-transparent p-0">
@@ -172,34 +199,18 @@ export function MobileHome() {
               </button>
             </div>
           )}
-          <div className="mt-4 grid grid-cols-4 gap-y-4">
-            {[...homeSites.map((a) => ({ app: a, view: undefined as ServiceView | undefined })), ...homeServices.map((s) => ({ app: s.app, view: s }))].map(({ app, view }) => {
-              const { consumeClick, ...handlers } = bind(app.id);
-              return (
-                <a
-                  key={app.id}
-                  {...appLinkProps(app)}
-                  {...handlers}
-                  aria-label={view && showStatus ? `${app.name}，${view.levelLabel}` : app.name}
-                  onClick={(e) => !consumeClick(e) && recordAppOpen(app)}
-                  draggable={false}
-                  className="flex flex-col items-center gap-[7px] text-ink no-underline transition-transform duration-160 ease-soft active:scale-[.94]"
-                  style={{ transform: pressed === app.id ? 'scale(.92)' : undefined }}
-                >
-                  <AppTile target={{ kind: 'app', app }} size={tile} status={view && showStatus ? view.level : undefined} />
-                  {labels && <span className="max-w-full truncate px-0.5 text-[11.5px] text-ink/82">{app.name}</span>}
-                </a>
-              );
-            })}
-            {showAdd && (
-              <button type="button" onClick={openApps} aria-label="添加到首页" className="flex flex-col items-center gap-[7px] border-0 bg-transparent p-0 text-ink">
-                <span className="grid place-items-center rounded-[17px] border-[1.5px] border-dashed border-ink/30" style={{ width: tile, height: tile }}>
-                  <Plus className="size-5 text-ink/66" />
-                </span>
-                {labels && <span className="text-[11.5px] text-ink/56">添加</span>}
-              </button>
-            )}
-          </div>
+          <HomeGrid
+            pages={[[...homeSites.map((a) => ({ app: a, view: undefined as ServiceView | undefined })), ...homeServices.map((s) => ({ app: s.app, view: s }))], ...extraPages.map((p) => p.map((a) => ({ app: a, view: undefined as ServiceView | undefined })))]}
+            expanded={expanded}
+            dots={dots}
+            showAdd={showAdd}
+            tile={tile}
+            labels={labels}
+            showStatus={showStatus}
+            bind={bind}
+            pressed={pressed}
+            onAdd={openApps}
+          />
         </div>
 
         {/* search */}
@@ -468,5 +479,147 @@ function MobileApps({ open, q, contentB, layer, all, showStatus, bind, pressed, 
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * The sheet handle: tap toggles, a vertical swipe expands / collapses. Touch scrolling is off on
+ * the handle itself, so the gesture never scrolls the page or fights Safari's own gestures.
+ */
+function Grabber({ label, expanded, onTap, onSwipe }: { label: string; expanded?: boolean; onTap(): void; onSwipe(dir: 'up' | 'down'): void }) {
+  const start = useRef<{ y: number; id: number } | null>(null);
+  const swiped = useRef(false);
+  const down = (e: ReactPointerEvent<HTMLButtonElement>) => {
+    start.current = { y: e.clientY, id: e.pointerId };
+    swiped.current = false;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+  const up = (e: ReactPointerEvent<HTMLButtonElement>) => {
+    const s = start.current;
+    start.current = null;
+    if (!s || s.id !== e.pointerId) return;
+    const dy = e.clientY - s.y;
+    if (Math.abs(dy) < 24) return;
+    swiped.current = true;
+    onSwipe(dy < 0 ? 'up' : 'down');
+  };
+  return (
+    <button
+      type="button"
+      onPointerDown={down}
+      onPointerUp={up}
+      onPointerCancel={() => (start.current = null)}
+      onClick={() => (swiped.current ? (swiped.current = false) : onTap())}
+      aria-label={label}
+      aria-expanded={expanded}
+      className="absolute top-0 left-1/2 z-[1] grid h-[26px] w-40 -translate-x-1/2 touch-none place-items-center border-0 bg-transparent"
+    >
+      <span className="h-[5px] w-9 rounded-[3px] bg-ink/28" />
+    </button>
+  );
+}
+
+interface GridItem {
+  app: AppEntry;
+  view: ServiceView | undefined;
+}
+
+interface HomeGridProps {
+  /** Page 1: first sites + services; later pages: the remaining pinned sites. */
+  pages: GridItem[][];
+  expanded: boolean;
+  dots: boolean;
+  showAdd: boolean;
+  tile: number;
+  labels: boolean;
+  showStatus: boolean;
+  bind: ReturnType<typeof useLongPress>['bind'];
+  pressed: string | null;
+  onAdd(): void;
+}
+
+/**
+ * Collapsed: pages side by side on a native scroll-snap strip (smooth on iOS, a swipe never opens a
+ * tile). Expanded: one vertical grid with everything.
+ */
+function HomeGrid({ pages, expanded, dots, showAdd, tile, labels, showStatus, bind, pressed, onAdd }: HomeGridProps) {
+  const strip = useRef<HTMLDivElement>(null);
+  const [page, setPage] = useState(0);
+  const multi = pages.length > 1;
+
+  useEffect(() => {
+    if (expanded) setPage(0);
+  }, [expanded]);
+
+  const cell = ({ app, view }: GridItem) => {
+    const { consumeClick, ...handlers } = bind(app.id);
+    return (
+      <a
+        key={app.id}
+        {...appLinkProps(app)}
+        {...handlers}
+        aria-label={view && showStatus ? `${app.name}，${view.levelLabel}` : app.name}
+        onClick={(e) => !consumeClick(e) && recordAppOpen(app)}
+        draggable={false}
+        className="flex flex-col items-center gap-[7px] text-ink no-underline transition-transform duration-160 ease-soft active:scale-[.94]"
+        style={{ transform: pressed === app.id ? 'scale(.92)' : undefined }}
+      >
+        <AppTile target={{ kind: 'app', app }} size={tile} status={view && showStatus ? view.level : undefined} />
+        {labels && <span className="max-w-full truncate px-0.5 text-[11.5px] text-ink/82">{app.name}</span>}
+      </a>
+    );
+  };
+  const add = showAdd && (
+    <button key="add" type="button" onClick={onAdd} aria-label="添加到首页" className="flex flex-col items-center gap-[7px] border-0 bg-transparent p-0 text-ink">
+      <span className="grid place-items-center rounded-[17px] border-[1.5px] border-dashed border-ink/30" style={{ width: tile, height: tile }}>
+        <Plus className="size-5 text-ink/66" />
+      </span>
+      {labels && <span className="text-[11.5px] text-ink/56">添加</span>}
+    </button>
+  );
+
+  if (expanded) {
+    return (
+      <div role="group" aria-label="全部快捷方式" className="nx-scroll-hidden mt-4 grid min-h-0 flex-1 grid-cols-4 content-start gap-y-4 overflow-y-auto overscroll-contain pb-1">
+        {pages[0]!.map(cell)}
+        {add}
+        {pages.slice(1).flat().map(cell)}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div
+        ref={strip}
+        role={multi ? 'group' : undefined}
+        aria-label={multi ? `快捷方式，第 ${page + 1} / ${pages.length} 页` : undefined}
+        onScroll={(e) => setPage(Math.round(e.currentTarget.scrollLeft / Math.max(1, e.currentTarget.clientWidth)))}
+        className="nx-scroll-hidden mt-4 flex snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain"
+      >
+        {pages.map((items, p) => (
+          <div key={p} className="grid w-full flex-none snap-start snap-always grid-cols-4 content-start gap-y-4">
+            {items.map(cell)}
+            {p === 0 && add}
+          </div>
+        ))}
+      </div>
+      {dots && (
+        <div className="flex justify-center gap-1.5" style={{ height: DOTS_H, alignItems: 'flex-end' }}>
+          {pages.map((_, p) => (
+            <button
+              key={p}
+              type="button"
+              aria-label={`第 ${p + 1} 页`}
+              aria-current={p === page ? 'page' : undefined}
+              onClick={() => strip.current?.scrollTo({ left: p * strip.current.clientWidth, behavior: 'smooth' })}
+              className="grid h-4 w-3 place-items-center border-0 bg-transparent p-0"
+            >
+              <span className="block size-1.5 rounded-full" style={{ background: p === page ? 'rgba(239,234,225,0.8)' : 'rgba(239,234,225,0.28)' }} />
+            </button>
+          ))}
+        </div>
+      )}
+    </>
   );
 }

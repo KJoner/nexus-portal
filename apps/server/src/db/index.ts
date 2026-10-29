@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3';
-import { mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { EnvError } from '../env';
 
 export type DB = Database.Database;
@@ -78,7 +78,15 @@ const MIGRATIONS: string[] = [
     updated_at text not null
   );
   `,
+  `
+  -- v0.2: the configuration document can hold up to 36 pins and new settings that v0.1 cannot
+  -- read (it would silently fall back to defaults). Bumping the version makes older releases
+  -- refuse this database instead; rolling back means restoring the automatic backup.
+  insert or replace into meta (key, value) values ('config_format', '2');
+  `,
 ];
+
+const KEEP_BACKUPS = 5;
 
 export function openDb(file: string): DB {
   if (file !== ':memory:') mkdirSync(dirname(file), { recursive: true });
@@ -86,16 +94,38 @@ export function openDb(file: string): DB {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.pragma('busy_timeout = 3000');
-  migrate(db);
+  migrate(db, file);
   return db;
 }
 
-function migrate(db: DB) {
+/**
+ * Consistent copy of the database before an upgrade changes it: `<data>/backups/nexus-v<N>-<time>.db`.
+ * Only the newest few are kept. Returns the path of the copy.
+ */
+export function backupDb(db: DB, file: string, version: number): string {
+  const dir = join(dirname(file), 'backups');
+  mkdirSync(dir, { recursive: true });
+  const dest = join(dir, `nexus-v${version}-${new Date().toISOString().replace(/[:.]/g, '-')}.db`);
+  db.exec(`vacuum into '${dest.replace(/'/g, "''")}'`);
+  const old = readdirSync(dir)
+    .filter((f) => /^nexus-v\d+-.+\.db$/.test(f))
+    .sort()
+    .slice(0, -KEEP_BACKUPS);
+  for (const f of old) rmSync(join(dir, f), { force: true });
+  return dest;
+}
+
+function migrate(db: DB, file: string) {
   const current = db.pragma('user_version', { simple: true }) as number;
   // A database written by a newer release: running older code on it could corrupt data.
   if (current > MIGRATIONS.length) {
     db.close();
     throw new EnvError(`数据库版本（${current}）比当前程序（${MIGRATIONS.length}）新：请使用较新的镜像，或先恢复升级前的数据备份再回滚到旧版本`);
+  }
+  // An existing database is copied before the first pending migration touches it.
+  if (current > 0 && current < MIGRATIONS.length && file !== ':memory:') {
+    const dest = backupDb(db, file, current);
+    console.log(`[nexus] 升级数据库前已自动备份：${dest}`);
   }
   for (let v = current; v < MIGRATIONS.length; v++) {
     db.transaction(() => {
