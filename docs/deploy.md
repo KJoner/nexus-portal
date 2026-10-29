@@ -12,7 +12,7 @@ curl -fsSLO https://raw.githubusercontent.com/KJoner/nexus-portal/main/compose.y
 curl -fsSL https://raw.githubusercontent.com/KJoner/nexus-portal/main/.env.example -o .env
 chmod 600 .env
 # 编辑 .env：
-#   NEXUS_VERSION    镜像版本，例如 0.1.0（不带 v）
+#   NEXUS_VERSION    镜像版本，例如 0.2.0（不带 v）
 #   NEXUS_PASSWORD   访问密码，至少 8 位
 #   NEXUS_SECRET     openssl rand -base64 32
 #   NEXUS_PUBLIC_URL 对外地址，例如 https://home.example.com

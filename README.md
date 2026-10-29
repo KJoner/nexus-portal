@@ -27,12 +27,12 @@ docker compose ps       # STATUS 显示 healthy 即可
 
 | 标签 | 含义 |
 | --- | --- |
-| `0.1.0` | 固定版本，生产环境推荐写这个 |
-| `0.1` | 0.1.x 的最新补丁版本 |
+| `0.2.0` | 固定版本，生产环境推荐写这个 |
+| `0.2` | 0.2.x 的最新补丁版本 |
 | `latest` | 最新的**稳定**版本；预发布版本不会覆盖它 |
 | `0.2.0-rc.1` | 预发布版本，只有这一个标签 |
 
-- 以非 root 用户（uid 1000）运行，根文件系统只读；所有数据都在 `/data` 卷中（SQLite、上传的壁纸和图标、图标缓存）
+- 以非 root 用户（uid 1000）运行，根文件系统只读；所有数据都在 `/data` 卷中（SQLite 及其升级前自动备份、壁纸（含图库与每日一图的缓存）、上传的图标、图标缓存）
 - 端口 `8787`，内置健康检查 `GET /api/healthz`
 - 前后端同源，所以登录 Cookie、同源校验和实时推送都不需要额外配置跨域
 - 每个版本附带构建来源证明（provenance）和 SBOM
@@ -40,10 +40,10 @@ docker compose ps       # STATUS 显示 healthy 即可
 查看正在运行的版本：
 
 ```bash
-docker compose logs nexus | head -1          # [nexus] 0.1.0 已启动 …
-docker image inspect kjoner/nexus-portal:0.1.0 \
+docker compose logs nexus | head -1          # [nexus] 0.2.0 已启动 …
+docker image inspect kjoner/nexus-portal:0.2.0 \
   --format '{{index .Config.Labels "org.opencontainers.image.revision"}}'   # 对应的 Git 提交
-docker buildx imagetools inspect kjoner/nexus-portal:0.1.0                 # 包含的架构
+docker buildx imagetools inspect kjoner/nexus-portal:0.2.0                 # 包含的架构
 ```
 
 ## 目录
@@ -139,6 +139,8 @@ docker compose logs --tail 20 nexus    # 第一行会显示「[nexus] 0.2.0 已�
 
 数据库迁移会在启动时自动执行。浏览器端的 Service Worker 会在下次打开页面时自动更新。
 
+从 v0.2 起，需要迁移数据库时，Nexus 会先把旧数据库完整复制到数据卷里的 `backups/nexus-v<旧版本号>-<时间>.db`（只保留最近 5 份），日志中会显示「升级数据库前已自动备份」。这份备份只包含数据库（应用、分类、设置、壁纸记录等），不包含壁纸和图标文件，所以升级前仍建议做一次下面的完整备份。
+
 **备份**（升级前务必做一次）：
 
 ```bash
@@ -161,6 +163,25 @@ docker compose down
 docker run --rm -v nexus_nexus-data:/data -v "$PWD":/backup alpine sh -c 'rm -rf /data/* && tar xzf /backup/nexus-2026-11-15.tgz -C /data'
 docker compose up -d
 ```
+
+**没有手动备份时，用升级前的自动备份回滚**（例如从 0.2.x 回到 0.1.0）：
+
+```bash
+docker compose down
+docker run --rm -v nexus_nexus-data:/data alpine sh -c '
+  ls -t /data/backups/
+  cp "$(ls -t /data/backups/nexus-v3-*.db | head -1)" /data/nexus.db
+  rm -f /data/nexus.db-wal /data/nexus.db-shm
+  chown 1000:1000 /data/nexus.db'
+sed -i 's/^NEXUS_VERSION=.*/NEXUS_VERSION=0.1.0/' .env
+docker compose up -d
+```
+
+- `nexus-v3-…` 中的 3 是 v0.1.x 的数据库版本。
+- 必须删除 `-wal` 和 `-shm` 两个文件：它们属于新版本的数据库。
+- `chown` 是因为 alpine 以 root 身份复制，而 Nexus 以 uid 1000 运行。
+- 升级之后做的修改（例如新增的固定项、壁纸）会随回滚一起丢失。
+- 这一流程在发布 v0.2.0 前用真实的 0.1.0 镜像演练过：升级后数据完整；0.1.0 拒绝打开新数据库；恢复备份后，配置与升级前完全一致。
 
 ## 常见问题排查
 

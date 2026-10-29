@@ -402,6 +402,12 @@ export function createApp({ env, repo, auth, limiter, wallpapers, icons, health,
       c.header('Cache-Control', 'no-cache');
       c.header('Content-Type', 'application/manifest+json');
     });
+    // The HTML shell names the current hashed assets: always revalidate it, or an upgrade only
+    // shows up after the browser's heuristic cache expires.
+    app.use('*', async (c, next) => {
+      await next();
+      if (c.res.headers.get('content-type')?.startsWith('text/html') && !c.res.headers.has('cache-control')) c.header('Cache-Control', 'no-cache');
+    });
     app.use('*', serveStatic({ root, rewriteRequestPath: (p) => p }));
     const indexHtml = readFile(join(root, 'index.html'), 'utf8');
     app.get('*', async (c) => {

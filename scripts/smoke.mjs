@@ -33,6 +33,7 @@ await check('web shell', async () => {
   const html = await r.text();
   expect(r.ok && html.includes('id="root"'), `HTTP ${r.status}, no app root`);
   expect(r.headers.get('content-security-policy'), 'no Content-Security-Policy');
+  expect(r.headers.get('cache-control') === 'no-cache', `HTML cache-control: ${r.headers.get('cache-control')}`);
   asset = html.match(/\/assets\/[\w.-]+\.js/)?.[0];
   expect(asset, 'no script asset referenced');
 });
