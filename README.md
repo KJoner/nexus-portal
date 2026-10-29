@@ -8,13 +8,60 @@
 - 验收清单：[`docs/acceptance.md`](docs/acceptance.md)
 - 更新日志：[`CHANGELOG.md`](CHANGELOG.md)
 
-## 快速部署（VPS + Docker Compose）
+## 一键部署（推荐）
+
+需要一台装好 Docker Engine 与 Docker Compose v2 的 Linux 服务器，用 root 或 docker 组用户执行：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/KJoner/nexus-portal/main/scripts/deploy.sh -o deploy.sh
+bash deploy.sh                       # 首次：询问域名，隐藏输入访问密码，生成 .env 并启动
+bash ~/nexus/deploy.sh               # 以后：在任意目录执行都会找到原部署，备份 → 验证备份 → 更新
+```
+
+| 命令 | 作用 |
+| --- | --- |
+| `bash deploy.sh` | 没有部署就安装，已有部署就更新到最新正式版本；版本相同且服务健康时不做任何改动 |
+| `--version 0.2.1` | 安装或更新到指定版本（不能低于当前版本，回滚请用 `--restore`） |
+| `--install-dir DIR` | 指定部署目录。默认依次识别：正在运行的 Nexus 容器所在目录 → 当前目录 → `~/nexus`（root 为 `/opt/nexus`） |
+| `--backup` / `--list-backups` | 立即备份 / 列出备份 |
+| `--verify-backup [名称]` | 在隔离的临时容器中还原并启动备份，确认它真的可以恢复 |
+| `--restore [名称]` | 恢复备份（默认最近一次）；恢复前会先备份当前状态 |
+| `--password` | 修改访问密码（隐藏输入，所有设备需要重新登录） |
+| `--status` | 查看部署目录、Compose 文件、容器、数据卷、密码存储方式与备份 |
+| `--yes`、`--password-stdin`、`--domain` | 非交互运行时使用；密码只从标准输入读取，不放在命令参数里 |
+
+脚本做了什么，以及它不会做什么：
+
+- **更新流程**：
+  1. 先拉取并检查新镜像。
+  2. 备份，并在隔离的临时容器里还原、启动这份备份，确认可以恢复。
+  3. 更新 `compose.yaml`，把 `.env` 中的版本固定为具体版本号。
+  4. 启动并等待健康检查通过。
+  5. 任何一步失败都会停下；启动失败时自动回滚到更新前的配置和数据库。
+- **备份**：每次更新前一份，存放在部署目录的 `backups/`，只保留最近 3 份；目录权限 700，文件权限 600。备份内容包括：
+  - `.env` 和所有 Compose 文件；
+  - SQLite 的一致性快照：用 `VACUUM INTO` 生成，服务运行时也不会读到写了一半的数据，并做完整性检查；
+  - 上传的壁纸和图标、`secret.key` 等持久化数据。
+  - 首次安装不做备份。
+- **数据库版本检查**：数据库版本比目标版本新时（即降级）会拒绝，避免旧程序读坏新数据。
+- **访问密码**：只以 Argon2id 哈希的形式写入 `.env`（`NEXUS_PASSWORD_HASH`），不保存明文。
+  - 旧部署 `.env` 里的明文 `NEXUS_PASSWORD`，会在更新时自动迁移成哈希，登录密码不变，各设备需要重新登录一次。
+  - 明文只会留在当次的备份中，随备份轮换自动删除。
+- **加密密钥**：`NEXUS_SECRET` 用于加密 Linkwarden 令牌，与访问密码无关。首次安装时自动生成，在终端里只显示一次，请另外保存。
+- **Compose 文件**：`compose.yaml` 由脚本维护，本地修改请写在 `compose.override.yaml`，脚本会沿用它。如果 `compose.yaml` 被手动改过，脚本不会覆盖它，而是把新版另存为 `compose.yaml.v<版本>`。
+- **不会做的事**：
+  - 从不删除数据卷。
+  - 不会在同一台主机上重复安装。
+  - 不会把密码写进命令参数、日志或屏幕输出。
+
+## 手动部署（VPS + Docker Compose）
 
 ```bash
 mkdir -p ~/nexus && cd ~/nexus
 curl -fsSLO https://raw.githubusercontent.com/KJoner/nexus-portal/main/compose.yaml
-curl -fsSL https://raw.githubusercontent.com/KJoner/nexus-portal/main/.env.example -o .env
-nano .env               # 填 NEXUS_PASSWORD、NEXUS_SECRET（openssl rand -base64 32），NEXUS_VERSION 写具体版本
+curl -fsSL https://raw.githubusercontent.com/KJoner/nexus-portal/main/.env.example -o .env && chmod 600 .env
+docker run --rm -i --entrypoint node kjoner/nexus-portal:0.2.1 server/cli.mjs hash-password   # 输入密码后按 Ctrl+D，得到哈希
+nano .env               # 填 NEXUS_PASSWORD_HASH='上一步的哈希'（单引号）、NEXUS_SECRET（openssl rand -base64 32）、NEXUS_VERSION
 docker compose up -d
 docker compose ps       # STATUS 显示 healthy 即可
 ```
@@ -27,7 +74,7 @@ docker compose ps       # STATUS 显示 healthy 即可
 
 | 标签 | 含义 |
 | --- | --- |
-| `0.2.0` | 固定版本，生产环境推荐写这个 |
+| `0.2.1` | 固定版本，生产环境推荐写这个 |
 | `0.2` | 0.2.x 的最新补丁版本 |
 | `latest` | 最新的**稳定**版本；预发布版本不会覆盖它 |
 | `0.2.0-rc.1` | 预发布版本，只有这一个标签 |
@@ -40,10 +87,10 @@ docker compose ps       # STATUS 显示 healthy 即可
 查看正在运行的版本：
 
 ```bash
-docker compose logs nexus | head -1          # [nexus] 0.2.0 已启动 …
-docker image inspect kjoner/nexus-portal:0.2.0 \
+docker compose logs nexus | head -1          # [nexus] 0.2.1 已启动 …
+docker image inspect kjoner/nexus-portal:0.2.1 \
   --format '{{index .Config.Labels "org.opencontainers.image.revision"}}'   # 对应的 Git 提交
-docker buildx imagetools inspect kjoner/nexus-portal:0.2.0                 # 包含的架构
+docker buildx imagetools inspect kjoner/nexus-portal:0.2.1                 # 包含的架构
 ```
 
 ## 目录
@@ -127,14 +174,16 @@ git push origin v0.2.0
 
 ## 更新部署
 
+推荐直接运行 `bash deploy.sh`（见上方「一键部署」）。下面是手动步骤：
+
 ```bash
 cd ~/nexus
 # 先备份数据卷（见下方「备份」）
-sed -i 's/^NEXUS_VERSION=.*/NEXUS_VERSION=0.2.0/' .env
+sed -i 's/^NEXUS_VERSION=.*/NEXUS_VERSION=0.2.1/' .env
 docker compose pull
 docker compose up -d
 docker compose ps                      # healthy
-docker compose logs --tail 20 nexus    # 第一行会显示「[nexus] 0.2.0 已启动」
+docker compose logs --tail 20 nexus    # 第一行会显示「[nexus] 0.2.1 已启动」
 ```
 
 数据库迁移会在启动时自动执行。浏览器端的 Service Worker 会在下次打开页面时自动更新。
@@ -212,7 +261,8 @@ docker compose up -d
 
 | 变量 | 说明 |
 | --- | --- |
-| `NEXUS_PASSWORD` | 访问密码（≥ 8 位）。生产环境必填；修改后重启即生效，旧会话全部失效 |
+| `NEXUS_PASSWORD_HASH` | 访问密码的 Argon2id 哈希（PHC 格式，由 `deploy.sh` 或 `cli.mjs hash-password` 生成）。修改后重启即生效，旧会话全部失效 |
+| `NEXUS_PASSWORD` | 旧版写法：明文访问密码（≥ 8 位），仍然兼容；同时设置了哈希时忽略它。两者都没有时，沿用数据库中已保存的密码 |
 | `NEXUS_DATA_DIR` | 数据目录（SQLite、壁纸、图标），生产默认 `/data` |
 | `PORT` / `HOST` | 监听地址，默认 `8787`；生产默认监听 `0.0.0.0` |
 | `NEXUS_TRUST_PROXY` | 位于反向代理之后时设为 `1`，信任 `X-Forwarded-*`（客户端地址取代理追加的最后一项）。直接对外暴露端口时必须为 `0` |

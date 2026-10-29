@@ -18,8 +18,8 @@ async function main() {
   const env = readEnv();
   const db = openDb(join(env.dataDir, 'nexus.db'));
   const auth = new Auth(db, env.sessionDays);
-  const result = await auth.ensurePassword(env.password);
-  if (result === 'missing') throw new EnvError('尚未设置访问密码：请通过环境变量 NEXUS_PASSWORD 设置（至少 8 个字符）');
+  const result = await auth.ensurePassword({ hash: env.passwordHash, plain: env.passwordHash ? null : env.password });
+  if (result === 'missing') throw new EnvError('尚未设置访问密码：用 deploy.sh 设置（写入 NEXUS_PASSWORD_HASH），或设置环境变量 NEXUS_PASSWORD（至少 8 个字符）');
 
   const repo = new ConfigRepo(db);
   const policy = { allowPrivate: env.allowPrivate, allowLoopback: env.allowLoopback };
@@ -42,6 +42,9 @@ async function main() {
     console.log(`[nexus]${version} 已启动 http://${info.address}:${info.port} · 数据目录 ${env.dataDir}`);
     if (env.generatedPassword) console.log(`[nexus] 开发模式临时密码：${env.password}（设置 NEXUS_PASSWORD 可固定）`);
     else if (result === 'set') console.log('[nexus] 访问密码已更新，旧会话已失效');
+    else if (result === 'upgraded') console.log('[nexus] 已将密码哈希升级为 Argon2id，现有登录不受影响');
+    if (env.passwordHash && env.password) console.log('[nexus] 已设置 NEXUS_PASSWORD_HASH，忽略明文 NEXUS_PASSWORD：可以从 .env 中删除它');
+    else if (env.password && !env.generatedPassword) console.log('[nexus] .env 中保存着明文密码：建议运行 deploy.sh 迁移为 NEXUS_PASSWORD_HASH');
     if (!env.webDist) console.log('[nexus] 未找到前端构建产物，仅提供 API');
   });
 

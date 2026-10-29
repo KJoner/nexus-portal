@@ -43,13 +43,13 @@ let auth: Auth;
 let deps: Parameters<typeof createApp>[0];
 let app: ReturnType<typeof createApp>;
 
-const env: Env = { production: false, host: '127.0.0.1', port: 0, dataDir: '', password: PASSWORD, generatedPassword: false, cookieSecure: 'auto', trustProxy: false, allowedOrigins: ['https://home.example.com'], sessionDays: 30, webDist: null, allowPrivate: true, allowLoopback: false, secret: null, unsplashKey: null };
+const env: Env = { production: false, host: '127.0.0.1', port: 0, dataDir: '', password: PASSWORD, generatedPassword: false, cookieSecure: 'auto', trustProxy: false, allowedOrigins: ['https://home.example.com'], sessionDays: 30, webDist: null, allowPrivate: true, allowLoopback: false, secret: null, unsplashKey: null, passwordHash: null };
 
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'nexus-test-'));
   db = openDb(':memory:');
   auth = new Auth(db, 30);
-  await auth.ensurePassword(PASSWORD);
+  await auth.ensurePassword({ hash: null, plain: PASSWORD });
   const repo = new ConfigRepo(db);
   const health = new HealthChecker(db, repo, { allowPrivate: true, allowLoopback: false }, async () => ({ reached: true, status: 200, latencyMs: 12, message: 'HTTP 200' }));
   const wallpapers = new WallpaperStore(db, dir);
@@ -117,7 +117,7 @@ describe('access protection', () => {
 
   it('changing the configured password revokes every session', async () => {
     const cookie = await login();
-    expect(await auth.ensurePassword('another long password')).toBe('set');
+    expect(await auth.ensurePassword({ hash: null, plain: 'another long password' })).toBe('set');
     expect((await app.request('/api/config', { headers: { cookie } })).status).toBe(401);
   });
 

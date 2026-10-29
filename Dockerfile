@@ -34,7 +34,7 @@ COPY packages/shared/package.json packages/shared/
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --omit=dev --workspace=@nexus/server --ignore-scripts --no-audit --no-fund \
  && cd node_modules \
- && rm -rf @nexus @hono hono zod @img/sharp-wasm32 @emnapi tslib better-sqlite3/deps better-sqlite3/src \
+ && rm -rf @nexus @hono hono zod hash-wasm @img/sharp-wasm32 @emnapi tslib better-sqlite3/deps better-sqlite3/src \
  && find . -maxdepth 1 -type d -empty -delete \
  && find better-sqlite3/prebuilds -type f ! -name "linuxmusl-$(node -p process.arch).node" -delete \
  && node -e "new (require('better-sqlite3'))(':memory:').close(); require('sharp')"
@@ -61,6 +61,8 @@ ENV NEXUS_VERSION=${NEXUS_VERSION}
 USER node
 VOLUME ["/data"]
 EXPOSE 8787
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+# While starting, check every 2 s (Docker ≥ 25; older engines ignore it), so deploy.sh and
+# `compose up --wait` see "healthy" within seconds instead of after the first 30 s interval.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --start-interval=2s --retries=3 \
   CMD wget -qO- http://127.0.0.1:8787/api/healthz >/dev/null || exit 1
 CMD ["node", "--enable-source-maps", "server/index.mjs"]

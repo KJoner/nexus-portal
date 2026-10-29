@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { isArgon2Hash } from './auth/password';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -7,7 +8,9 @@ export interface Env {
   host: string;
   port: number;
   dataDir: string;
-  /** Plain password from NEXUS_PASSWORD; hashed into the database on start. */
+  /** Argon2id PHC string from NEXUS_PASSWORD_HASH (v0.2.1, what deploy.sh writes). */
+  passwordHash: string | null;
+  /** Plain password from NEXUS_PASSWORD (older deployments); hashed into the database on start. */
   password: string | null;
   /** Generated for local development when no password is configured. */
   generatedPassword: boolean;
@@ -32,9 +35,11 @@ export class EnvError extends Error {}
 
 export function readEnv(source: NodeJS.ProcessEnv = process.env): Env {
   const production = source.NODE_ENV === 'production';
+  const passwordHash = source.NEXUS_PASSWORD_HASH?.trim() || null;
+  if (passwordHash && !isArgon2Hash(passwordHash)) throw new EnvError('NEXUS_PASSWORD_HASH 不是有效的 Argon2id 哈希：请用 deploy.sh --password 重新设置密码');
   let password = source.NEXUS_PASSWORD?.trim() || null;
   let generatedPassword = false;
-  if (!password && !production) {
+  if (!password && !passwordHash && !production) {
     password = randomBytes(9).toString('base64url');
     generatedPassword = true;
   }
@@ -50,6 +55,7 @@ export function readEnv(source: NodeJS.ProcessEnv = process.env): Env {
     host: source.HOST ?? (production ? '0.0.0.0' : '127.0.0.1'),
     port: Number(source.PORT ?? 8787),
     dataDir: resolve(source.NEXUS_DATA_DIR ?? (production ? '/data' : resolve(import.meta.dirname, '../../../data'))),
+    passwordHash,
     password,
     generatedPassword,
     cookieSecure: cookie as Env['cookieSecure'],

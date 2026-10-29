@@ -1,8 +1,11 @@
 name: nexus
 
 # Nexus Portal on a VPS: one container from Docker Hub, behind your HTTPS reverse proxy.
-#   cp .env.example .env      # fill in NEXUS_PASSWORD, NEXUS_SECRET, NEXUS_VERSION
+# Easiest: scripts/deploy.sh installs, updates (with backups) and sets the password.
+# By hand:
+#   cp .env.example .env      # fill in NEXUS_PASSWORD_HASH (deploy.sh --password), NEXUS_SECRET, NEXUS_VERSION
 #   docker compose up -d
+# Local changes belong in compose.override.yaml, which deploy.sh never touches.
 # To build from this checkout instead of pulling:
 #   docker compose -f compose.yaml -f compose.build.yaml up -d --build
 services:
@@ -14,7 +17,10 @@ services:
       # Localhost only by default: the reverse proxy on this host terminates HTTPS.
       - "${NEXUS_BIND:-127.0.0.1}:${NEXUS_PORT:-8787}:8787"
     environment:
-      NEXUS_PASSWORD: ${NEXUS_PASSWORD:?在 .env 中设置 NEXUS_PASSWORD（至少 8 位）}
+      # Argon2id hash written by deploy.sh; .env never holds the password itself. The plain
+      # NEXUS_PASSWORD of older deployments still works. With neither, the stored password stays.
+      NEXUS_PASSWORD_HASH: ${NEXUS_PASSWORD_HASH:-}
+      NEXUS_PASSWORD: ${NEXUS_PASSWORD:-}
       NEXUS_SECRET: ${NEXUS_SECRET:?在 .env 中设置 NEXUS_SECRET（openssl rand -base64 32）}
       NEXUS_TRUST_PROXY: ${NEXUS_TRUST_PROXY:-1}
       NEXUS_ALLOWED_ORIGINS: ${NEXUS_PUBLIC_URL:-}

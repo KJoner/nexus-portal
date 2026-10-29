@@ -2,6 +2,8 @@
 
 一个容器（Docker Hub 镜像 `kjoner/nexus-portal`）、一个数据卷。容器只监听宿主机的 `127.0.0.1:8787`，由你现有的 Nginx / Caddy 负责 HTTPS。
 
+最省事的方式是 `scripts/deploy.sh`，安装、更新、备份和恢复都可以用它完成，用法见 README「一键部署」。下面是手动部署时的细节。
+
 ## 1. 启动
 
 VPS 上只需要 `compose.yaml` 和 `.env` 两个文件，不需要源码：
@@ -12,8 +14,9 @@ curl -fsSLO https://raw.githubusercontent.com/KJoner/nexus-portal/main/compose.y
 curl -fsSL https://raw.githubusercontent.com/KJoner/nexus-portal/main/.env.example -o .env
 chmod 600 .env
 # 编辑 .env：
-#   NEXUS_VERSION    镜像版本，例如 0.2.0（不带 v）
-#   NEXUS_PASSWORD   访问密码，至少 8 位
+#   NEXUS_VERSION        镜像版本，例如 0.2.1（不带 v）
+#   NEXUS_PASSWORD_HASH  访问密码的 Argon2id 哈希，用单引号括起来；生成：
+#                        docker run --rm -i --entrypoint node kjoner/nexus-portal:0.2.1 server/cli.mjs hash-password
 #   NEXUS_SECRET     openssl rand -base64 32
 #   NEXUS_PUBLIC_URL 对外地址，例如 https://home.example.com
 docker compose up -d
@@ -134,7 +137,8 @@ Chrome / Edge 的「新标签页」需要浏览器扩展才能替换，第一阶
 | `NEXUS_VERSION` | `latest` | 镜像标签（compose 使用），生产环境建议写具体版本 |
 | `NEXUS_IMAGE` | `kjoner/nexus-portal` | 镜像仓库（compose 使用） |
 | `NEXUS_BIND` / `NEXUS_PORT` | `127.0.0.1` / `8787` | 宿主机监听地址与端口（compose 使用） |
-| `NEXUS_PASSWORD` | 必填 | 访问密码（≥ 8 位） |
+| `NEXUS_PASSWORD_HASH` | 首次启动必填（或用旧的 `NEXUS_PASSWORD`） | 访问密码的 Argon2id 哈希；`.env` 中不保存明文 |
+| `NEXUS_PASSWORD` | 空 | 旧版的明文访问密码（≥ 8 位），仍兼容，不推荐 |
 | `NEXUS_SECRET` | 必填（compose） | 加密服务凭据的密钥（≥ 16 位）；未设置时在数据目录生成 `secret.key` |
 | `NEXUS_PUBLIC_URL` → `NEXUS_ALLOWED_ORIGINS` | 空 | 反代改写 Host 时需要的对外地址 |
 | `NEXUS_TRUST_PROXY` | compose 中为 `1` | 信任 `X-Forwarded-*`；直接暴露端口时必须设为 `0` |
