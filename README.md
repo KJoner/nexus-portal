@@ -21,7 +21,7 @@ bash ~/nexus/deploy.sh               # 以后：在任意目录执行都会找�
 | 命令 | 作用 |
 | --- | --- |
 | `bash deploy.sh` | 没有部署就安装，已有部署就更新到最新正式版本；版本相同且服务健康时不做任何改动 |
-| `--version 0.2.1` | 安装或更新到指定版本（不能低于当前版本，回滚请用 `--restore`） |
+| `--version 0.3.0` | 安装或更新到指定版本（不能低于当前版本，回滚请用 `--restore`） |
 | `--install-dir DIR` | 指定部署目录。默认依次识别：正在运行的 Nexus 容器所在目录 → 当前目录 → `~/nexus`（root 为 `/opt/nexus`） |
 | `--backup` / `--list-backups` | 立即备份 / 列出备份 |
 | `--verify-backup [名称]` | 在隔离的临时容器中还原并启动备份，确认它真的可以恢复 |
@@ -60,7 +60,7 @@ bash ~/nexus/deploy.sh               # 以后：在任意目录执行都会找�
 mkdir -p ~/nexus && cd ~/nexus
 curl -fsSLO https://raw.githubusercontent.com/KJoner/nexus-portal/main/compose.yaml
 curl -fsSL https://raw.githubusercontent.com/KJoner/nexus-portal/main/.env.example -o .env && chmod 600 .env
-docker run --rm -i --entrypoint node kjoner/nexus-portal:0.2.1 server/cli.mjs hash-password   # 输入密码后按 Ctrl+D，得到哈希
+docker run --rm -i --entrypoint node kjoner/nexus-portal:0.3.0 server/cli.mjs hash-password   # 输入密码后按 Ctrl+D，得到哈希
 nano .env               # 填 NEXUS_PASSWORD_HASH='上一步的哈希'（单引号）、NEXUS_SECRET（openssl rand -base64 32）、NEXUS_VERSION
 docker compose up -d
 docker compose ps       # STATUS 显示 healthy 即可
@@ -74,7 +74,7 @@ docker compose ps       # STATUS 显示 healthy 即可
 
 | 标签 | 含义 |
 | --- | --- |
-| `0.2.1` | 固定版本，生产环境推荐写这个 |
+| `0.3.0` | 固定版本，生产环境推荐写这个 |
 | `0.2` | 0.2.x 的最新补丁版本 |
 | `latest` | 最新的**稳定**版本；预发布版本不会覆盖它 |
 | `0.2.0-rc.1` | 预发布版本，只有这一个标签 |
@@ -87,10 +87,10 @@ docker compose ps       # STATUS 显示 healthy 即可
 查看正在运行的版本：
 
 ```bash
-docker compose logs nexus | head -1          # [nexus] 0.2.1 已启动 …
-docker image inspect kjoner/nexus-portal:0.2.1 \
+docker compose logs nexus | head -1          # [nexus] 0.3.0 已启动 …
+docker image inspect kjoner/nexus-portal:0.3.0 \
   --format '{{index .Config.Labels "org.opencontainers.image.revision"}}'   # 对应的 Git 提交
-docker buildx imagetools inspect kjoner/nexus-portal:0.2.1                 # 包含的架构
+docker buildx imagetools inspect kjoner/nexus-portal:0.3.0                 # 包含的架构
 ```
 
 ## 目录
@@ -190,7 +190,7 @@ git push origin v0.2.0
 - **预发布版本**：用 `v0.2.0-rc.1` 这样的标签。只会推送 `0.2.0-rc.1` 一个标签，GitHub 上标为 Pre-release，不会更新 `latest`。
 - **发布失败**：
   - 如果失败发生在推送镜像之前（例如 Secret 没配好），修好配置后在 Actions 页面点 **Re-run failed jobs** 即可。
-  - 如果是代码有问题，在 `main` 上修复后发布下一个补丁版本，例如 `v0.2.1`。**不要移动或复用已发布的标签。**
+  - 如果是代码有问题，在 `main` 上修复后发布下一个补丁版本，例如 `v0.3.1`。**不要移动或复用已发布的标签。**
 
 ## 更新部署
 
@@ -199,11 +199,11 @@ git push origin v0.2.0
 ```bash
 cd ~/nexus
 # 先备份数据卷（见下方「备份」）
-sed -i 's/^NEXUS_VERSION=.*/NEXUS_VERSION=0.2.1/' .env
+sed -i 's/^NEXUS_VERSION=.*/NEXUS_VERSION=0.3.0/' .env
 docker compose pull
 docker compose up -d
 docker compose ps                      # healthy
-docker compose logs --tail 20 nexus    # 第一行会显示「[nexus] 0.2.1 已启动」
+docker compose logs --tail 20 nexus    # 第一行会显示「[nexus] 0.3.0 已启动」
 ```
 
 数据库迁移会在启动时自动执行。浏览器端的 Service Worker 会在下次打开页面时自动更新。

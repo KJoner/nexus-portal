@@ -14,9 +14,9 @@ curl -fsSLO https://raw.githubusercontent.com/KJoner/nexus-portal/main/compose.y
 curl -fsSL https://raw.githubusercontent.com/KJoner/nexus-portal/main/.env.example -o .env
 chmod 600 .env
 # 编辑 .env：
-#   NEXUS_VERSION        镜像版本，例如 0.2.1（不带 v）
+#   NEXUS_VERSION        镜像版本，例如 0.3.0（不带 v）
 #   NEXUS_PASSWORD_HASH  访问密码的 Argon2id 哈希，用单引号括起来；生成：
-#                        docker run --rm -i --entrypoint node kjoner/nexus-portal:0.2.1 server/cli.mjs hash-password
+#                        docker run --rm -i --entrypoint node kjoner/nexus-portal:0.3.0 server/cli.mjs hash-password
 #   NEXUS_SECRET     openssl rand -base64 32
 #   NEXUS_PUBLIC_URL 对外地址，例如 https://home.example.com
 docker compose up -d

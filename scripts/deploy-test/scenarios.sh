@@ -2,7 +2,7 @@
 # deploy.sh 的场景测试，在一台「干净的 Linux + Docker」里运行（见 run.sh：Docker-in-Docker）。
 # 需要的镜像：kjoner/nexus-portal:0.1.0（旧版，明文密码）与待发布的 kjoner/nexus-portal:$NEW。
 set -uo pipefail
-NEW="${NEW:-0.2.1}"
+NEW="${NEW:-0.3.0}"
 DEPLOY="/src/scripts/deploy.sh"
 export NEXUS_DEPLOY_SOURCE=/src NEXUS_LATEST_VERSION="$NEW" NEXUS_HEALTH_TIMEOUT=90
 PASS=0 FAIL=0

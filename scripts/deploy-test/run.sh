@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # deploy.sh 场景测试：在 Docker-in-Docker 里模拟一台全新服务器，运行 scenarios.sh。
-#   docker build -t kjoner/nexus-portal:0.2.1 --build-arg NEXUS_VERSION=0.2.1 .   # 待测镜像
-#   bash scripts/deploy-test/run.sh 0.2.1
+#   docker build -t kjoner/nexus-portal:0.3.0 --build-arg NEXUS_VERSION=0.3.0 .   # 待测镜像
+#   bash scripts/deploy-test/run.sh 0.3.0
 set -euo pipefail
 export MSYS_NO_PATHCONV=1
-NEW="${1:-0.2.1}"
+NEW="${1:-0.3.0}"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 command -v cygpath >/dev/null && ROOT="$(cygpath -m "$ROOT")"
 NAME=nx-deploy-test
