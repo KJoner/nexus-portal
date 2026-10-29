@@ -7,6 +7,7 @@ import { LoginPage } from '../features/auth/LoginPage';
 import { HomePage } from '../features/home/HomePage';
 import { Wallpaper } from '../features/home/Wallpaper';
 import { useMotionLevel, useViewport } from '../lib/hooks';
+import { preloadPinyin } from '../lib/pinyin';
 import { storage } from '../lib/storage';
 
 const SettingsPage = lazy(() => import('../features/settings/SettingsPage'));
@@ -55,6 +56,7 @@ function SyncGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     onSyncRejected((msg) => toast({ msg, tone: 'error' }));
     startSync();
+    preloadPinyin();
   }, []);
   if (auth === 'anonymous') return <LoginPage />;
   if (!ready) return <BootScreen />;

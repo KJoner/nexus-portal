@@ -7,7 +7,7 @@ export const isHttpUrl = (s: string) => HTTP.test(s.trim()) && hostOf(s.trim()) 
 
 export interface Validation {
   errors: Partial<Record<'name' | 'url' | 'lanUrl' | 'health' | 'letter', string>>;
-  warnings: Partial<Record<'url', string>>;
+  warnings: Partial<Record<'url' | 'name', string>>;
   ok: boolean;
 }
 
@@ -34,6 +34,9 @@ export function validateApp(d: AppEntry, apps: readonly AppEntry[]): Validation 
   if (d.icon.source === 'letter' && !d.icon.letter.trim() && !d.name.trim()) errors.letter = '请填写图标字母';
   const dup = apps.find((a) => a.id !== d.id && hostOf(a.url) && hostOf(a.url) === hostOf(d.url));
   if (dup && !errors.url) warnings.url = `与「${dup.name}」的地址相同，两个入口都会保留`;
+  const name = d.name.trim().toLowerCase();
+  const twin = name && apps.find((a) => a.id !== d.id && a.name.trim().toLowerCase() === name);
+  if (twin && !errors.name) warnings.name = '已有同名应用，搜索时两个都会出现；可以改个名字或加别名区分';
   return { errors, warnings, ok: Object.keys(errors).length === 0 };
 }
 

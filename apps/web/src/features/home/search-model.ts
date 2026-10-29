@@ -6,6 +6,7 @@ import { useRecentStore, visibleRecent } from '../../data/recent';
 import { useServices } from '../../data/status';
 import type { TileTarget } from '../../icons/AppTile';
 import { navigateTo, openApp } from '../../lib/open';
+import { usePinyin } from '../../lib/pinyin';
 import { formatAgo } from '../../lib/time';
 import { useShownWallpaper } from './rotation';
 
@@ -72,6 +73,7 @@ export function useSearchModel(query: string, engineId: string, maxApps: number)
   const webId = effective?.kind === 'web' ? effective.id : (engines.find((e) => e.kind === 'web')?.id ?? 'google');
   const suggestions = useSuggestions(rest, webId, config.settings.search.suggest && !config.settings.privacy.guest);
   const recentItems = useRecentStore((s) => s.items);
+  const pinyin = usePinyin((s) => s.fn);
   const { summary } = useServices();
   const shown = useShownWallpaper((s) => s.name);
 
@@ -82,8 +84,14 @@ export function useSearchModel(query: string, engineId: string, maxApps: number)
       { id: 'wallpaper', title: '更换壁纸', sub: shown ? `当前：${shown}` : '换一张' },
       { id: 'settings', title: '打开设置', sub: '外观、快捷方式、应用与搜索' },
     ];
+    // Within a match tier: pinned apps first, then the ones opened most recently / often.
+    const opened = new Map<string, number>();
+    for (const r of recentItems) if (r.appId) opened.set(r.appId, (opened.get(r.appId) ?? 0) + 1);
+    const pins = new Set(config.pins);
     const result = buildSearch({
       query,
+      pinyin,
+      boost: (a) => (pins.has(a.id) ? 1 : 0) + Math.min(1, (opened.get(a.id) ?? 0) * 0.25),
       engineId,
       engines: engines.length ? engines : config.engines,
       apps: config.apps,
@@ -96,7 +104,7 @@ export function useSearchModel(query: string, engineId: string, maxApps: number)
       formatAgo,
     });
     return { engines, result, rows: flattenRows(result.sections) };
-  }, [config, engines, recentItems, summary.text, shown, query, engineId, maxApps, bookmarks, suggestions]);
+  }, [config, engines, recentItems, summary.text, shown, query, engineId, maxApps, bookmarks, suggestions, pinyin]);
 }
 
 export function rowTile(row: SearchRow, config: Config, engine: Engine): TileTarget {

@@ -1,6 +1,7 @@
 import type { Engine, SearchRow, SearchSection } from '@nexus/shared';
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type FocusEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { useConfig } from '../../../data/config-store';
+import { Highlight } from '../../../components/Highlight';
 import { AppTile } from '../../../icons/AppTile';
 import { cn } from '../../../lib/cn';
 import { activateRow, rowTile, useSearchModel, type QuickActionId } from '../search-model';
@@ -25,8 +26,8 @@ const keepFocus = (e: React.MouseEvent) => {
   if ((e.target as HTMLElement).tagName !== 'INPUT') e.preventDefault();
 };
 
-function panelHeight(sections: SearchSection[], max: number) {
-  return Math.min(8 + sections.reduce((n, s) => n + 30 + s.rows.length * 46, 0) + 44 + 6, max);
+function panelHeight(sections: SearchSection[], max: number, extra = 0) {
+  return Math.min(8 + extra + sections.reduce((n, s) => n + 30 + s.rows.length * 46, 0) + 44 + 6, max);
 }
 
 export const SearchSlab = forwardRef<SearchSlabHandle, Props>(function SearchSlab({ dock, dockHeight, hideInput, edit, maxPanel, onFocusSearch, onAction }, ref) {
@@ -131,7 +132,9 @@ export const SearchSlab = forwardRef<SearchSlabHandle, Props>(function SearchSla
 
   const hasQ = !!q.trim();
   const isUrlFirst = result.sections[0]?.id === 'url';
-  const bodyH = open ? panelHeight(result.sections, maxPanel) : dockHeight;
+  // 搜索无结果: say so, quietly, instead of silently offering only the web search.
+  const noApps = hasQ && config.settings.search.showApps && !result.sections.some((s) => s.id === 'apps' || s.id === 'bookmarks' || s.id === 'url');
+  const bodyH = open ? panelHeight(result.sections, maxPanel, noApps ? 28 : 0) : dockHeight;
   const engLine = flash ? `已切换到 ${engine.name}` : result.prefixed ? `临时使用 ${shown.name}` : engine.kind === 'linkwarden' ? '正在搜索 Linkwarden 收藏' : `引擎 · ${engine.name}`;
   let idx = -1;
 
@@ -219,6 +222,11 @@ export const SearchSlab = forwardRef<SearchSlabHandle, Props>(function SearchSla
           style={{ opacity: open ? 1 : 0, transform: open ? 'none' : 'translateY(6px)', pointerEvents: open ? 'auto' : 'none', transitionDuration: '200ms, 240ms', transitionDelay: '40ms' }}
         >
           <div id="nx-results" role="listbox" aria-label="搜索结果" className="nx-scroll-hidden min-h-0 flex-1 overflow-y-auto">
+            {noApps && (
+              <div role="status" className="flex h-7 items-center px-3.5 text-[12px] text-ink/42">
+                没有匹配的应用或收藏
+              </div>
+            )}
             {result.sections.map((sec) => (
               <div key={sec.id} role="group" aria-label={sec.title}>
                 <div className="flex h-[30px] items-end px-3.5 pb-1.5 text-[11.5px] text-ink/46">{sec.title}</div>
@@ -242,7 +250,9 @@ export const SearchSlab = forwardRef<SearchSlabHandle, Props>(function SearchSla
                       className={cn('flex h-[46px] items-center gap-3.5 rounded-xl px-3.5 text-ink no-underline transition-colors duration-90', selected ? 'bg-ink/9' : 'bg-transparent')}
                     >
                       <AppTile target={rowTile(row, config, shown)} size={30} />
-                      <span className="truncate text-[14.5px]">{row.title}</span>
+                      <span className="truncate text-[14.5px]">
+                        <Highlight text={row.title} ranges={row.highlight} />
+                      </span>
                       <span className="truncate text-[12.5px] text-ink/46">{row.sub}</span>
                       <span className="flex-1" />
                       {row.meta && <span className="flex-none text-[12px] text-ink/46">{row.meta}</span>}

@@ -37,3 +37,11 @@ it('newAppId avoids collisions', () => {
   expect(newAppId('GitHub', c.apps)).toBe('github-2');
   expect(newAppId('哔哩', c.apps)).toBe('app');
 });
+
+it('warns about an existing name without blocking the save (v0.2)', () => {
+  const gh = c.apps.find((a) => a.id === 'github')!;
+  const v = validateApp({ ...gh, id: 'github-2', name: ' github ', url: 'https://gh.example.com' }, c.apps);
+  expect(v.ok).toBe(true);
+  expect(v.warnings.name).toMatch(/同名/);
+  expect(validateApp(gh, c.apps).warnings.name).toBeUndefined();
+});

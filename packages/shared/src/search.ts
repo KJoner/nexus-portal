@@ -1,3 +1,4 @@
+import { rankApps, type MatchOptions, type PinyinFn } from './match';
 import type { AppEntry, Engine } from './schema';
 import { displayUrl, engineSearchUrl, hostOf, looksLikeUrl, toNavigableUrl } from './url';
 
@@ -29,6 +30,10 @@ interface RowBase {
   title: string;
   sub: string;
   meta?: string;
+  /** Ranges of `title` that matched the query, [start, end). */
+  highlight?: [number, number][];
+  /** A guess (gapped letters, typo): never the default for Enter. */
+  weak?: boolean;
 }
 
 export type SearchRow =
@@ -59,6 +64,10 @@ export interface SearchInput {
   recent: readonly RecentItem[];
   actions: readonly QuickAction[];
   formatAgo?: (at: number) => string;
+  /** Lazy-loaded pinyin for Chinese names (拼音 / 首字母). */
+  pinyin?: PinyinFn | null;
+  /** Ranking bonus for pinned and frequently opened apps. */
+  boost?: MatchOptions['boost'];
 }
 
 export interface SearchResult {
@@ -79,26 +88,9 @@ export function resolvePrefix(query: string, engines: readonly Engine[]): { engi
   return { engine: null, rest: query };
 }
 
-function haystack(a: AppEntry): string {
-  return [a.name, hostOf(a.url), hostOf(a.lanUrl), a.description, ...a.aliases].join(' ').toLowerCase();
-}
-
-/** Rank: name prefix > word start > anywhere. Hidden apps never match. */
-export function matchApps(apps: readonly AppEntry[], query: string, includeHidden = false): AppEntry[] {
-  const q = query.trim().toLowerCase();
-  const pool = apps.filter((a) => includeHidden || !a.hidden);
-  if (!q) return [...pool];
-  const scored: { a: AppEntry; s: number; i: number }[] = [];
-  pool.forEach((a, i) => {
-    const name = a.name.toLowerCase();
-    const hay = haystack(a);
-    let s = -1;
-    if (name.startsWith(q)) s = 0;
-    else if (name.split(/[\s-]+/).some((w) => w.startsWith(q)) || a.aliases.some((x) => x.toLowerCase().startsWith(q))) s = 1;
-    else if (hay.includes(q)) s = 2;
-    if (s >= 0) scored.push({ a, s, i });
-  });
-  return scored.sort((x, y) => x.s - y.s || x.i - y.i).map((x) => x.a);
+/** Apps matching `query`, best first (see `rankApps`). Hidden apps never match unless asked for. */
+export function matchApps(apps: readonly AppEntry[], query: string, includeHidden = false, opts: Omit<MatchOptions, 'includeHidden'> = {}): AppEntry[] {
+  return rankApps(apps, query, { ...opts, includeHidden }).map((m) => m.app);
 }
 
 function webEngineFor(engine: Engine, engines: readonly Engine[]): Engine | null {
@@ -156,22 +148,39 @@ export function buildSearch(input: SearchInput): SearchResult {
     : null;
   if (marks && engine.kind === 'linkwarden') out.push(marks);
 
+  // Weak guesses (gapped letters, typos) only fill up behind strong matches, and never more than two.
+  let apps: SearchSection | null = null;
   if (input.showApps) {
-    const apps = matchApps(input.apps, q).slice(0, input.maxApps);
-    if (apps.length) {
-      out.push({
+    const ranked = rankApps(input.apps, q, { pinyin: input.pinyin, boost: input.boost });
+    const strong = ranked.filter((m) => !m.weak);
+    const picked = [...strong, ...ranked.filter((m) => m.weak).slice(0, 2)].slice(0, input.maxApps);
+    if (picked.length) {
+      apps = {
         id: 'apps',
-        title: '应用',
-        rows: apps.map((a) => ({ key: `app:${a.id}`, kind: 'app', title: a.name, sub: hostOf(a.url), meta: a.kind === 'service' ? '自托管' : '应用', appId: a.id })),
-      });
+        title: strong.length ? '应用' : '可能是这些应用',
+        rows: picked.map((m) => ({
+          key: `app:${m.app.id}`,
+          kind: 'app',
+          title: m.app.name,
+          // Only the host: a path or query could carry tokens.
+          sub: m.via && !m.via.startsWith(hostOf(m.app.url)) ? m.via : hostOf(m.app.url),
+          meta: m.app.kind === 'service' ? '自托管' : '应用',
+          appId: m.app.id,
+          highlight: m.ranges,
+          weak: m.weak || undefined,
+        })),
+      };
     }
   }
 
   const web = webEngineFor(engine, engines);
   const href = web ? engineSearchUrl(web, q) : null;
-  if (web && href) {
-    out.push({ id: 'web', title: '网页', rows: [{ key: `web:${web.id}`, kind: 'web', title: `在 ${web.name} 中搜索「${q}」`, sub: '网页搜索', engineId: web.id, href, query: q }] });
-  }
+  const webSection: SearchSection | null = web && href ? { id: 'web', title: '网页', rows: [{ key: `web:${web.id}`, kind: 'web', title: `在 ${web.name} 中搜索「${q}」`, sub: '网页搜索', engineId: web.id, href, query: q }] } : null;
+  // Only guesses: the web search comes first, so Enter does not open a wrong app.
+  const guessesOnly = apps && apps.rows.every((r) => r.weak);
+  if (apps && !guessesOnly) out.push(apps);
+  if (webSection) out.push(webSection);
+  if (apps && guessesOnly) out.push(apps);
   if (web && input.suggestions?.length) {
     const seen = new Set([q.toLowerCase()]);
     const rows = input.suggestions

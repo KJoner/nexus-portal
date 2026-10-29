@@ -8,6 +8,7 @@ import type { ServiceView } from '../../../data/status';
 import { AppTile } from '../../../icons/AppTile';
 import { cn } from '../../../lib/cn';
 import { appLinkProps, navigateTo, openApp, recordAppOpen } from '../../../lib/open';
+import { usePinyin } from '../../../lib/pinyin';
 import { dotStyle, messageColor } from '../status-style';
 import type { MenuSource } from './Dock';
 
@@ -55,10 +56,11 @@ export const Drawer = forwardRef<DrawerHandle, Props>(function Drawer({ open, wi
   const hostedCols = inner < 600 ? 2 : 3;
   const pins = config.pins;
   const hiddenCount = config.apps.filter((a) => a.hidden).length;
+  const pinyin = usePinyin((s) => s.fn);
 
   /** Flat order + 2-D rows of indices: hosted cards (3 per row) then each category grid. */
   const model = useMemo(() => {
-    const matched = new Set(matchApps(config.apps, filter, showHidden).map((a) => a.id));
+    const matched = new Set(matchApps(config.apps, filter, showHidden, { pinyin }).map((a) => a.id));
     const flat: AppEntry[] = [];
     const rows: number[][] = [];
     const take = (list: AppEntry[], perRow: number) => {
@@ -83,7 +85,7 @@ export const Drawer = forwardRef<DrawerHandle, Props>(function Drawer({ open, wi
     const stray = config.apps.filter((a) => a.kind === 'site' && a.categoryId === 'hosted' && matched.has(a.id));
     if (stray.length) cats.push({ id: 'stray', label: '我的服务', apps: stray, start: take(stray, cols) });
     return { flat, rows, hosted, hostedStart, cats };
-  }, [config.apps, config.categories, filter, showHidden, services, cols, hostedCols]);
+  }, [config.apps, config.categories, filter, showHidden, services, cols, hostedCols, pinyin]);
 
   const { flat, rows } = model;
 
@@ -239,7 +241,7 @@ export const Drawer = forwardRef<DrawerHandle, Props>(function Drawer({ open, wi
                       key={a.id}
                       {...appLinkProps(a)}
                       data-di={di}
-                      title={hostOf(a.url)}
+                      title={`${a.name} · ${hostOf(a.url)}`}
                       tabIndex={tab}
                       aria-label={`${a.name}${pinned ? '，已固定' : ''}${a.hidden ? '，已隐藏' : ''}`}
                       onClick={() => recordAppOpen(a)}
@@ -262,7 +264,7 @@ export const Drawer = forwardRef<DrawerHandle, Props>(function Drawer({ open, wi
                 <Search className="size-[22px] text-ink/50" />
               </span>
               <span className="mt-1.5 text-[17px] font-medium">没有匹配「{filter}」的应用</span>
-              <span className="text-[13px] text-ink/50">可按名称、域名或别名筛选；隐藏的应用不参与匹配</span>
+              <span className="text-[13px] text-ink/50">可按名称、拼音或首字母、域名、别名筛选；隐藏的应用不参与匹配</span>
               <div className="mt-3 flex gap-2.5">
                 {webEngine && (
                   <button

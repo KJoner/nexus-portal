@@ -4,6 +4,7 @@ export * from './url';
 export * from './ops';
 export * from './status';
 export * from './search';
+export * from './match';
 export * from './layout';
 export * from './api';
 export * from './validate';

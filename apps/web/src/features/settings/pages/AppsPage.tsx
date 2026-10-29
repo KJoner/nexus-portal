@@ -9,6 +9,7 @@ import { useConfig } from '../../../data/config-store';
 import { useServices, type ServiceView } from '../../../data/status';
 import { AppTile } from '../../../icons/AppTile';
 import { cn } from '../../../lib/cn';
+import { usePinyin } from '../../../lib/pinyin';
 import { dotStyle, LEVEL_COLOR } from '../../home/status-style';
 import { apply } from '../model';
 import { Button, Dialog, PageHeader, Tag, useCompact } from '../ui';
@@ -46,7 +47,8 @@ export function AppsPage() {
   const closeEditor = () => navigate('/settings/apps', { replace: true });
 
   const hiddenN = config.apps.filter((a) => a.hidden).length;
-  const matched = new Set(matchApps(config.apps, q, true).map((a) => a.id));
+  const pinyin = usePinyin((s) => s.fn);
+  const matched = new Set(matchApps(config.apps, q, true, { pinyin }).map((a) => a.id));
   const list = config.apps.filter((a) => matched.has(a.id) && (cat === 'all' || (cat === 'hidden' ? a.hidden : a.categoryId === cat)));
   const chips = [{ id: 'all', label: '全部', n: config.apps.length }, ...config.categories.map((c) => ({ id: c.id, label: c.label, n: config.apps.filter((a) => a.categoryId === c.id).length })), ...(hiddenN ? [{ id: 'hidden', label: '已隐藏', n: hiddenN }] : [])];
   const catLabel = (id: string) => config.categories.find((c) => c.id === id)?.label ?? '未分类';

@@ -3,6 +3,7 @@ import { Activity, Ban, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Ex
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { ActionSheet, type SheetItem, type SheetState } from '../../../components/ActionSheet';
+import { Highlight } from '../../../components/Highlight';
 import { ToastHost } from '../../../components/ToastHost';
 import { dispatch, useConfig, useConfigStore } from '../../../data/config-store';
 import { useServices, type ServiceView } from '../../../data/status';
@@ -11,6 +12,7 @@ import { ALL_APPS_GLYPH } from '../../../icons/glyphs';
 import { cn } from '../../../lib/cn';
 import { useMotionLevel, useNow, useViewport, useVisualViewport } from '../../../lib/hooks';
 import { appLinkProps, openApp, recordAppOpen } from '../../../lib/open';
+import { usePinyin } from '../../../lib/pinyin';
 import { storage } from '../../../lib/storage';
 import { formatClock, formatDate } from '../../../lib/time';
 import { homeActions } from '../actions';
@@ -376,7 +378,9 @@ function MobileSearch({ mode, q, engineId, setEngineId, contentB, layer, onActio
                 >
                   <AppTile target={rowTile(row, config, result.engine)} size={34} />
                   <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span className="truncate text-[15px]">{row.title}</span>
+                    <span className="truncate text-[15px]">
+                      <Highlight text={row.title} ranges={row.highlight} />
+                    </span>
                     <span className="truncate text-[12px] text-ink/48">{row.sub}</span>
                   </span>
                   {row.meta && <span className="flex-none text-[11.5px] text-ink/44">{row.meta}</span>}
@@ -421,7 +425,8 @@ interface AppsProps {
 function MobileApps({ open, q, contentB, layer, all, showStatus, bind, pressed, onWebSearch }: AppsProps) {
   const config = useConfig();
   const fl = open ? q.trim() : '';
-  const matched = useMemo(() => new Set(matchApps(config.apps, fl).map((a) => a.id)), [config.apps, fl]);
+  const pinyin = usePinyin((s) => s.fn);
+  const matched = useMemo(() => new Set(matchApps(config.apps, fl, false, { pinyin }).map((a) => a.id)), [config.apps, fl, pinyin]);
   const services = all.filter((s) => matched.has(s.app.id));
   const cats = config.categories
     .filter((c) => c.id !== 'hosted')

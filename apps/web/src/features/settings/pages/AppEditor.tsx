@@ -38,6 +38,57 @@ interface Props {
 
 type FieldKey = 'name' | 'url' | 'lanUrl' | 'health' | 'letter';
 
+/** 别名 (v0.2): several short names an app can also be found by; Enter or a comma adds one. */
+function AliasEditor({ aliases, onChange }: { aliases: string[]; onChange(next: string[]): void }) {
+  const compact = useCompact();
+  const [text, setText] = useState('');
+  const full = aliases.length >= 12;
+  const add = () => {
+    const next = [...aliases];
+    for (const part of text.split(/[,，、]/)) {
+      const a = part.trim().slice(0, 32);
+      if (a && next.length < 12 && !next.some((x) => x.toLowerCase() === a.toLowerCase())) next.push(a);
+    }
+    if (next.length !== aliases.length) onChange(next);
+    setText('');
+  };
+  return (
+    <div className={cn('flex flex-col gap-2', compact && 'px-4 py-3')}>
+      <span className="flex items-baseline gap-2 text-[13px] text-ink/72">
+        别名
+        <span className="text-[12px] text-ink/42">可选 · 搜索时用这些简称也能找到它，最多 12 个</span>
+      </span>
+      <div className="flex min-h-11 flex-wrap items-center gap-1.5 rounded-xl px-2 py-1.5" style={{ background: 'rgba(239,234,225,0.06)', boxShadow: 'inset 0 0 0 1px rgba(239,234,225,0.08)' }}>
+        {aliases.map((a, i) => (
+          <span key={a} className="flex h-7 items-center gap-1 rounded-lg bg-ink/10 pr-1 pl-2.5 text-[13px]">
+            {a}
+            <button type="button" aria-label={`删除别名 ${a}`} onClick={() => onChange(aliases.filter((_, k) => k !== i))} className="grid size-5 place-items-center rounded-md border-0 bg-transparent p-0 text-ink/60 hover:bg-ink/12 hover:text-ink">
+              <X className="size-3" />
+            </button>
+          </span>
+        ))}
+        <input
+          value={text}
+          disabled={full}
+          maxLength={40}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if ((e.key === 'Enter' || e.key === ',' || e.key === '，') && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              add();
+            } else if (e.key === 'Backspace' && !text && aliases.length) onChange(aliases.slice(0, -1));
+          }}
+          onBlur={add}
+          placeholder={full ? '已达上限' : aliases.length ? '再加一个' : '例如 gh、代码托管'}
+          aria-label="添加别名"
+          className="h-7 min-w-[120px] flex-1 border-0 bg-transparent px-1 text-[14px] text-ink caret-amber outline-none"
+          style={{ fontSize: compact ? 16 : undefined }}
+        />
+      </div>
+    </div>
+  );
+}
+
 /**
  * R2 · 表单手动保存: nothing is written until 保存; errors appear after blur or a save attempt;
  * closing with changes asks to discard first.
@@ -444,7 +495,7 @@ export function AppEditor({ appId, initialName, onClose, onDelete }: Props) {
       {typeSeg}
       <div className="flex flex-col gap-2">
         <div className="flex flex-col divide-y divide-ink/7 rounded-2xl bg-ink/6">
-          {input({ label: '名称', required: true, value: draft.name, onChange: (name) => set((d) => ({ ...d, name })), onBlur: () => touch('name'), error: err('name') })}
+          {input({ label: '名称', required: true, value: draft.name, onChange: (name) => set((d) => ({ ...d, name })), onBlur: () => touch('name'), error: err('name'), warn: v.warnings.name })}
           {input({ label: svc ? '外网地址' : '网址', required: true, mono: true, inputMode: 'url', placeholder: 'https://', value: draft.url, onChange: (url) => set((d) => ({ ...d, url })), onBlur: autoHttps, error: err('url') })}
           {svc && input({ label: '内网地址', optional: true, mono: true, inputMode: 'url', value: draft.lanUrl, onChange: (lanUrl) => set((d) => ({ ...d, lanUrl })), onBlur: () => touch('lanUrl'), error: err('lanUrl') })}
           {svc && (
@@ -455,6 +506,9 @@ export function AppEditor({ appId, initialName, onClose, onDelete }: Props) {
         </div>
         {errorList}
         {svc && <span className="px-4 text-[12.5px] leading-[1.6] text-ink/46">按所在网络自动切换内外网：尚未实现，当前按「默认打开」。</span>}
+      </div>
+      <div className="rounded-2xl bg-ink/6">
+        <AliasEditor aliases={draft.aliases} onChange={(aliases) => set((d) => ({ ...d, aliases }))} />
       </div>
       <div className="flex flex-col gap-2">
         <span className="px-4 text-[13px] text-ink/50">图标</span>
@@ -489,8 +543,9 @@ export function AppEditor({ appId, initialName, onClose, onDelete }: Props) {
         const follow = !libQ || libQ === slug(draft.name);
         set((d) => ({ ...d, name }));
         if (follow) setLibQ(slug(name));
-      }, onBlur: () => touch('name'), error: err('name') })}
+      }, onBlur: () => touch('name'), error: err('name'), warn: v.warnings.name })}
       {input({ label: svc ? '外网地址' : '网址', required: true, mono: true, inputMode: 'url', placeholder: 'https://', value: draft.url, onChange: (url) => set((d) => ({ ...d, url })), onBlur: autoHttps, error: err('url'), warn: v.warnings.url })}
+      <AliasEditor aliases={draft.aliases} onChange={(aliases) => set((d) => ({ ...d, aliases }))} />
       {svc && (
         <>
           {input({ label: '内网地址', optional: true, mono: true, placeholder: 'http://192.168.1.20:3000', value: draft.lanUrl, onChange: (lanUrl) => set((d) => ({ ...d, lanUrl })), onBlur: () => touch('lanUrl'), error: err('lanUrl') })}
