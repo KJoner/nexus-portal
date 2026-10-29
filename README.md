@@ -35,6 +35,16 @@ docker compose ps       # STATUS 显示 healthy 即可
 - 以非 root 用户（uid 1000）运行，根文件系统只读；所有数据都在 `/data` 卷中（SQLite、上传的壁纸和图标、图标缓存）
 - 端口 `8787`，内置健康检查 `GET /api/healthz`
 - 前后端同源，所以登录 Cookie、同源校验和实时推送都不需要额外配置跨域
+- 每个版本附带构建来源证明（provenance）和 SBOM
+
+查看正在运行的版本：
+
+```bash
+docker compose logs nexus | head -1          # [nexus] 0.1.0 已启动 …
+docker image inspect kjoner/nexus-portal:0.1.0 \
+  --format '{{index .Config.Labels "org.opencontainers.image.revision"}}'   # 对应的 Git 提交
+docker buildx imagetools inspect kjoner/nexus-portal:0.1.0                 # 包含的架构
+```
 
 ## 目录
 
@@ -67,7 +77,8 @@ npm run build && npm start                       # 生产构建并由服务端�
 
 ```bash
 docker compose -f compose.yaml -f compose.build.yaml --env-file .env up -d --build
-sh scripts/smoke-container.sh nexus-portal:local     # 与 CI 相同的容器冒烟测试
+sh scripts/smoke-container.sh nexus-portal:local     # 与 CI 相同的容器冒烟测试（临时容器和数据卷，测完删除）
+SMOKE_PASSWORD=… node scripts/smoke.mjs https://home.example.com   # 也可以检查正式实例：只写入一次并立即还原
 ```
 
 ## 日常开发流程
@@ -77,12 +88,19 @@ sh scripts/smoke-container.sh nexus-portal:local     # 与 CI 相同的容器冒
    - 类型检查、单元测试、生产构建
    - Playwright 端到端测试：Chromium 与 WebKit 模拟的 iPhone。Edge 只在本地 Windows 上测
    - 构建 amd64 镜像并做冒烟测试，再构建一次 arm64 镜像确认能编译通过
-3. 只改了 `docs/` 或 Markdown 文件时不会触发 CI。
+3. 只改了 `docs/` 或 Markdown 文件时不会触发 CI。需要手动运行时，在 Actions › CI 中点 **Run workflow**。
+4. 用户能感知到的改动，顺手记在 `CHANGELOG.md` 的「未发布」一节下，发布时再改成版本号。
 
 ## 发布新版本
 
+**一次性配置**（已完成）：仓库 Settings › Secrets and variables › Actions 中，需要有 Secret `DOCKERHUB_TOKEN` 和 `DOCKERHUB_USERNAME`。
+
+- `DOCKERHUB_TOKEN` 是 Docker Hub 的个人访问令牌，权限为 Read & Write。
+- `DOCKERHUB_USERNAME` 也可以改成 Variable，这样日志里不会把 `kjoner` 显示为 `***`。
+- 想更严格的话：新建 `release` 环境，只允许 `v*` 标签使用，再把令牌移到这个环境的 Secrets 中；还可以把自己设为审批人，每次推送镜像前手动批准。
+
 ```bash
-# 1. 在 CHANGELOG.md 中写好新版本条目：## [0.2.0] - 2026-11-15
+# 1. 在 CHANGELOG.md 中把「未发布」的内容整理成新版本条目：## [0.2.0] - 2026-11-15
 git commit -am "发布 0.2.0" && git push origin main
 # 2. 等 main 上的 CI 通过后再打标签（标签必须指向 main 上已有的提交）
 git tag -a v0.2.0 -m "Nexus Portal v0.2.0"
@@ -97,7 +115,10 @@ git push origin v0.2.0
 4. 从 Docker Hub 拉取刚推送的镜像，再测一遍
 5. 创建 GitHub Release，说明取自 `CHANGELOG.md` 中对应版本的段落，并附上自动生成的变更列表
 
-任何一步失败都不会推送镜像。
+任何一步失败都不会推送镜像。整个过程大约 4～5 分钟，完成后检查：
+
+- **镜像**：Docker Hub 上有 `X.Y.Z`、`X.Y`、`latest` 三个标签，指向同一个 digest，并包含 amd64 和 arm64。
+- **Release**：GitHub 上出现对应的 Release，并标为 Latest。
 
 - **预发布版本**：用 `v0.2.0-rc.1` 这样的标签。只会推送 `0.2.0-rc.1` 一个标签，GitHub 上标为 Pre-release，不会更新 `latest`。
 - **发布失败**：
@@ -156,6 +177,15 @@ docker compose up -d
 | Release 工作流提示「不在 main 分支上」 | 标签打在了未合并的提交上。此时还没有发布任何东西，可以删除远端标签后重新打：`git push origin :refs/tags/vX.Y.Z` |
 | Release 工作流提示「缺少 DOCKERHUB_…」，或 Docker Hub 返回 401 / denied | 在 Settings › Secrets and variables › Actions 中检查 `DOCKERHUB_USERNAME`（变量或 Secret 均可）和 Secret `DOCKERHUB_TOKEN`；令牌权限需要是 Read & Write，且未过期 |
 | CI 的端到端测试失败 | 在本次运行页面下载 `playwright-traces`，用 `npx playwright show-trace <文件>` 查看失败过程 |
+| 推送后 CI 没有运行 | 只改了文档（按设计跳过），或者是强制推送，GitHub 无法比较改动。在 Actions › CI 中点 **Run workflow** 手动运行 |
+| 推送被拒：`refusing to allow an OAuth App to create or update workflow … without workflow scope` | 推送用的令牌没有 `workflow` 权限，无法修改 `.github/workflows`。执行 `gh auth refresh -s workflow`，或改用 Git 自带的凭据管理器 |
+
+## 长期维护
+
+- **GitHub Actions 版本**：Dependabot 每周检查一次，有新版本时自动开 PR 更新固定的提交 SHA。CI 通过后合并即可。
+- **基础镜像安全更新**：每次发布都会重新拉取最新的 `node:22-alpine`。如果长时间没有新功能，也可以定期发一个补丁版本（如 `v0.1.1`）来获取系统安全修复。
+- **Node.js 版本**：Node 22 维护期到 2027 年 4 月。到期前把 `Dockerfile` 里的 `NODE_IMAGE` 和 CI 中的 `node-version` 一起升级，再发布新版本。
+- **Docker Hub 令牌**：到期前生成新令牌，更新仓库 Secret `DOCKERHUB_TOKEN`。
 
 ## 服务端环境变量
 

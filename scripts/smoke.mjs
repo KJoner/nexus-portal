@@ -72,13 +72,18 @@ await check('config read + write', async () => {
   expect(r.ok, `GET HTTP ${r.status}`);
   const before = await r.json();
   if (persisted) expect(before.revision > 1, `revision ${before.revision}: earlier write was lost`);
+  // Toggle one app's visibility and toggle it back, so running this against a real instance
+  // leaves the configuration as it was (only the revision moves).
   const app = before.config.apps[0];
-  const ops = [{ type: 'app.setHidden', appId: app.id, hidden: !app.hidden }];
-  const w = await fetch(`${base}/api/config/ops`, { method: 'POST', headers: { ...write, cookie }, body: JSON.stringify({ clientId: 'smoke', batchId: `smoke-${Date.now()}`, ops }) });
+  const send = (hidden, n) =>
+    fetch(`${base}/api/config/ops`, { method: 'POST', headers: { ...write, cookie }, body: JSON.stringify({ clientId: 'smoke', batchId: `smoke-${Date.now()}-${n}`, ops: [{ type: 'app.setHidden', appId: app.id, hidden }] }) });
+  const w = await send(!app.hidden, 1);
   expect(w.ok, `POST HTTP ${w.status}`);
   const after = await w.json();
   expect(after.revision === before.revision + 1, `revision ${before.revision} → ${after.revision}`);
-  return `revision ${before.revision} → ${after.revision}`;
+  const undo = await send(Boolean(app.hidden), 2);
+  expect(undo.ok, `restore POST HTTP ${undo.status}`);
+  return `revision ${before.revision} → ${after.revision}, restored`;
 });
 
 await check('service status endpoint', async () => {
