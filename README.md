@@ -98,11 +98,27 @@ docker buildx imagetools inspect kjoner/nexus-portal:0.2.1                 # 包
 ```
 apps/web         前端（React + TypeScript + Vite + Tailwind）
 apps/server      服务端（Hono + SQLite）：配置同步、登录、健康检查、Linkwarden、图标缓存
+apps/chrome-extension  Chrome 新标签页扩展（Manifest V3），复用 apps/web 的首页组件，单独发版
 packages/shared  前后端共用：配置模式、操作归约、搜索模型、状态汇总
 e2e              Playwright 端到端测试
 scripts          镜像冒烟测试（CI 与本地共用）
 .github          CI、发布工作流与 Dependabot
 ```
+
+## Chrome 新标签页扩展
+
+`apps/chrome-extension` 把 Chrome 的新标签页换成你的 Nexus 导航。
+
+- 页面随扩展打包，打开时直接读取本地缓存，再在后台与服务端只读同步。
+- 授权使用可撤销的只读设备令牌：扩展发起连接后，在门户中核对连接码并确认。
+- 需要服务端 0.3.0 或更高版本。
+
+安装（Windows / macOS 的 Chrome）：
+
+1. 从 Releases 下载 `nexus-portal-chrome-vX.Y.Z.zip`（`ext-v` 前缀的版本），解压到一个固定的文件夹。
+2. 打开 `chrome://extensions`，开启「开发者模式」，点「加载已解压的扩展程序」，选择这个文件夹。
+
+连接方法、缓存与安全设计、发布流程、手动验收与上架 Chrome Web Store 的准备，见 [docs/extension.md](docs/extension.md)。
 
 ## 本地开发
 
@@ -115,6 +131,8 @@ npm run dev                                      # 前端 http://127.0.0.1:5173�
 npm test                                         # 单元 / 组件 / 服务端测试
 npm run test:e2e                                 # 构建后跑 Playwright（Chrome、Edge、iPhone WebKit）
 npm run typecheck                                # 类型检查
+npm run package -w @nexus/chrome-extension       # 构建 Chrome 扩展并打包 ZIP（apps/chrome-extension/release）
+npx playwright test --project=extension          # 扩展端到端测试（先 npm run build）
 npm run build && npm start                       # 生产构建并由服务端托管前端
 ```
 
@@ -136,6 +154,8 @@ SMOKE_PASSWORD=… node scripts/smoke.mjs https://home.example.com   # 也可以
    - Playwright 端到端测试：Chromium 与 WebKit 模拟的 iPhone。Edge 只在本地 Windows 上测
    - 构建 amd64 镜像并做冒烟测试，再构建一次 arm64 镜像确认能编译通过
 3. 只改了 `docs/` 或 Markdown 文件时不会触发 CI。需要手动运行时，在 Actions › CI 中点 **Run workflow**。
+   - Chrome 扩展有自己的工作流 **Chrome extension**：改动扩展、它复用的前端代码、`packages/shared` 或服务端时运行，检查、端到端测试并打包 ZIP（Artifacts 中下载）。
+   - 只改扩展时不运行主 CI；`ext-vX.Y.Z` 标签只发布扩展的 GitHub Release，不会发布镜像。
 4. 用户能感知到的改动，顺手记在 `CHANGELOG.md` 的「未发布」一节下，发布时再改成版本号。
 
 ## 发布新版本

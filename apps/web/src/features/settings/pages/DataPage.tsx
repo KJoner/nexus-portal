@@ -6,6 +6,7 @@ import { logout, useConfig, useConfigStore, useSaveState } from '../../../data/c
 import { formatHm } from '../../../lib/time';
 import { apply, patch } from '../model';
 import { Button, Dialog, Group, PageHeader, Row, Switch, useCompact } from '../ui';
+import { DevicesSection } from './DevicesSection';
 
 const FORMAT = 'nexus-config';
 
@@ -138,6 +139,8 @@ export function DataPage() {
           </Button>
         </Row>
       </Group>
+
+      <DevicesSection />
 
       <Group title="重置">
         {resetRows.map((r) => (

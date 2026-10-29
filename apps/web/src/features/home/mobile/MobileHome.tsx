@@ -11,6 +11,7 @@ import { AppTile } from '../../../icons/AppTile';
 import { ALL_APPS_GLYPH } from '../../../icons/glyphs';
 import { cn } from '../../../lib/cn';
 import { useMotionLevel, useNow, useViewport, useVisualViewport } from '../../../lib/hooks';
+import { host } from '../../../lib/host';
 import { appLinkProps, openApp, recordAppOpen } from '../../../lib/open';
 import { usePinyin } from '../../../lib/pinyin';
 import { storage } from '../../../lib/storage';
@@ -62,7 +63,9 @@ export function MobileHome() {
   const homeServices = services.filter((s) => shownIds.has(s.app.id));
   const capacity = Math.max(0, home.mobileRows * 4 - homeServices.length);
   const { first: homeSites, extra } = useMemo(() => mobileShortcuts(config), [config]);
-  const showAdd = homeSites.length < capacity;
+  // The Chrome extension's new tab is read-only: nothing here may write to the server.
+  const ro = host.readOnly;
+  const showAdd = !ro && homeSites.length < capacity;
   const isHome = mode === 'home';
   // v0.2: pinned sites beyond the first page live on swipeable pages, or all at once when the
   // sheet is pulled up. Hover is never needed.
@@ -93,7 +96,8 @@ export function MobileHome() {
     const usage = `${c.pins.length}/${MAX_PINS}`;
     const last = (c.settings.home.shortcuts.mode === 'single' ? Math.min(c.pins.length, capacity) : c.pins.length) - 1;
     let items: SheetItem[];
-    if (from === 'hosted') items = [newTab, ...(showStatus ? [{ label: '查看状态', icon: Activity, onSelect: () => openApps() }] : []), toSettings];
+    if (ro) items = [newTab, ...(from === 'hosted' && showStatus ? [{ label: '查看状态', icon: Activity, onSelect: () => openApps() }] : []), toSettings];
+    else if (from === 'hosted') items = [newTab, ...(showStatus ? [{ label: '查看状态', icon: Activity, onSelect: () => openApps() }] : []), toSettings];
     else if (from === 'home')
       items = [
         newTab,
@@ -108,6 +112,8 @@ export function MobileHome() {
     else items = [newTab, i >= 0 ? { label: '从首页移除', icon: PinOff, hint: usage, onSelect: () => homeActions.unpin(id) } : { label: '添加到首页', icon: Pin, hint: usage, onSelect: () => homeActions.pin(id) }, hide, toSettings];
     setSheet({ header: { target: { kind: 'app', app }, name: app.name, sub: from === 'hosted' ? '自托管服务 · 在设置中管理' : hostOf(app.url) }, items });
   };
+  /** Read-only with a fixed wallpaper: the picture is chosen in the portal's settings. */
+  const changeWallpaper = () => (current.canStep ? current.next() : navigate('/settings/appearance'));
   const fromOf = (a: AppEntry, where: 'home' | 'apps'): From => (a.kind === 'service' ? 'hosted' : where);
   const bgPress = useLongPress(() => {
     const c = useConfigStore.getState().snapshot.config;
@@ -118,11 +124,15 @@ export function MobileHome() {
       header: { target: { kind: 'system', icon: Image }, name: entry.name, sub: '壁纸与首页' },
       items: [
         { label: '打开设置', icon: Settings, onSelect: () => navigate('/settings') },
-        { label: '换一张壁纸', icon: Image, onSelect: current.next },
-        { label: fav ? '取消收藏当前壁纸' : '收藏当前壁纸', icon: Heart, onSelect: () => homeActions.toggleFavorite(entry) },
-        { label: '不喜欢这张', icon: Ban, onSelect: () => homeActions.dislike(entry, current.next) },
-        ...(rotating ? [{ label: '锁定当前壁纸', icon: Lock, onSelect: () => homeActions.lock(entry) }] : []),
-        { label: minimal ? '切换到日常模式' : '切换到极简模式', icon: LayoutTemplate, onSelect: () => dispatch({ type: 'settings.patch', section: 'ui', patch: uiPreset(minimal ? 'daily' : 'minimal', c.settings.ui) }) },
+        { label: '换一张壁纸', icon: Image, onSelect: changeWallpaper },
+        ...(ro
+          ? []
+          : [
+              { label: fav ? '取消收藏当前壁纸' : '收藏当前壁纸', icon: Heart, onSelect: () => homeActions.toggleFavorite(entry) },
+              { label: '不喜欢这张', icon: Ban, onSelect: () => homeActions.dislike(entry, current.next) },
+              ...(rotating ? [{ label: '锁定当前壁纸', icon: Lock, onSelect: () => homeActions.lock(entry) }] : []),
+              { label: minimal ? '切换到日常模式' : '切换到极简模式', icon: LayoutTemplate, onSelect: () => dispatch({ type: 'settings.patch', section: 'ui', patch: uiPreset(minimal ? 'daily' : 'minimal', c.settings.ui) }) },
+            ]),
       ],
     });
   });
@@ -139,7 +149,7 @@ export function MobileHome() {
 
   const onAction = (id: QuickActionId) => {
     if (id === 'status') openApps();
-    else if (id === 'wallpaper') current.next();
+    else if (id === 'wallpaper') changeWallpaper();
     else navigate('/settings');
   };
 

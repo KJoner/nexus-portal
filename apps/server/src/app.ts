@@ -1,7 +1,7 @@
 import { getConnInfo } from '@hono/node-server/conninfo';
 import { serveStatic } from '@hono/node-server/serve-static';
-import { AppSchema, OpBatchSchema, OpError, validateApp, type ConfigResponse, type WallpaperSourcesResponse } from '@nexus/shared';
-import { Hono, type Context } from 'hono';
+import { AppSchema, DEVICE_TOKEN, OpBatchSchema, OpError, PAIR_CODE, validateApp, type ConfigResponse, type DeviceInfo, type WallpaperSourcesResponse } from '@nexus/shared';
+import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { streamSSE } from 'hono/streaming';
@@ -10,6 +10,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { z } from 'zod';
+import { PairingError, type Devices, type Pairings } from './auth/devices';
 import type { LoginLimiter } from './auth/rate-limit';
 import type { Auth } from './auth/sessions';
 import type { ConfigRepo } from './config/repo';
@@ -30,6 +31,8 @@ export interface Deps {
   repo: ConfigRepo;
   auth: Auth;
   limiter: LoginLimiter;
+  devices: Devices;
+  pairings: Pairings;
   wallpapers: WallpaperStore;
   icons: IconStore;
   health: HealthChecker;
@@ -50,9 +53,18 @@ export interface WallpaperSources {
 
 const COOKIE = 'nexus_session';
 const LoginSchema = z.object({ password: z.string().min(1).max(256) });
+const PairStartSchema = z.object({ name: z.string().trim().min(1).max(60) });
+const PairPollSchema = z.object({ pairId: z.string().min(1).max(64), secret: z.string().min(1).max(128) });
 
-export function createApp({ env, repo, auth, limiter, wallpapers, icons, health, iconProxy, linkwarden, suggestFetch, sources }: Deps) {
-  const app = new Hono();
+/** Weak comparison (RFC 9110): proxies such as Cloudflare turn strong ETags weak when they compress. */
+function etagMatches(header: string | undefined, etag: string): boolean {
+  if (!header) return false;
+  const bare = (t: string) => t.trim().replace(/^W\//, '');
+  return header.split(',').some((t) => t.trim() === '*' || bare(t) === bare(etag));
+}
+
+export function createApp({ env, repo, auth, limiter, devices, pairings, wallpapers, icons, health, iconProxy, linkwarden, suggestFetch, sources }: Deps) {
+  const app = new Hono<{ Variables: { device: DeviceInfo } }>();
 
   const clientKey = (c: Context) => {
     if (env.trustProxy) {
@@ -70,12 +82,80 @@ export function createApp({ env, repo, auth, limiter, wallpapers, icons, health,
 
   const configResponse = (): ConfigResponse => ({ ...repo.snapshot(), wallpapers: wallpapers.list() });
 
+  // Read-only handlers shared by the portal (session) and paired devices (/api/sync, token).
+  const lwError = (c: Context, e: unknown) => {
+    if (!(e instanceof LinkwardenError)) throw e;
+    const status = e.code === 'not_configured' ? 404 : e.code === 'invalid' ? 400 : 422;
+    return apiError(c, status, e.code, e.message);
+  };
+  const read = {
+    status: (c: Context) => c.json(health.list()),
+    bookmarks: async (c: Context) => {
+      const q = (c.req.query('q') ?? '').trim();
+      if (!q) return c.json({ bookmarks: [] });
+      try {
+        return c.json({ bookmarks: await linkwarden.search(q) });
+      } catch (e) {
+        return lwError(c, e);
+      }
+    },
+    /** 搜索建议 — off unless the user enabled it; failures just mean no suggestions. */
+    suggest: async (c: Context) => {
+      if (!repo.snapshot().config.settings.search.suggest) return apiError(c, 403, 'disabled', '搜索建议未开启');
+      const q = (c.req.query('q') ?? '').trim();
+      if (!q) return c.json({ suggestions: [] });
+      try {
+        return c.json({ suggestions: await fetchSuggestions(c.req.query('engine') ?? '', q, suggestFetch) });
+      } catch {
+        return c.json({ suggestions: [] });
+      }
+    },
+    wallpaperSources: (c: Context) => c.json({ gallery: sources.gallery.list(), unsplash: sources.unsplash.configured } satisfies WallpaperSourcesResponse),
+    wallpaperFile: (c: Context) => {
+      const path = wallpapers.filePath(c.req.param('id')!, c.req.param('file')!);
+      if (!path) return apiError(c, 404, 'not_found', '壁纸不存在');
+      const ext = path.slice(path.lastIndexOf('.') + 1);
+      c.header('Content-Type', ext === 'jpg' ? 'image/jpeg' : `image/${ext}`);
+      // Ids are never reused, so variants are immutable — but private to this user.
+      c.header('Cache-Control', 'private, max-age=31536000, immutable');
+      return c.body(Readable.toWeb(createReadStream(path)) as ReadableStream);
+    },
+    icon: (c: Context) => {
+      const path = icons.filePath(c.req.param('file')!.replace(/\.png$/, ''));
+      if (!path || !existsSync(path)) return apiError(c, 404, 'not_found', '图标不存在');
+      c.header('Content-Type', 'image/png');
+      c.header('Cache-Control', 'private, max-age=31536000, immutable');
+      return c.body(Readable.toWeb(createReadStream(path)) as ReadableStream);
+    },
+    /** Cached brand icons: …/icon-cache/{di|si}/<slug>, …/icon-cache/fav/<host>. */
+    iconCache: async (c: Context) => {
+      const source = c.req.param('source') as IconSource;
+      const key = c.req.param('key')!.toLowerCase();
+      if (!['di', 'si', 'fav'].includes(source) || !isValidIconKey(source, key)) return apiError(c, 400, 'invalid', '图标名称不正确');
+      try {
+        const icon = await iconProxy.get(source, key);
+        if (icon.status === 404) {
+          c.header('Cache-Control', 'private, max-age=3600');
+          return apiError(c, 404, 'not_found', '图标不存在');
+        }
+        c.header('Content-Type', icon.type);
+        c.header('Cache-Control', 'private, max-age=86400');
+        return c.body(new Uint8Array(icon.body));
+      } catch {
+        c.header('Cache-Control', 'no-store');
+        return c.json({ error: { code: 'unavailable', message: '图标源暂时不可用' } }, 502);
+      }
+    },
+  };
+
   // Registered before the global headers so this runs last and wins: an icon SVG opened
   // directly must not execute anything.
-  app.use('/api/icon-cache/*', async (c, next) => {
+  const sandboxed: MiddlewareHandler = async (c, next) => {
     await next();
     c.res.headers.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
-  });
+  };
+  app.use('/api/icon-cache/*', sandboxed);
+  app.use('/api/sync/icon-cache/*', sandboxed);
   app.use('*', headers());
   app.use('/api/*', async (c, next) => {
     await next();
@@ -112,6 +192,61 @@ export function createApp({ env, repo, auth, limiter, wallpapers, icons, health,
     deleteCookie(c, COOKIE, { path: '/' });
     return c.json({ authenticated: false });
   });
+
+  // ── Paired devices (Chrome extension): pairing, then read-only sync with a device token ──
+  // Never reads the session cookie. The extension calls from a chrome-extension:// origin, which
+  // is why csrf() skips the Origin check for these two prefixes (the client header still applies).
+  app.post('/api/pair/start', bodyLimit({ maxSize: 1024 }), async (c) => {
+    const body = PairStartSchema.safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return apiError(c, 400, 'invalid', '缺少设备名称');
+    try {
+      return c.json(pairings.start(body.data.name, clientKey(c), c.req.header('user-agent') ?? ''), 201);
+    } catch (e) {
+      if (e instanceof PairingError) return apiError(c, 429, e.code, e.message);
+      throw e;
+    }
+  });
+
+  app.post('/api/pair/poll', bodyLimit({ maxSize: 1024 }), async (c) => {
+    const body = PairPollSchema.safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return apiError(c, 400, 'invalid', '请求格式不正确');
+    return c.json(pairings.poll(body.data.pairId, body.data.secret));
+  });
+
+  app.use('/api/sync/*', async (c, next) => {
+    const token = /^Bearer (\S+)$/.exec(c.req.header('authorization') ?? '')?.[1];
+    const device = token && DEVICE_TOKEN.test(token) ? devices.validate(token) : null;
+    if (!device) return apiError(c, 401, 'device_unauthorized', '此设备的授权已失效或已被撤销');
+    c.set('device', device);
+    return next();
+  });
+
+  /** Conditional GET: an unchanged configuration costs one tiny 304 instead of the whole document. */
+  app.get('/api/sync/config', (c) => {
+    // Revision plus write time: a restored backup that reuses a revision number still differs.
+    const tag = (v: { revision: number; updatedAt: string }) => `"${v.revision}-${Date.parse(v.updatedAt).toString(36)}"`;
+    const current = tag(repo.version());
+    if (etagMatches(c.req.header('if-none-match'), current)) {
+      c.header('ETag', current);
+      return c.body(null, 304);
+    }
+    const res = configResponse();
+    c.header('ETag', tag(res));
+    return c.json(res);
+  });
+  app.get('/api/sync/status', read.status);
+  app.get('/api/sync/bookmarks', read.bookmarks);
+  app.get('/api/sync/suggest', read.suggest);
+  app.get('/api/sync/wallpaper-sources', read.wallpaperSources);
+  app.get('/api/sync/wallpapers/:id/:file', read.wallpaperFile);
+  app.get('/api/sync/icons/:file', read.icon);
+  app.get('/api/sync/icon-cache/:source/:key', read.iconCache);
+  /** 断开连接 in the extension revokes its own token. */
+  app.post('/api/sync/revoke', (c) => {
+    devices.revoke(c.get('device').id);
+    return c.json({ revoked: true });
+  });
+  app.all('/api/sync/*', (c) => apiError(c, 404, 'not_found', '接口不存在'));
 
   // Everything else under /api needs a session.
   app.use('/api/*', async (c, next) => {
@@ -161,8 +296,27 @@ export function createApp({ env, repo, auth, limiter, wallpapers, icons, health,
     });
   });
 
+  // ── Paired devices: list, revoke, approve a pairing ────────────────────
+  app.get('/api/devices', (c) => c.json(devices.list()));
+
+  app.delete('/api/devices/:id', (c) => (devices.revoke(c.req.param('id')) ? c.json(devices.list()) : apiError(c, 404, 'not_found', '设备不存在')));
+
+  app.get('/api/devices/pairing/:code', (c) => {
+    const code = c.req.param('code').toUpperCase();
+    const req = PAIR_CODE.test(code) ? pairings.peek(code) : null;
+    return req ? c.json(req) : apiError(c, 404, 'not_found', '连接请求不存在或已过期');
+  });
+
+  app.post('/api/devices/pairing/:code', bodyLimit({ maxSize: 1024 }), async (c) => {
+    const body = (await c.req.json().catch(() => null)) as { approve?: unknown } | null;
+    if (typeof body?.approve !== 'boolean') return apiError(c, 400, 'invalid', '请求格式不正确');
+    const code = c.req.param('code').toUpperCase();
+    if (!PAIR_CODE.test(code) || !pairings.decide(code, body.approve)) return apiError(c, 404, 'not_found', '连接请求不存在或已过期');
+    return c.json({ approved: body.approve });
+  });
+
   // ── Health checks ───────────────────────────────────────────────────────
-  app.get('/api/status', (c) => c.json(health.list()));
+  app.get('/api/status', read.status);
 
   app.post('/api/status/:id/check', async (c) => {
     const s = await health.runNow(c.req.param('id'));
@@ -181,12 +335,6 @@ export function createApp({ env, repo, auth, limiter, wallpapers, icons, health,
   });
 
   // ── Linkwarden (read-only) ─────────────────────────────────────────────
-  const lwError = (c: Context, e: unknown) => {
-    if (!(e instanceof LinkwardenError)) throw e;
-    const status = e.code === 'not_configured' ? 404 : e.code === 'invalid' ? 400 : 422;
-    return apiError(c, status, e.code, e.message);
-  };
-
   app.get('/api/integrations/linkwarden', (c) => c.json(linkwarden.status()));
 
   app.put('/api/integrations/linkwarden', bodyLimit({ maxSize: 8 * 1024 }), async (c) => {
@@ -205,27 +353,8 @@ export function createApp({ env, repo, auth, limiter, wallpapers, icons, health,
     return c.json(linkwarden.status());
   });
 
-  app.get('/api/bookmarks', async (c) => {
-    const q = (c.req.query('q') ?? '').trim();
-    if (!q) return c.json({ bookmarks: [] });
-    try {
-      return c.json({ bookmarks: await linkwarden.search(q) });
-    } catch (e) {
-      return lwError(c, e);
-    }
-  });
-
-  /** 搜索建议 — off unless the user enabled it; failures just mean no suggestions. */
-  app.get('/api/suggest', async (c) => {
-    if (!repo.snapshot().config.settings.search.suggest) return apiError(c, 403, 'disabled', '搜索建议未开启');
-    const q = (c.req.query('q') ?? '').trim();
-    if (!q) return c.json({ suggestions: [] });
-    try {
-      return c.json({ suggestions: await fetchSuggestions(c.req.query('engine') ?? '', q, suggestFetch) });
-    } catch {
-      return c.json({ suggestions: [] });
-    }
-  });
+  app.get('/api/bookmarks', read.bookmarks);
+  app.get('/api/suggest', read.suggest);
 
   // ── Wallpapers ──────────────────────────────────────────────────────────
   app.get('/api/wallpapers', (c) => c.json(wallpapers.list()));
@@ -248,15 +377,7 @@ export function createApp({ env, repo, auth, limiter, wallpapers, icons, health,
     },
   );
 
-  app.get('/api/wallpapers/:id/:file', (c) => {
-    const path = wallpapers.filePath(c.req.param('id'), c.req.param('file'));
-    if (!path) return apiError(c, 404, 'not_found', '壁纸不存在');
-    const ext = path.slice(path.lastIndexOf('.') + 1);
-    c.header('Content-Type', ext === 'jpg' ? 'image/jpeg' : `image/${ext}`);
-    // Ids are never reused, so variants are immutable — but private to this user.
-    c.header('Cache-Control', 'private, max-age=31536000, immutable');
-    return c.body(Readable.toWeb(createReadStream(path)) as ReadableStream);
-  });
+  app.get('/api/wallpapers/:id/:file', read.wallpaperFile);
 
   // ── Wallpaper sources (精选图库 · 每日一图 · Unsplash · 网址导入) ──────────
   const SOURCE_STATUS = { not_found: 404, invalid: 400, blocked: 422, license: 422, not_configured: 404, unavailable: 502, too_large: 413 } as const;
@@ -270,7 +391,7 @@ export function createApp({ env, repo, auth, limiter, wallpapers, icons, health,
     if (r.created) repo.touch();
     return c.json(r.wallpaper, r.created ? 201 : 200);
   };
-  app.get('/api/wallpaper-sources', (c) => c.json({ gallery: sources.gallery.list(), unsplash: sources.unsplash.configured } satisfies WallpaperSourcesResponse));
+  app.get('/api/wallpaper-sources', read.wallpaperSources);
   app.get('/api/gallery/:id/preview', async (c) => {
     try {
       const body = await sources.gallery.preview(c.req.param('id'));
@@ -355,33 +476,9 @@ export function createApp({ env, repo, auth, limiter, wallpapers, icons, health,
     },
   );
 
-  app.get('/api/icons/:file', (c) => {
-    const path = icons.filePath(c.req.param('file').replace(/\.png$/, ''));
-    if (!path || !existsSync(path)) return apiError(c, 404, 'not_found', '图标不存在');
-    c.header('Content-Type', 'image/png');
-    c.header('Cache-Control', 'private, max-age=31536000, immutable');
-    return c.body(Readable.toWeb(createReadStream(path)) as ReadableStream);
-  });
+  app.get('/api/icons/:file', read.icon);
 
-  /** Cached brand icons: /api/icon-cache/{di|si}/<slug>, /api/icon-cache/fav/<host>. */
-  app.get('/api/icon-cache/:source/:key', async (c) => {
-    const source = c.req.param('source') as IconSource;
-    const key = c.req.param('key').toLowerCase();
-    if (!['di', 'si', 'fav'].includes(source) || !isValidIconKey(source, key)) return apiError(c, 400, 'invalid', '图标名称不正确');
-    try {
-      const icon = await iconProxy.get(source, key);
-      if (icon.status === 404) {
-        c.header('Cache-Control', 'private, max-age=3600');
-        return apiError(c, 404, 'not_found', '图标不存在');
-      }
-      c.header('Content-Type', icon.type);
-      c.header('Cache-Control', 'private, max-age=86400');
-      return c.body(new Uint8Array(icon.body));
-    } catch {
-      c.header('Cache-Control', 'no-store');
-      return c.json({ error: { code: 'unavailable', message: '图标源暂时不可用' } }, 502);
-    }
-  });
+  app.get('/api/icon-cache/:source/:key', read.iconCache);
 
   app.all('/api/*', (c) => apiError(c, 404, 'not_found', '接口不存在'));
 

@@ -327,12 +327,25 @@ export const wallpaperSources = {
   useUnsplash: async (id: string) => adopt(await transport.unsplashWallpaper(id)),
 };
 
+/** Browser extensions paired with this portal (数据、同步与安全 · 浏览器扩展). */
+export const devicesApi = {
+  list: () => transport.devices(),
+  revoke: (id: string) => transport.revokeDevice(id),
+  pairing: (code: string) => transport.pairingRequest(code),
+  decide: (code: string, approve: boolean) => transport.decidePairing(code, approve),
+};
+
 export async function deleteWallpaper(id: string): Promise<void> {
   accept(await transport.deleteWallpaper(id));
 }
 
 export function onSyncRejected(fn: (message: string) => void) {
   notifyRejected = fn;
+}
+
+/** The Chrome extension reads through its own (device-token, read-only) transport. */
+export function setTransport(next: Transport) {
+  transport = next;
 }
 
 /** Tests: swap the transport and reset to a clean, signed-in state. */

@@ -43,15 +43,23 @@ export const headers = () =>
   });
 
 /**
+ * Paired-device endpoints, called by the Chrome extension from its chrome-extension:// origin.
+ * They never read the session cookie (pairing proves itself with a secret, sync with a bearer
+ * token), so a forged cross-site request has nothing to ride on.
+ */
+const DEVICE_API = /^\/api\/(pair|sync)\//;
+
+/**
  * CSRF guard for API writes: a custom header (cannot be set cross-site without a CORS preflight,
- * which Nexus never grants) plus an Origin check when the browser sends one.
+ * which Nexus never grants) plus an Origin check when the browser sends one — except on the
+ * device endpoints above, which still need the header.
  */
 export function csrf(env: Env): MiddlewareHandler {
   return async (c, next) => {
     if (c.req.method === 'GET' || c.req.method === 'HEAD') return next();
     if (c.req.header(CLIENT_HEADER) !== '1') return apiError(c, 403, 'csrf', '请求缺少 Nexus 客户端标识');
     const origin = c.req.header('origin');
-    if (origin) {
+    if (origin && !DEVICE_API.test(c.req.path)) {
       let host: string | null = null;
       try {
         host = new URL(origin).host;

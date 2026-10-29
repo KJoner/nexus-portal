@@ -94,6 +94,18 @@ export const MIGRATIONS: readonly string[] = [
   alter table wallpapers add column remote text not null default '';
   create index wallpapers_source_ref on wallpapers (source, ref);
   `,
+  `
+  -- v0.3: devices (the Chrome extension) that read the configuration with their own token.
+  -- Only the token's SHA-256 is stored; deleting a row revokes the device.
+  create table devices (
+    id text primary key,
+    name text not null,
+    token_hash text not null unique,
+    created_at integer not null,
+    last_used_at integer,
+    user_agent text not null default ''
+  );
+  `,
 ];
 
 const KEEP_BACKUPS = 5;

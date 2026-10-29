@@ -25,7 +25,8 @@ interface Props {
   showStatus: boolean;
   onClose(refocus: boolean): void;
   onMenu(e: MouseEvent<HTMLElement> | { currentTarget: HTMLElement; synthetic: true }, app: AppEntry, from: MenuSource): void;
-  onEnterEdit(): void;
+  /** Absent in the read-only extension: no 编辑首页 button. */
+  onEnterEdit?(): void;
 }
 
 export const Drawer = forwardRef<DrawerHandle, Props>(function Drawer({ open, width, top, bottom, services, showStatus, onClose, onMenu, onEnterEdit }, ref) {
@@ -301,9 +302,11 @@ export const Drawer = forwardRef<DrawerHandle, Props>(function Drawer({ open, wi
               {showHidden ? '收起已隐藏' : `已隐藏 ${hiddenCount} 个 · 显示`}
             </button>
           )}
-          <button type="button" tabIndex={tab} onClick={onEnterEdit} className="h-8 rounded-[9px] border-0 bg-ink/8 px-3 text-[12.5px] text-ink hover:bg-ink/14">
-            编辑首页
-          </button>
+          {onEnterEdit && (
+            <button type="button" tabIndex={tab} onClick={onEnterEdit} className="h-8 rounded-[9px] border-0 bg-ink/8 px-3 text-[12.5px] text-ink hover:bg-ink/14">
+              编辑首页
+            </button>
+          )}
         </div>
       </div>
     </div>

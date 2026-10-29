@@ -7,9 +7,11 @@ import {
   type AppEntry,
   type Bookmark,
   type ConfigResponse,
+  type DeviceInfo,
   type HealthTestResult,
   type LinkwardenStatus,
   type OpBatch,
+  type PairingRequest,
   type ServiceStatus,
   type UnsplashPhoto,
   type UploadedWallpaper,
@@ -60,6 +62,11 @@ export interface Transport {
   importWallpaper(url: string): Promise<UploadedWallpaper>;
   unsplashPhotos(q: string, page: number): Promise<UnsplashPhoto[]>;
   unsplashWallpaper(id: string): Promise<UploadedWallpaper>;
+  /** v0.3 paired devices (the Chrome extension): list, revoke, answer a pairing request. */
+  devices(): Promise<DeviceInfo[]>;
+  revokeDevice(id: string): Promise<DeviceInfo[]>;
+  pairingRequest(code: string): Promise<PairingRequest>;
+  decidePairing(code: string, approve: boolean): Promise<void>;
   /** Server pushes: config revisions and health results. Returns an unsubscribe function. */
   subscribe(h: { onOpen(): void; onRevision(revision: number): void; onStatus(s: ServiceStatus | { appId: string; removed: true }): void; onClosed(): void }): () => void;
 }
@@ -125,6 +132,12 @@ export const httpTransport: Transport = {
   importWallpaper: (url) => request('/api/wallpapers/import', { method: 'POST', body: JSON.stringify({ url }) }, 60_000),
   unsplashPhotos: async (q, page) => (await request<{ photos: UnsplashPhoto[] }>(`/api/unsplash/photos?q=${encodeURIComponent(q)}&page=${page}`, {}, 10_000)).photos,
   unsplashWallpaper: (id) => request(`/api/unsplash/${encodeURIComponent(id)}`, { method: 'POST' }, 15_000),
+  devices: () => request('/api/devices'),
+  revokeDevice: (id) => request(`/api/devices/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  pairingRequest: (code) => request(`/api/devices/pairing/${encodeURIComponent(code)}`),
+  decidePairing: async (code, approve) => {
+    await request(`/api/devices/pairing/${encodeURIComponent(code)}`, { method: 'POST', body: JSON.stringify({ approve }) });
+  },
   subscribe({ onOpen, onRevision, onStatus, onClosed }) {
     if (typeof EventSource === 'undefined') return () => {};
     const es = new EventSource('/api/events');
@@ -241,6 +254,18 @@ export class MemoryTransport implements Transport {
   }
   async unsplashWallpaper(): Promise<UploadedWallpaper> {
     throw new HttpError(404, 'not_configured', '未配置 Unsplash Access Key');
+  }
+  async devices(): Promise<DeviceInfo[]> {
+    return [];
+  }
+  async revokeDevice(): Promise<DeviceInfo[]> {
+    return [];
+  }
+  async pairingRequest(): Promise<PairingRequest> {
+    throw new HttpError(404, 'not_found', '连接请求不存在或已过期');
+  }
+  async decidePairing(): Promise<void> {
+    throw new HttpError(404, 'not_found', '连接请求不存在或已过期');
   }
   subscribe({ onRevision }: { onRevision(r: number): void }) {
     this.listeners.add(onRevision);

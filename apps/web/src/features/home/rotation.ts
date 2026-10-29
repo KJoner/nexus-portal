@@ -2,6 +2,7 @@ import { wallpaperFile, type GalleryItem, type Settings, type WallpaperSourcesRe
 import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 import { dispatch, useConfigStore, wallpaperSources } from '../../data/config-store';
+import { host } from '../../lib/host';
 import { storage } from '../../lib/storage';
 import { remoteSrc, useWallpapers, wallpaperList, type WallpaperEntry } from './Wallpaper';
 
@@ -94,6 +95,7 @@ export const useSourcesStore = create<{ data: WallpaperSourcesResponse | null; l
 export function preload(entry: WallpaperEntry) {
   const u = entry.uploaded;
   if (entry.kind !== 'photo' || typeof Image === 'undefined') return;
+  if (u && !u.remote && host.prefetchWallpaper) return host.prefetchWallpaper(u);
   const want = window.innerWidth * (window.devicePixelRatio || 1);
   const img = new Image();
   if (u?.remote) img.src = remoteSrc(u.remote, [1280, 1920, 2560].find((w) => w >= want) ?? 2560);
@@ -107,6 +109,8 @@ export interface CurrentWallpaper {
   entry: WallpaperEntry;
   /** A timed rotation or 每日一图 is choosing the picture. */
   rotating: boolean;
+  /** 换一张 / 上一张 work: always in the portal; read-only only while rotating (a local offset). */
+  canStep: boolean;
   next(): void;
   prev(): void;
 }
@@ -145,10 +149,11 @@ export function useCurrentWallpaper(): CurrentWallpaper {
     if (r.mode !== 'off' && r.mode !== 'potd' && r.pool === 'gallery') void loadSources();
   }, [r.mode, r.pool, loadSources]);
 
-  // 每日一图: one request per local day; the server keeps the picture.
+  // 每日一图: one request per local day; the server keeps the picture. Read-only clients only
+  // show what a portal client already fetched.
   const today = localDay(now);
   useEffect(() => {
-    if (r.mode !== 'potd' || (daily?.date === today && list.some((w) => w.id === daily.id))) return;
+    if (host.readOnly || r.mode !== 'potd' || (daily?.date === today && list.some((w) => w.id === daily.id))) return;
     let live = true;
     wallpaperSources.daily(today).then(
       (w) => {
@@ -172,7 +177,7 @@ export function useCurrentWallpaper(): CurrentWallpaper {
   // A gallery picture is downloaded by the server the first time it comes up.
   const missing = chosen?.kind === 'gallery' ? chosen.item.id : null;
   useEffect(() => {
-    if (!missing) return;
+    if (!missing || host.readOnly) return;
     void wallpaperSources.gallery(missing).then(() => useSourcesStore.getState().load(true), () => undefined);
   }, [missing]);
 
@@ -181,7 +186,7 @@ export function useCurrentWallpaper(): CurrentWallpaper {
     if (!upcoming) return;
     const h = idle(() => {
       if (upcoming.kind === 'wallpaper') preload(upcoming.entry);
-      else void wallpaperSources.gallery(upcoming.item.id).then(() => useSourcesStore.getState().load(true), () => undefined);
+      else if (!host.readOnly) void wallpaperSources.gallery(upcoming.item.id).then(() => useSourcesStore.getState().load(true), () => undefined);
     });
     return () => (typeof cancelIdleCallback === 'function' ? cancelIdleCallback(h as number) : clearTimeout(h as ReturnType<typeof setTimeout>));
   }, [upcoming?.kind === 'wallpaper' ? upcoming.entry.id : upcoming?.item.id]);
@@ -189,7 +194,7 @@ export function useCurrentWallpaper(): CurrentWallpaper {
   const fixed = list.find((w) => w.id === look.wallpaper) ?? list[0]!;
   const byId = (id: string | null | undefined) => (id ? list.find((w) => w.id === id) : undefined);
   let entry: WallpaperEntry;
-  if (r.mode === 'potd') entry = (daily?.date === today && byId(daily.id)) || byId(lastId) || fixed;
+  if (r.mode === 'potd') entry = (daily?.date === today && byId(daily.id)) || (host.readOnly && latestDaily(list, today)) || byId(lastId) || fixed;
   else if (chosen?.kind === 'wallpaper') entry = chosen.entry;
   // While a gallery picture downloads, keep what was on screen last time instead of flashing.
   else entry = byId(lastId) ?? fixed;
@@ -205,7 +210,12 @@ export function useCurrentWallpaper(): CurrentWallpaper {
     storage.set(OFFSET_KEY, next);
     setOffsetState(next);
   };
-  return { entry, rotating: !!p || r.mode === 'potd', next: () => shift(1), prev: () => shift(-1) };
+  return { entry, rotating: !!p || r.mode === 'potd', canStep: !host.readOnly || !!p, next: () => shift(1), prev: () => shift(-1) };
+}
+
+/** The newest 每日一图 in the library up to `today` (library refs are local dates). */
+function latestDaily(list: readonly WallpaperEntry[], today: string): WallpaperEntry | undefined {
+  return list.filter((w) => w.uploaded?.source === 'daily' && w.uploaded.ref <= today).sort((a, b) => (a.uploaded!.ref < b.uploaded!.ref ? 1 : -1))[0];
 }
 
 /** 换一张 without rotation: steps `look.wallpaper` through the library (synced, undoable). */

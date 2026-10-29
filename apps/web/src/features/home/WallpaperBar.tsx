@@ -3,6 +3,7 @@ import { Ban, ChevronLeft, ChevronRight, Heart, Lock } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useConfig } from '../../data/config-store';
 import { cn } from '../../lib/cn';
+import { host } from '../../lib/host';
 import { reveal } from '../../lib/proximity';
 import { homeActions } from './actions';
 import type { CurrentWallpaper } from './rotation';
@@ -59,7 +60,7 @@ export function WallpaperBar({ current, ui, near, hidden }: { current: CurrentWa
   const { entry, rotating } = current;
   const info = entry.info;
   const credit = reveal(info?.required ? 'show' : ui.wallpaperCredit, near);
-  const actions = reveal(ui.wallpaperActions, near);
+  const actions = reveal(current.canStep ? ui.wallpaperActions : 'hide', near);
   const fav = look.favorites.includes(entry.id);
   const hasCredit = !!info || !!entry.credit;
   // A name shown only on hover takes no room until then, so a required credit sits flush left.
@@ -87,6 +88,8 @@ export function WallpaperBar({ current, ui, near, hidden }: { current: CurrentWa
             <button type="button" aria-label="下一张壁纸" title="下一张" onClick={current.next} className={iconBtn}>
               <ChevronRight className="size-3.5" />
             </button>
+            {!host.readOnly && (
+              <>
             <button type="button" aria-label={fav ? '取消收藏当前壁纸' : '收藏当前壁纸'} aria-pressed={fav} title={fav ? '取消收藏' : '收藏'} onClick={() => homeActions.toggleFavorite(entry)} className={iconBtn}>
               <Heart className="size-3.5" fill={fav ? 'currentColor' : 'none'} style={fav ? { color: '#e6c08a' } : undefined} />
             </button>
@@ -97,6 +100,8 @@ export function WallpaperBar({ current, ui, near, hidden }: { current: CurrentWa
               <button type="button" aria-label="锁定当前壁纸" title="锁定当前壁纸（停止自动切换）" onClick={() => homeActions.lock(entry)} className={iconBtn}>
                 <Lock className="size-3.5" />
               </button>
+            )}
+              </>
             )}
           </span>
         </span>

@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "Nexus Portal 新标签页",
+  "short_name": "Nexus",
+  "version": "0.0.0",
+  "description": "把新标签页换成你自己的 Nexus Portal 导航：本地缓存即时打开，后台只读同步。",
+  "minimum_chrome_version": "120",
+  "icons": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" },
+  "chrome_url_overrides": { "newtab": "newtab.html" },
+  "options_ui": { "page": "options.html", "open_in_tab": true },
+  "background": { "service_worker": "background.js", "type": "module" },
+  "permissions": ["storage"],
+  "optional_host_permissions": ["https://*/*", "http://*/*"],
+  "content_security_policy": {
+    "extension_pages": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src https: http:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+  }
+}

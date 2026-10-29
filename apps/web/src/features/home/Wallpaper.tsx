@@ -2,6 +2,7 @@ import { BUILTIN_WALLPAPERS, wallpaperFile, type Settings, type UploadedWallpape
 import { useState } from 'react';
 import { useConfigStore } from '../../data/config-store';
 import { cn } from '../../lib/cn';
+import { host } from '../../lib/host';
 
 export interface WallpaperEntry extends BuiltinWallpaper {
   uploaded?: UploadedWallpaper;
@@ -76,6 +77,7 @@ export function Wallpaper({ look, variant, receded, entry, className }: Props) {
   const blurPad = look.blur ? -look.blur * 2 : 0;
   const ready = loaded === wp.id;
   const u = 'uploaded' in wp ? (wp as WallpaperEntry).uploaded : undefined;
+  const file = host.useWallpaperFile(u && !u.remote ? u : undefined);
 
   // Bright photos get a slightly stronger veil behind the clock and search (readability).
   const luma = wp.kind === 'photo' ? (wp.luma ?? 0.45) * (look.brightness / 100) * (warm ? 0.85 : 1) : 0;
@@ -111,7 +113,10 @@ export function Wallpaper({ look, variant, receded, entry, className }: Props) {
               <img src={u.placeholder} alt="" className="absolute inset-0 size-full scale-110 object-cover blur-xl" style={{ objectPosition: photoStyle.objectPosition, filter: `blur(24px)${warm ? ' grayscale(1) brightness(.7)' : ''}` }} />
             )}
             <div key={wp.id} className={cn('absolute inset-0 isolate transition-opacity duration-400', ready ? 'opacity-100' : 'opacity-0')} style={{ background: warm ? '#a69e8e' : '#1b1a17' }}>
-              {u && !u.remote ? (
+              {u && !u.remote && file !== undefined ? (
+                // The extension's cached copy; until it is there, the blurred placeholder shows.
+                file && <img src={file} alt="" decoding="async" fetchPriority="high" onLoad={onLoad} onError={onError} className="absolute inset-0 size-full object-cover" style={photoStyle} />
+              ) : u && !u.remote ? (
                 <picture>
                   <source type="image/avif" srcSet={wallpaperSrcset(u, 'avif')} sizes="100vw" />
                   <source type="image/webp" srcSet={wallpaperSrcset(u, 'webp')} sizes="100vw" />

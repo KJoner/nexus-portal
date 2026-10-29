@@ -1,6 +1,7 @@
 import { serve } from '@hono/node-server';
 import { join } from 'node:path';
 import { createApp } from './app';
+import { Devices, Pairings } from './auth/devices';
 import { LoginLimiter } from './auth/rate-limit';
 import { Auth } from './auth/sessions';
 import { ConfigRepo } from './config/repo';
@@ -36,12 +37,13 @@ async function main() {
     // Imported wallpaper addresses must be public: they come from the internet, not the LAN.
     importPolicy: { allowPrivate: false, allowLoopback: false },
   };
-  const app = createApp({ env, repo, auth, limiter: new LoginLimiter(), wallpapers, icons: new IconStore(join(env.dataDir, 'icons')), health, iconProxy: new IconProxy(join(env.dataDir, 'icon-cache')), linkwarden: new Linkwarden(db, box, policy), sources });
+  const devices = new Devices(db);
+  const app = createApp({ env, repo, auth, limiter: new LoginLimiter(), devices, pairings: new Pairings(devices), wallpapers, icons: new IconStore(join(env.dataDir, 'icons')), health, iconProxy: new IconProxy(join(env.dataDir, 'icon-cache')), linkwarden: new Linkwarden(db, box, policy), sources });
   const server = serve({ fetch: app.fetch, hostname: env.host, port: env.port }, (info) => {
     const version = process.env.NEXUS_VERSION ? ` ${process.env.NEXUS_VERSION}` : '';
     console.log(`[nexus]${version} 已启动 http://${info.address}:${info.port} · 数据目录 ${env.dataDir}`);
     if (env.generatedPassword) console.log(`[nexus] 开发模式临时密码：${env.password}（设置 NEXUS_PASSWORD 可固定）`);
-    else if (result === 'set') console.log('[nexus] 访问密码已更新，旧会话已失效');
+    else if (result === 'set') console.log('[nexus] 访问密码已更新，旧会话和设备授权已失效');
     else if (result === 'upgraded') console.log('[nexus] 已将密码哈希升级为 Argon2id，现有登录不受影响');
     if (env.passwordHash && env.password) console.log('[nexus] 已设置 NEXUS_PASSWORD_HASH，忽略明文 NEXUS_PASSWORD：可以从 .env 中删除它');
     else if (env.password && !env.generatedPassword) console.log('[nexus] .env 中保存着明文密码：建议运行 deploy.sh 迁移为 NEXUS_PASSWORD_HASH');

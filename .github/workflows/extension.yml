@@ -1,0 +1,170 @@
+name: Chrome extension
+
+# The Chrome extension (apps/chrome-extension) is built, tested and released on its own: its
+# changes never run the Docker release, and the Docker release never ships it.
+#   push / pull request that touches the extension or the code it reuses → checks + ZIP artifact
+#   Actions › Chrome extension › Run workflow                         → the same, on demand
+#   tag ext-vX.Y.Z (= apps/chrome-extension/package.json)             → also a GitHub Release
+# The ZIP unpacks into a folder Chrome's 「加载已解压的扩展程序」 accepts, manifest.json at its
+# root; the same file is what the Chrome Web Store takes as an upload.
+on:
+  push:
+    branches: [main]
+    # Path filters do not apply to tag pushes: a tag always runs.
+    tags: ['ext-v[0-9]+.[0-9]+.[0-9]+']
+    paths:
+      - 'apps/chrome-extension/**'
+      - 'apps/web/src/**'
+      - 'apps/server/src/**'
+      - 'packages/shared/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'e2e/extension.spec.ts'
+      - 'playwright.config.ts'
+      - '.github/workflows/extension.yml'
+  pull_request:
+    paths:
+      - 'apps/chrome-extension/**'
+      - 'apps/web/src/**'
+      - 'apps/server/src/**'
+      - 'packages/shared/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'e2e/extension.spec.ts'
+      - 'playwright.config.ts'
+      - '.github/workflows/extension.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: extension-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  package:
+    name: Typecheck · tests · package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run typecheck -w @nexus/chrome-extension
+      - run: npx vitest run --project extension
+      - id: version
+        run: echo "version=$(node -p "require('./apps/chrome-extension/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Build and package
+        run: npm run package -w @nexus/chrome-extension
+      - name: Check the package
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          ZIP: apps/chrome-extension/release/nexus-portal-chrome-v${{ steps.version.outputs.version }}.zip
+        run: |
+          list=$(unzip -Z1 "$ZIP")
+          echo "$list" | grep -qx 'manifest.json' || { echo "::error::ZIP 根目录没有 manifest.json"; exit 1; }
+          # shellcheck disable=SC2016 # the single-quoted program is JavaScript, not shell
+          unzip -p "$ZIP" manifest.json | node -e '
+            const m = JSON.parse(require("fs").readFileSync(0, "utf8"));
+            const fail = (msg) => { console.log(`::error::${msg}`); process.exit(1); };
+            if (m.manifest_version !== 3) fail("不是 Manifest V3");
+            if (m.version !== process.env.VERSION) fail(`manifest 版本 ${m.version} ≠ ${process.env.VERSION}`);
+            if (m.host_permissions) fail("发布包不能预授权任何网站（host_permissions）");
+            if (JSON.stringify(m.permissions) !== JSON.stringify(["storage"])) fail(`权限异常：${m.permissions}`);
+          '
+          # No remote code: every script is a file inside the package.
+          if unzip -p "$ZIP" '*.html' | grep -Eo '<script[^>]+src="[^"]*"' | grep -E 'src="(https?:)?//'; then echo "::error::页面引用了远程脚本"; exit 1; fi
+          # No device token baked into the package.
+          if unzip -p "$ZIP" '*.js' '*.html' '*.json' | grep -Eo 'nxd_[A-Za-z0-9_-]{43}'; then echo "::error::发现疑似设备令牌"; exit 1; fi
+          echo "### Chrome 扩展 v$VERSION" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`$(basename "$ZIP")\` · $(echo "$list" | wc -l) 个文件 · $(du -h "$ZIP" | cut -f1) · sha256 \`$(sha256sum "$ZIP" | cut -d' ' -f1)\`" >> "$GITHUB_STEP_SUMMARY"
+          (cd "$(dirname "$ZIP")" && sha256sum "$(basename "$ZIP")" > "$(basename "$ZIP").sha256")
+        shell: bash
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nexus-portal-chrome-v${{ steps.version.outputs.version }}
+          path: apps/chrome-extension/release/
+          if-no-files-found: error
+          retention-days: 30
+
+  e2e:
+    name: End-to-end (Chromium with the extension)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      # Unpacked extensions load in Playwright's Chromium (branded Chrome dropped --load-extension).
+      - run: npx playwright install --with-deps chromium
+      # The real portal and server: pairing is approved in the portal's own settings page.
+      - run: npm run build
+      - run: npx playwright test --project=extension
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: extension-traces
+          path: test-results/
+          retention-days: 7
+
+  release:
+    name: GitHub Release
+    if: startsWith(github.ref, 'refs/tags/ext-v')
+    needs: [package, e2e]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Tag matches the extension version and is on main
+        env:
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.package.outputs.version }}
+        run: |
+          [ "$TAG" = "ext-v$VERSION" ] || { echo "::error::标签 $TAG 与扩展版本 $VERSION 不一致（apps/chrome-extension/package.json）"; exit 1; }
+          commit=$(git rev-parse "$TAG^{commit}")
+          git merge-base --is-ancestor "$commit" origin/main || { echo "::error::标签 $TAG 指向的提交不在 main 分支上，不发布"; exit 1; }
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: nexus-portal-chrome-v${{ needs.package.outputs.version }}
+          path: release
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.package.outputs.version }}
+        run: |
+          awk -v v="$VERSION" '
+            /^## \[/ { if (on) exit; if (index($0, "## [" v "]") == 1) { on = 1; next } }
+            on { print }
+          ' apps/chrome-extension/CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "apps/chrome-extension/CHANGELOG.md 中没有 $VERSION 的条目。" > notes.md
+          {
+            echo
+            echo "### 安装（Chrome 开发者模式）"
+            echo
+            echo "1. 下载 \`nexus-portal-chrome-v$VERSION.zip\` 并解压到一个固定的文件夹"
+            echo "2. 打开 \`chrome://extensions\`，开启右上角「开发者模式」"
+            echo "3. 点「加载已解压的扩展程序」，选择解压出的文件夹（里面直接是 manifest.json）"
+            echo
+            echo "需要 Nexus Portal 服务端 0.3.0 或更高版本。详见 docs/extension.md。"
+          } >> notes.md
+          # The Docker release stays GitHub's "Latest"; extension releases never take it over.
+          gh release create "$TAG" release/* --verify-tag --title "Nexus Portal Chrome 扩展 v$VERSION" --notes-file notes.md --latest=false

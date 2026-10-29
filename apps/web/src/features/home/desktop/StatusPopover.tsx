@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { checkNow } from '../../../data/config-store';
+import { host } from '../../../lib/host';
 import type { ServiceView } from '../../../data/status';
 import { AppTile } from '../../../icons/AppTile';
 import { appLinkProps, recordAppOpen } from '../../../lib/open';
@@ -76,6 +77,8 @@ export function StatusPopover({ open, services }: Props) {
 /** R1.5 · 未知: the only action is 重试 — run the check now instead of waiting for the interval. */
 export function RetryButton({ appId, style, className }: { appId: string; style: React.CSSProperties; className?: string }) {
   const [busy, setBusy] = useState(false);
+  // Running a check is a write; the read-only extension shows the scheduled results only.
+  if (host.readOnly) return null;
   return (
     <button
       type="button"

@@ -1,0 +1,4 @@
+/* The portal's design tokens and base styles; Tailwind also scans the reused components. */
+@import '../../web/src/styles/index.css';
+@source '../../web/src';
+@source '.';

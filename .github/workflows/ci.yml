@@ -5,9 +5,10 @@ name: CI
 on:
   push:
     branches: [main]
-    paths-ignore: ['docs/**', '**/*.md', 'LICENSE']
+    # The Chrome extension has its own workflow (extension.yml); changes only there skip this one.
+    paths-ignore: ['docs/**', '**/*.md', 'LICENSE', 'apps/chrome-extension/**', '.github/workflows/extension.yml']
   pull_request:
-    paths-ignore: ['docs/**', '**/*.md', 'LICENSE']
+    paths-ignore: ['docs/**', '**/*.md', 'LICENSE', 'apps/chrome-extension/**', '.github/workflows/extension.yml']
   # Manual runs (Actions › CI › Run workflow), e.g. after a push the path filter could not
   # diff, such as a force push onto unrelated history.
   workflow_dispatch:

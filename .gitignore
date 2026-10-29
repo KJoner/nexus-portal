@@ -23,3 +23,7 @@ Thumbs.db
 
 # 设计稿压缩包与解压目录内容重复
 docs/*.zip
+
+# Chrome 扩展：测试构建与打包产物
+apps/chrome-extension/dist-test/
+apps/chrome-extension/release/

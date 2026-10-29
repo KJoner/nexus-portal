@@ -54,6 +54,12 @@ await check('config needs a session', async () => {
   expect(r.status === 401, `HTTP ${r.status}`);
 });
 
+await check('device sync needs a device token', async () => {
+  const r = await fetch(`${base}/api/sync/config`, { headers: { authorization: `Bearer nxd_${'0'.repeat(43)}` } });
+  expect(r.status === 401, `HTTP ${r.status}`);
+  expect((await r.json()).error?.code === 'device_unauthorized', 'unexpected error code');
+});
+
 await check('writes need the client header', async () => {
   const r = await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
   expect(r.status === 403, `HTTP ${r.status}`);

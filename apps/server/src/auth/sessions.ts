@@ -30,13 +30,14 @@ export class Auth {
   private store(hash: string, revokeSessions: boolean) {
     this.db.transaction(() => {
       this.db.prepare('insert into auth (id, password_hash, updated_at) values (1, ?, ?) on conflict(id) do update set password_hash = excluded.password_hash, updated_at = excluded.updated_at').run(hash, new Date().toISOString());
-      if (revokeSessions) this.db.prepare('delete from sessions').run();
+      // A new password signs out every browser and every paired device.
+      if (revokeSessions) this.db.exec('delete from sessions; delete from devices;');
     })();
   }
 
   /**
    * The configured password is the source of truth: when it changes, the stored hash is replaced
-   * and every existing session is revoked.
+   * and every existing session and paired device is revoked.
    * - `hash` (NEXUS_PASSWORD_HASH) is stored as is; the server never sees the password.
    * - `plain` (NEXUS_PASSWORD, v0.1–v0.2.0 deployments) still works; an older scrypt hash of the
    *   same password is upgraded to Argon2id in place, without signing anyone out.

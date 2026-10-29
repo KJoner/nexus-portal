@@ -3,6 +3,7 @@ import type { LucideIcon } from 'lucide-react';
 import { memo, useState, type CSSProperties } from 'react';
 import { useConfigStore } from '../data/config-store';
 import { cn } from '../lib/cn';
+import { host } from '../lib/host';
 import { ALL_APPS_GLYPH, BUILTIN_GLYPHS, faviconUrl, libraryIconUrl } from './glyphs';
 
 /** Three materials, one geometry (R1 Spec): porcelain = external site, ember = self-hosted, glass = system. */
@@ -90,7 +91,8 @@ export const AppTile = memo(function AppTile({ target, size, status, lazy, class
   const cached = useConfigStore((s) => s.snapshot.config.settings.privacy.cacheIcons);
   const r = resolve(target, cached);
   const [, bump] = useState(0);
-  const src = r.src && !failed.has(r.src) ? r.src : null;
+  const path = r.src && !failed.has(r.src) ? r.src : null;
+  const src = host.useImage(path);
   const Icon = r.icon;
   const badge = status ? BADGE[status] : undefined;
   const radius = Math.round(size * 0.285);
@@ -111,7 +113,7 @@ export const AppTile = memo(function AppTile({ target, size, status, lazy, class
           className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 object-contain select-none"
           style={{ width: `${r.scale * 100}%`, height: `${r.scale * 100}%` }}
           onError={() => {
-            failed.add(src);
+            failed.add(path!);
             bump((n) => n + 1);
           }}
         />

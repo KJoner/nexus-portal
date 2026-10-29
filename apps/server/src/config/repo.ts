@@ -29,6 +29,12 @@ export class ConfigRepo {
     return { revision: row.revision, updatedAt: row.updated_at, config };
   }
 
+  /** Revision and time only — no parsing — for conditional requests that usually answer 304. */
+  version(): { revision: number; updatedAt: string } {
+    const row = this.db.prepare('select revision, updated_at from config where id = 1').get() as { revision: number; updated_at: string };
+    return { revision: row.revision, updatedAt: row.updated_at };
+  }
+
   /** Applies a batch atomically. Throws `OpError` (nothing is written) when any op is rejected. */
   apply(batchId: string, clientId: string, ops: Op[]): ApplyResult {
     return this.db.transaction((): ApplyResult => {

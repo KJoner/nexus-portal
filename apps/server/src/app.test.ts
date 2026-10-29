@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import sharp from 'sharp';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from './app';
+import { Devices, Pairings } from './auth/devices';
 import { LoginLimiter } from './auth/rate-limit';
 import { Auth } from './auth/sessions';
 import { ConfigRepo } from './config/repo';
@@ -55,7 +56,8 @@ beforeEach(async () => {
   const wallpapers = new WallpaperStore(db, dir);
   const commons = new Commons(async () => new Response(null, { status: 503 }));
   const sources = { gallery: new Gallery(wallpapers, commons, join(dir, 'previews'), []), daily: new Daily(wallpapers, commons), unsplash: new Unsplash(null, wallpapers), importPolicy: { allowPrivate: false, allowLoopback: false } };
-  deps = { env, repo, auth, limiter: new LoginLimiter(), wallpapers, sources, icons: new IconStore(join(dir, 'icons')), health, iconProxy: new IconProxy(join(dir, 'icon-cache'), fakeCdn), linkwarden: new Linkwarden(db, new SecretBox(randomBytes(32)), { allowPrivate: true, allowLoopback: false }), suggestFetch: fakeSuggest };
+  const devices = new Devices(db);
+  deps = { env, repo, auth, limiter: new LoginLimiter(), devices, pairings: new Pairings(devices), wallpapers, sources, icons: new IconStore(join(dir, 'icons')), health, iconProxy: new IconProxy(join(dir, 'icon-cache'), fakeCdn), linkwarden: new Linkwarden(db, new SecretBox(randomBytes(32)), { allowPrivate: true, allowLoopback: false }), suggestFetch: fakeSuggest };
   app = createApp(deps);
 });
 afterEach(() => {
@@ -321,5 +323,103 @@ describe('search suggestions', () => {
     expect(await (await app.request('/api/suggest?engine=google&q=rust', { headers: { cookie } })).json()).toEqual({ suggestions: ['rust async', 'rustup'] });
     expect(await (await app.request('/api/suggest?engine=mdn&q=rust', { headers: { cookie } })).json()).toEqual({ suggestions: [] });
     expect(suggestCalls).toEqual(['https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&q=rust']);
+  });
+});
+
+describe('paired devices (Chrome extension)', () => {
+  const EXT = 'chrome-extension://abcdefghijklmnopabcdefghijklmnop';
+  const ext = { ...write, origin: EXT };
+
+  /** Start → approve in the portal → pick up the token, as the extension and the user would. */
+  async function pair(cookie: string, name = 'Chrome · Windows') {
+    const start = await app.request('/api/pair/start', { method: 'POST', headers: ext, body: JSON.stringify({ name }) });
+    expect(start.status).toBe(201);
+    const s = (await start.json()) as { pairId: string; secret: string; code: string };
+    expect(s.code).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+    const poll = async () => (await app.request('/api/pair/poll', { method: 'POST', headers: ext, body: JSON.stringify({ pairId: s.pairId, secret: s.secret }) })).json();
+    expect(await poll()).toEqual({ status: 'pending' });
+    const peek = await app.request(`/api/devices/pairing/${s.code.toLowerCase()}`, { headers: { cookie } });
+    expect(await peek.json()).toMatchObject({ code: s.code, name });
+    expect((await app.request(`/api/devices/pairing/${s.code}`, { method: 'POST', headers: { ...write, cookie }, body: JSON.stringify({ approve: true }) })).status).toBe(200);
+    const done = (await poll()) as { status: string; token: string; device: { id: string } };
+    expect(done.status).toBe('approved');
+    // Picked up exactly once.
+    expect(await poll()).toEqual({ status: 'expired' });
+    return { token: done.token, id: done.device.id };
+  }
+  const sync = (token: string, path = 'config', headers: Record<string, string> = {}) => app.request(`/api/sync/${path}`, { headers: { authorization: `Bearer ${token}`, ...headers } });
+
+  it('pairs only with the signed-in user approving, then reads with ETag / 304', async () => {
+    const cookie = await login();
+    const { token } = await pair(cookie);
+    expect(token).toMatch(/^nxd_[A-Za-z0-9_-]{43}$/);
+    const first = await sync(token);
+    expect(first.status).toBe(200);
+    const etag = first.headers.get('etag')!;
+    expect(((await first.json()) as ConfigResponse).config.apps.length).toBeGreaterThan(0);
+    expect((await sync(token, 'config', { 'if-none-match': etag })).status).toBe(304);
+    // Cloudflare / nginx gzip turn it into a weak ETag; still a match.
+    expect((await sync(token, 'config', { 'if-none-match': `W/${etag}` })).status).toBe(304);
+    await ops(cookie, { clientId: 'c', batchId: 'd1', ops: [{ type: 'pin.remove', appId: 'github' }] });
+    const changed = await sync(token, 'config', { 'if-none-match': etag });
+    expect(changed.status).toBe(200);
+    expect(changed.headers.get('etag')).not.toBe(etag);
+    expect((await sync(token, 'status')).status).toBe(200);
+    expect((await sync(token, 'wallpaper-sources')).status).toBe(200);
+  });
+
+  it('a device token is read-only and never works as a session', async () => {
+    const cookie = await login();
+    const { token } = await pair(cookie);
+    const bearer = { authorization: `Bearer ${token}` };
+    expect((await app.request('/api/config', { headers: bearer })).status).toBe(401);
+    expect((await app.request('/api/config/ops', { method: 'POST', headers: { ...write, ...bearer }, body: JSON.stringify({ clientId: 'x', batchId: 'y', ops: [] }) })).status).toBe(401);
+    expect((await app.request('/api/devices', { headers: bearer })).status).toBe(401);
+    // …and a session cookie is no device token.
+    expect((await app.request('/api/sync/config', { headers: { cookie } })).status).toBe(401);
+    expect((await sync('nxd_' + 'a'.repeat(43))).status).toBe(401);
+    expect((await sync(token, 'nothing-here')).status).toBe(404);
+  });
+
+  it('device endpoints accept the extension origin, the rest of the API still does not', async () => {
+    const cookie = await login();
+    expect((await app.request('/api/pair/start', { method: 'POST', headers: { origin: EXT, 'content-type': 'application/json' }, body: JSON.stringify({ name: 'x' }) })).status).toBe(403);
+    expect((await ops(cookie, { clientId: 'c', batchId: 'o1', ops: [] }, { origin: EXT })).status).toBe(403);
+    const pairing = await app.request('/api/devices/pairing/ABCD-EFGH', { method: 'POST', headers: { ...ext, cookie }, body: JSON.stringify({ approve: true }) });
+    expect(pairing.status).toBe(403);
+  });
+
+  it('denied, unknown and wrong-secret pairings give nothing away', async () => {
+    const cookie = await login();
+    const s = (await (await app.request('/api/pair/start', { method: 'POST', headers: ext, body: JSON.stringify({ name: 'Edge' }) })).json()) as { pairId: string; secret: string; code: string };
+    const poll = async (secret: string) => (await app.request('/api/pair/poll', { method: 'POST', headers: ext, body: JSON.stringify({ pairId: s.pairId, secret }) })).json();
+    expect(await poll('wrong')).toEqual({ status: 'expired' });
+    expect((await app.request(`/api/devices/pairing/${s.code}`)).status).toBe(401);
+    await app.request(`/api/devices/pairing/${s.code}`, { method: 'POST', headers: { ...write, cookie }, body: JSON.stringify({ approve: false }) });
+    expect(await poll(s.secret)).toEqual({ status: 'denied' });
+    expect(await (await app.request('/api/devices', { headers: { cookie } })).json()).toEqual([]);
+    expect((await app.request('/api/devices/pairing/ZZZZ-ZZZZ', { headers: { cookie } })).status).toBe(404);
+  });
+
+  it('pairing requests are rate limited per address', async () => {
+    let last = 0;
+    for (let i = 0; i < 11; i++) last = (await app.request('/api/pair/start', { method: 'POST', headers: ext, body: JSON.stringify({ name: `n${i}` }) })).status;
+    expect(last).toBe(429);
+  });
+
+  it('revoking — from the portal, by the device itself, or with a new password — ends access', async () => {
+    const cookie = await login();
+    const a = await pair(cookie, 'A');
+    const b = await pair(cookie, 'B');
+    const c = await pair(cookie, 'C');
+    const list = (await (await app.request('/api/devices', { headers: { cookie } })).json()) as { id: string; name: string }[];
+    expect(list.map((d) => d.name)).toEqual(['A', 'B', 'C']);
+    expect((await app.request(`/api/devices/${a.id}`, { method: 'DELETE', headers: { ...write, cookie } })).status).toBe(200);
+    expect((await sync(a.token)).status).toBe(401);
+    expect((await app.request('/api/sync/revoke', { method: 'POST', headers: { ...ext, authorization: `Bearer ${b.token}` } })).status).toBe(200);
+    expect((await sync(b.token)).status).toBe(401);
+    expect((await sync(c.token)).status).toBe(200);
+    await auth.ensurePassword({ hash: null, plain: 'a brand new password' });
+    expect((await sync(c.token)).status).toBe(401);
   });
 });

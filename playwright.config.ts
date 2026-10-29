@@ -25,8 +25,10 @@ export default defineConfig({
     env: { E2E_PORT: String(PORT) },
   },
   projects: [
-    { name: 'chrome', use: { ...devices['Desktop Chrome'], ...desktop } },
-    { name: 'edge', use: { ...devices['Desktop Edge'], channel: 'msedge', ...desktop } },
-    { name: 'iphone', use: { ...devices['iPhone 13'] } },
+    { name: 'chrome', testIgnore: /extension\.spec/, use: { ...devices['Desktop Chrome'], ...desktop } },
+    { name: 'edge', testIgnore: /extension\.spec/, use: { ...devices['Desktop Edge'], channel: 'msedge', ...desktop } },
+    { name: 'iphone', testIgnore: /extension\.spec/, use: { ...devices['iPhone 13'] } },
+    // The Chrome extension (apps/chrome-extension) in a persistent Chromium profile it launches itself.
+    { name: 'extension', testMatch: /extension\.spec/ },
   ],
 });

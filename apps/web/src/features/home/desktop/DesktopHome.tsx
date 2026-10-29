@@ -8,6 +8,7 @@ import { toast } from '../../../components/toast-store';
 import { dispatch, flush, useConfig, useConfigStore } from '../../../data/config-store';
 import { useServices } from '../../../data/status';
 import { useMotionLevel, useNow, useViewport } from '../../../lib/hooks';
+import { host } from '../../../lib/host';
 import { openApp } from '../../../lib/open';
 import { useProximity } from '../../../lib/proximity';
 import { storage } from '../../../lib/storage';
@@ -39,6 +40,8 @@ export function DesktopHome() {
   const { services, all, summary } = useServices();
   const current = useCurrentWallpaper();
   const ui = config.settings.ui.desktop;
+  // The Chrome extension's new tab: same home, nothing that writes to the server.
+  const ro = host.readOnly;
   const near = useProximity([ui.topbar, ui.status, ui.settings, ui.wallpaperName, ui.wallpaperCredit, ui.wallpaperActions].includes('hover'));
 
   const [drawer, setDrawer] = useState(false);
@@ -142,9 +145,12 @@ export function DesktopHome() {
 
   const onAction = (id: QuickActionId) => {
     if (id === 'status') openStatus();
-    else if (id === 'wallpaper') current.next();
+    else if (id === 'wallpaper') changeWallpaper();
     else navigate('/settings');
   };
+
+  /** Read-only with a fixed wallpaper: the picture is chosen in the portal's settings. */
+  const changeWallpaper = () => (current.canStep ? current.next() : navigate('/settings/appearance'));
 
   /** Right-click on the empty wallpaper: a way back to settings when controls are hidden. */
   const onBackgroundMenu = (e: MouseEvent<HTMLDivElement>) => {
@@ -157,10 +163,10 @@ export function DesktopHome() {
       header: { target: { kind: 'system', icon: Settings }, name: 'Nexus', sub: '首页' },
       items: [
         { label: '打开设置', icon: Settings, hint: ',', onSelect: () => navigate('/settings') },
-        { label: '换一张壁纸', icon: Image, onSelect: current.next },
-        { label: '编辑首页…', icon: GripVertical, onSelect: enterEdit },
+        { label: '换一张壁纸', icon: Image, hint: current.canStep ? undefined : '↗', onSelect: changeWallpaper },
+        ...(ro ? [] : [{ label: '编辑首页…', icon: GripVertical, onSelect: enterEdit }]),
         'sep',
-        { label: minimal ? '切换到日常模式' : '切换到极简模式', icon: LayoutTemplate, onSelect: () => dispatch({ type: 'settings.patch', section: 'ui', patch: uiPreset(minimal ? 'daily' : 'minimal', config.settings.ui) }) },
+        ...(ro ? [] : [{ label: minimal ? '切换到日常模式' : '切换到极简模式', icon: LayoutTemplate, onSelect: () => dispatch({ type: 'settings.patch', section: 'ui', patch: uiPreset(minimal ? 'daily' : 'minimal', config.settings.ui) }) }]),
         { label: '显示与布局…', icon: SlidersHorizontal, hint: '↗', onSelect: () => navigate('/settings/display') },
       ],
     });
@@ -183,7 +189,9 @@ export function DesktopHome() {
       { label: '在新标签页打开', icon: ExternalLink, hint: '中键', onSelect: () => openApp(app, true) },
     ];
     let items: MenuItem[];
-    if (from === 'hosted') {
+    if (ro) {
+      items = [...open, ...(from === 'hosted' && showStatus ? [{ label: '查看状态', icon: Activity, onSelect: openStatus }] : []), 'sep', toSettings];
+    } else if (from === 'hosted') {
       items = [...open, ...(showStatus ? [{ label: '查看状态', icon: Activity, onSelect: openStatus }] : []), 'sep', toSettings];
     } else if (from === 'dock') {
       const last = (shortcuts.mode === 'single' ? Math.min(pins.length, home.dockSize) : pins.length) - 1;
@@ -350,7 +358,7 @@ export function DesktopHome() {
         showStatus={showStatus}
         onClose={closeDrawer}
         onMenu={openMenu}
-        onEnterEdit={enterEdit}
+        onEnterEdit={ro ? undefined : enterEdit}
       />
 
       {menu && (
