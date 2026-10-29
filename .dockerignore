@@ -1,0 +1,23 @@
+# Only what the Dockerfile copies matters; keep the context small and secrets out.
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+**/*.test.ts
+**/*.test.tsx
+.git
+.github
+.idea
+.vscode
+data
+docs
+e2e
+test-results
+playwright-report
+coverage
+.env
+.env.*
+*.log
+*.md
+compose*.yaml
+Dockerfile
+.dockerignore

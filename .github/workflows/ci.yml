@@ -1,0 +1,102 @@
+name: CI
+
+# Pushes to main and pull requests: checks, tests and an image build — nothing is published.
+# The release workflow calls this one too, so a tag only ships after the same checks pass.
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['docs/**', '**/*.md', 'LICENSE']
+  pull_request:
+    paths-ignore: ['docs/**', '**/*.md', 'LICENSE']
+  workflow_call:
+    inputs:
+      skip-image:
+        description: Skip the image job (the release workflow builds and tests the image itself)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    name: Typecheck · unit tests · build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      # No install scripts: better-sqlite3 ships prebuilt binaries, and nothing else needs one.
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  e2e:
+    name: End-to-end (Chromium · WebKit iPhone)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium webkit
+      # The Edge project needs a local Microsoft Edge; it runs on Windows (see docs/acceptance.md).
+      - run: npm run test:e2e -- --project=chrome --project=iphone
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7
+
+  image:
+    name: Docker image (amd64 smoke test · arm64 build)
+    # `inputs` is empty on push / pull_request, so this reads as "not skipped" there.
+    if: ${{ !inputs.skip-image }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          platforms: arm64
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build (amd64)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: nexus-portal:ci
+          build-args: NEXUS_VERSION=ci-${{ github.sha }}
+          cache-from: type=gha,scope=nexus-portal
+      - name: Smoke test
+        run: sh scripts/smoke-container.sh nexus-portal:ci
+      # Only main writes the layer cache; release builds reuse it. PR caches would stay
+      # scoped to their own branch anyway.
+      - name: Build (amd64 + arm64)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: false
+          build-args: NEXUS_VERSION=ci-${{ github.sha }}
+          cache-from: type=gha,scope=nexus-portal
+          cache-to: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'type=gha,scope=nexus-portal,mode=max' || '' }}

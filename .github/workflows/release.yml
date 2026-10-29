@@ -1,0 +1,207 @@
+name: Release
+
+# Pushing a tag vX.Y.Z publishes kjoner/nexus-portal:X.Y.Z, :X.Y (and :X from 1.0 on) and
+# :latest. A pre-release tag such as v0.2.0-rc.1 publishes only :0.2.0-rc.1 — never :latest.
+# Order: validate the tag → the full CI checks → build and smoke-test the image → push →
+# GitHub Release. Nothing is pushed unless every earlier step passed.
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: docker.io/${{ vars.DOCKERHUB_IMAGE || 'kjoner/nexus-portal' }}
+
+jobs:
+  guard:
+    name: Validate tag
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+      prerelease: ${{ steps.tag.outputs.prerelease }}
+      major: ${{ steps.tag.outputs.major }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: tag
+        name: Tag is vX.Y.Z[-pre] and points at a commit already on main
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          if ! printf '%s' "$TAG" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::标签 $TAG 不是 vX.Y.Z 或 vX.Y.Z-预发布 格式，不发布"
+            exit 1
+          fi
+          commit=$(git rev-parse "$TAG^{commit}")
+          # Only code that already landed on main (and so went through CI) can be released.
+          if ! git merge-base --is-ancestor "$commit" origin/main; then
+            echo "::error::标签 $TAG 指向的提交 $commit 不在 main 分支上，不发布"
+            exit 1
+          fi
+          version=${TAG#v}
+          case "$version" in *-*) prerelease=true ;; *) prerelease=false ;; esac
+          {
+            echo "version=$version"
+            echo "prerelease=$prerelease"
+            echo "major=${version%%.*}"
+          } >> "$GITHUB_OUTPUT"
+          echo "版本 $version · 预发布 $prerelease · 提交 $commit" >> "$GITHUB_STEP_SUMMARY"
+
+  verify:
+    name: CI
+    needs: guard
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci.yml
+    with:
+      skip-image: true
+
+  publish:
+    name: Build, test and push image
+    needs: [guard, verify]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    # Repository secrets work as is. For tighter control, move the token into this
+    # environment's secrets and allow only v* tags (Settings › Environments › release).
+    environment: release
+    permissions:
+      contents: read
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - name: Docker Hub settings are present
+        env:
+          HAS_USERNAME: ${{ (vars.DOCKERHUB_USERNAME || secrets.DOCKERHUB_USERNAME) != '' }}
+          HAS_TOKEN: ${{ secrets.DOCKERHUB_TOKEN != '' }}
+        run: |
+          [ "$HAS_USERNAME" = true ] || { echo "::error::缺少 DOCKERHUB_USERNAME（Settings › Secrets and variables › Actions，变量或 Secret 均可）"; exit 1; }
+          [ "$HAS_TOKEN" = true ] || { echo "::error::缺少 Secret DOCKERHUB_TOKEN（仓库 Secrets，或 release 环境的 Secrets）"; exit 1; }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          platforms: arm64
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: latest=false
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ needs.guard.outputs.prerelease == 'false' }}
+            type=semver,pattern={{major}},enable=${{ needs.guard.outputs.prerelease == 'false' && needs.guard.outputs.major != '0' }}
+            type=raw,value=latest,enable=${{ needs.guard.outputs.prerelease == 'false' }}
+          labels: |
+            org.opencontainers.image.title=Nexus Portal
+            org.opencontainers.image.description=自部署的个人数字入口：统一的浏览器首页、搜索与服务状态
+          annotations: |
+            org.opencontainers.image.title=Nexus Portal
+            org.opencontainers.image.description=自部署的个人数字入口：统一的浏览器首页、搜索与服务状态
+
+      # Test the exact build before anything leaves the runner.
+      - name: Build (amd64, local)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: nexus-portal:release
+          build-args: NEXUS_VERSION=${{ needs.guard.outputs.version }}
+          cache-from: type=gha,scope=nexus-portal
+      - name: Smoke test
+        run: sh scripts/smoke-container.sh nexus-portal:release
+
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME || secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - id: push
+        name: Build and push (amd64 + arm64)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          build-args: NEXUS_VERSION=${{ needs.guard.outputs.version }}
+          cache-from: type=gha,scope=nexus-portal
+          provenance: mode=max
+          sbom: true
+
+      - name: Verify the published image
+        env:
+          REF: ${{ env.IMAGE }}:${{ needs.guard.outputs.version }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          platforms=$(docker buildx imagetools inspect "$REF" --format '{{range .Manifest.Manifests}}{{.Platform.OS}}/{{.Platform.Architecture}} {{end}}')
+          echo "platforms: $platforms"
+          for p in linux/amd64 linux/arm64; do
+            echo "$platforms" | grep -qw "$p" || { echo "::error::$REF 缺少 $p"; exit 1; }
+          done
+          docker pull --platform linux/amd64 "$REF"
+          sh scripts/smoke-container.sh "$REF"
+          {
+            echo "### 已发布"
+            echo
+            echo '```'
+            echo "$TAGS"
+            echo '```'
+            echo "digest: \`$DIGEST\` · 架构: $platforms"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  github-release:
+    name: GitHub Release
+    needs: [guard, publish]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Create release from CHANGELOG.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.guard.outputs.version }}
+          PRERELEASE: ${{ needs.guard.outputs.prerelease }}
+          DIGEST: ${{ needs.publish.outputs.digest }}
+        run: |
+          # The "## [X.Y.Z]" section of CHANGELOG.md, then pull instructions; GitHub appends
+          # the list of merged changes (--generate-notes).
+          awk -v v="$VERSION" '
+            /^## \[/ { if (on) exit; if (index($0, "## [" v "]") == 1) { on = 1; next } }
+            on { print }
+          ' CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "CHANGELOG.md 中没有 $VERSION 的条目。" > notes.md
+          {
+            echo
+            echo "### Docker 镜像"
+            echo
+            echo '```bash'
+            echo "docker pull ${IMAGE#docker.io/}:$VERSION"
+            echo '```'
+            echo
+            echo "架构：linux/amd64、linux/arm64 · digest \`$DIGEST\`"
+          } >> notes.md
+          flags=""
+          [ "$PRERELEASE" = true ] && flags="--prerelease --latest=false"
+          # shellcheck disable=SC2086
+          gh release create "$TAG" --verify-tag --title "Nexus Portal $TAG" --notes-file notes.md --generate-notes $flags

@@ -1,0 +1,41 @@
+name: nexus
+
+# Nexus Portal on a VPS: one container from Docker Hub, behind your HTTPS reverse proxy.
+#   cp .env.example .env      # fill in NEXUS_PASSWORD, NEXUS_SECRET, NEXUS_VERSION
+#   docker compose up -d
+# To build from this checkout instead of pulling:
+#   docker compose -f compose.yaml -f compose.build.yaml up -d --build
+services:
+  nexus:
+    image: ${NEXUS_IMAGE:-kjoner/nexus-portal}:${NEXUS_VERSION:-latest}
+    container_name: nexus
+    restart: unless-stopped
+    ports:
+      # Localhost only by default: the reverse proxy on this host terminates HTTPS.
+      - "${NEXUS_BIND:-127.0.0.1}:${NEXUS_PORT:-8787}:8787"
+    environment:
+      NEXUS_PASSWORD: ${NEXUS_PASSWORD:?在 .env 中设置 NEXUS_PASSWORD（至少 8 位）}
+      NEXUS_SECRET: ${NEXUS_SECRET:?在 .env 中设置 NEXUS_SECRET（openssl rand -base64 32）}
+      NEXUS_TRUST_PROXY: ${NEXUS_TRUST_PROXY:-1}
+      NEXUS_ALLOWED_ORIGINS: ${NEXUS_PUBLIC_URL:-}
+      NEXUS_HEALTH_ALLOW_PRIVATE: ${NEXUS_HEALTH_ALLOW_PRIVATE:-true}
+      NEXUS_COOKIE_SECURE: ${NEXUS_COOKIE_SECURE:-auto}
+    volumes:
+      - nexus-data:/data
+    # Everything the app writes lives in /data.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  nexus-data:
