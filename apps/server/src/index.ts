@@ -11,6 +11,7 @@ import { IconProxy } from './icons/proxy';
 import { IconStore } from './icons/store';
 import { Linkwarden } from './integrations/linkwarden';
 import { SecretBox } from './integrations/secret';
+import { Commons, Daily, Gallery, Unsplash } from './wallpapers/sources';
 import { WallpaperStore } from './wallpapers/store';
 
 async function main() {
@@ -26,7 +27,16 @@ async function main() {
   const { box, generated } = SecretBox.fromEnv(env.secret ?? undefined, join(env.dataDir, 'secret.key'));
   if (generated) console.log('[nexus] 未设置 NEXUS_SECRET，已在数据目录生成 secret.key 用于加密服务凭据；备份时请一并保存');
   health.start();
-  const app = createApp({ env, repo, auth, limiter: new LoginLimiter(), wallpapers: new WallpaperStore(db, join(env.dataDir, 'wallpapers')), icons: new IconStore(join(env.dataDir, 'icons')), health, iconProxy: new IconProxy(join(env.dataDir, 'icon-cache')), linkwarden: new Linkwarden(db, box, policy) });
+  const wallpapers = new WallpaperStore(db, join(env.dataDir, 'wallpapers'));
+  const commons = new Commons();
+  const sources = {
+    gallery: new Gallery(wallpapers, commons, join(env.dataDir, 'gallery-previews')),
+    daily: new Daily(wallpapers, commons),
+    unsplash: new Unsplash(env.unsplashKey, wallpapers),
+    // Imported wallpaper addresses must be public: they come from the internet, not the LAN.
+    importPolicy: { allowPrivate: false, allowLoopback: false },
+  };
+  const app = createApp({ env, repo, auth, limiter: new LoginLimiter(), wallpapers, icons: new IconStore(join(env.dataDir, 'icons')), health, iconProxy: new IconProxy(join(env.dataDir, 'icon-cache')), linkwarden: new Linkwarden(db, box, policy), sources });
   const server = serve({ fetch: app.fetch, hostname: env.host, port: env.port }, (info) => {
     const version = process.env.NEXUS_VERSION ? ` ${process.env.NEXUS_VERSION}` : '';
     console.log(`[nexus]${version} 已启动 http://${info.address}:${info.port} · 数据目录 ${env.dataDir}`);

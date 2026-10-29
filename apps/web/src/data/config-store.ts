@@ -308,6 +308,25 @@ export async function checkNow(appId: string) {
   useStatusStore.getState().apply(await transport.checkNow(appId));
 }
 
+/** Adds a library entry the server just made, without waiting for the revision event. */
+function adopt(w: UploadedWallpaper): UploadedWallpaper {
+  const s = useConfigStore.getState();
+  if (!s.wallpapers.some((x) => x.id === w.id)) {
+    useConfigStore.setState({ wallpapers: [...s.wallpapers, w] });
+    persist();
+  }
+  return w;
+}
+
+export const wallpaperSources = {
+  list: () => transport.wallpaperSources(),
+  gallery: async (id: string) => adopt(await transport.galleryWallpaper(id)),
+  daily: async (date: string) => adopt(await transport.dailyWallpaper(date)),
+  import: async (url: string) => adopt(await transport.importWallpaper(url)),
+  unsplash: (q: string, page = 1) => transport.unsplashPhotos(q, page),
+  useUnsplash: async (id: string) => adopt(await transport.unsplashWallpaper(id)),
+};
+
 export async function deleteWallpaper(id: string): Promise<void> {
   accept(await transport.deleteWallpaper(id));
 }

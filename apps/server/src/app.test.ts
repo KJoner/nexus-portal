@@ -16,6 +16,7 @@ import { IconStore } from './icons/store';
 import { Linkwarden } from './integrations/linkwarden';
 import { SecretBox } from './integrations/secret';
 import { randomBytes } from 'node:crypto';
+import { Commons, Daily, Gallery, Unsplash } from './wallpapers/sources';
 import { WallpaperStore } from './wallpapers/store';
 
 const PASSWORD = 'correct horse battery';
@@ -42,7 +43,7 @@ let auth: Auth;
 let deps: Parameters<typeof createApp>[0];
 let app: ReturnType<typeof createApp>;
 
-const env: Env = { production: false, host: '127.0.0.1', port: 0, dataDir: '', password: PASSWORD, generatedPassword: false, cookieSecure: 'auto', trustProxy: false, allowedOrigins: ['https://home.example.com'], sessionDays: 30, webDist: null, allowPrivate: true, allowLoopback: false, secret: null };
+const env: Env = { production: false, host: '127.0.0.1', port: 0, dataDir: '', password: PASSWORD, generatedPassword: false, cookieSecure: 'auto', trustProxy: false, allowedOrigins: ['https://home.example.com'], sessionDays: 30, webDist: null, allowPrivate: true, allowLoopback: false, secret: null, unsplashKey: null };
 
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'nexus-test-'));
@@ -51,7 +52,10 @@ beforeEach(async () => {
   await auth.ensurePassword(PASSWORD);
   const repo = new ConfigRepo(db);
   const health = new HealthChecker(db, repo, { allowPrivate: true, allowLoopback: false }, async () => ({ reached: true, status: 200, latencyMs: 12, message: 'HTTP 200' }));
-  deps = { env, repo, auth, limiter: new LoginLimiter(), wallpapers: new WallpaperStore(db, dir), icons: new IconStore(join(dir, 'icons')), health, iconProxy: new IconProxy(join(dir, 'icon-cache'), fakeCdn), linkwarden: new Linkwarden(db, new SecretBox(randomBytes(32)), { allowPrivate: true, allowLoopback: false }), suggestFetch: fakeSuggest };
+  const wallpapers = new WallpaperStore(db, dir);
+  const commons = new Commons(async () => new Response(null, { status: 503 }));
+  const sources = { gallery: new Gallery(wallpapers, commons, join(dir, 'previews'), []), daily: new Daily(wallpapers, commons), unsplash: new Unsplash(null, wallpapers), importPolicy: { allowPrivate: false, allowLoopback: false } };
+  deps = { env, repo, auth, limiter: new LoginLimiter(), wallpapers, sources, icons: new IconStore(join(dir, 'icons')), health, iconProxy: new IconProxy(join(dir, 'icon-cache'), fakeCdn), linkwarden: new Linkwarden(db, new SecretBox(randomBytes(32)), { allowPrivate: true, allowLoopback: false }), suggestFetch: fakeSuggest };
   app = createApp(deps);
 });
 afterEach(() => {

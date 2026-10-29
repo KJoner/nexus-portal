@@ -1,4 +1,20 @@
-import { applyOps, CLIENT_HEADER, defaultConfig, OpError, type ApiErrorBody, type AppEntry, type Bookmark, type ConfigResponse, type HealthTestResult, type LinkwardenStatus, type OpBatch, type ServiceStatus, type UploadedWallpaper } from '@nexus/shared';
+import {
+  applyOps,
+  CLIENT_HEADER,
+  defaultConfig,
+  OpError,
+  type ApiErrorBody,
+  type AppEntry,
+  type Bookmark,
+  type ConfigResponse,
+  type HealthTestResult,
+  type LinkwardenStatus,
+  type OpBatch,
+  type ServiceStatus,
+  type UnsplashPhoto,
+  type UploadedWallpaper,
+  type WallpaperSourcesResponse,
+} from '@nexus/shared';
 
 /** Server answered with an error status. */
 export class HttpError extends Error {
@@ -37,6 +53,13 @@ export interface Transport {
   suggest(engineId: string, q: string, signal: AbortSignal): Promise<string[]>;
   checkNow(appId: string): Promise<ServiceStatus>;
   testHealth(app: AppEntry): Promise<HealthTestResult>;
+  /** v0.2 wallpaper sources: each call returns the library entry it made or already had. */
+  wallpaperSources(): Promise<WallpaperSourcesResponse>;
+  galleryWallpaper(id: string): Promise<UploadedWallpaper>;
+  dailyWallpaper(date: string): Promise<UploadedWallpaper>;
+  importWallpaper(url: string): Promise<UploadedWallpaper>;
+  unsplashPhotos(q: string, page: number): Promise<UnsplashPhoto[]>;
+  unsplashWallpaper(id: string): Promise<UploadedWallpaper>;
   /** Server pushes: config revisions and health results. Returns an unsubscribe function. */
   subscribe(h: { onOpen(): void; onRevision(revision: number): void; onStatus(s: ServiceStatus | { appId: string; removed: true }): void; onClosed(): void }): () => void;
 }
@@ -95,6 +118,13 @@ export const httpTransport: Transport = {
   searchBookmarks: async (q, signal) => (await request<{ bookmarks: Bookmark[] }>(`/api/bookmarks?q=${encodeURIComponent(q)}`, { signal }, 6000)).bookmarks,
   checkNow: (appId) => request(`/api/status/${encodeURIComponent(appId)}/check`, { method: 'POST' }, 15_000),
   testHealth: (app) => request('/api/health/test', { method: 'POST', body: JSON.stringify({ app }) }, 15_000),
+  wallpaperSources: () => request('/api/wallpaper-sources'),
+  // Downloads and re-encodes a large original on the server: allow time.
+  galleryWallpaper: (id) => request(`/api/gallery/${encodeURIComponent(id)}`, { method: 'POST' }, 60_000),
+  dailyWallpaper: (date) => request('/api/daily', { method: 'POST', body: JSON.stringify({ date }) }, 60_000),
+  importWallpaper: (url) => request('/api/wallpapers/import', { method: 'POST', body: JSON.stringify({ url }) }, 60_000),
+  unsplashPhotos: async (q, page) => (await request<{ photos: UnsplashPhoto[] }>(`/api/unsplash/photos?q=${encodeURIComponent(q)}&page=${page}`, {}, 10_000)).photos,
+  unsplashWallpaper: (id) => request(`/api/unsplash/${encodeURIComponent(id)}`, { method: 'POST' }, 15_000),
   subscribe({ onOpen, onRevision, onStatus, onClosed }) {
     if (typeof EventSource === 'undefined') return () => {};
     const es = new EventSource('/api/events');
@@ -193,6 +223,24 @@ export class MemoryTransport implements Transport {
   }
   async testHealth(): Promise<HealthTestResult> {
     return { ok: true, level: 'ok', message: 'HTTP 200 · 1 ms' };
+  }
+  async wallpaperSources(): Promise<WallpaperSourcesResponse> {
+    return { gallery: [], unsplash: false };
+  }
+  async galleryWallpaper(): Promise<UploadedWallpaper> {
+    throw new HttpError(502, 'unavailable', '暂时无法连接 Wikimedia Commons');
+  }
+  async dailyWallpaper(): Promise<UploadedWallpaper> {
+    throw new HttpError(502, 'unavailable', '暂时无法连接 Wikimedia Commons');
+  }
+  async importWallpaper(): Promise<UploadedWallpaper> {
+    throw new HttpError(422, 'blocked', 'not in tests');
+  }
+  async unsplashPhotos(): Promise<UnsplashPhoto[]> {
+    return [];
+  }
+  async unsplashWallpaper(): Promise<UploadedWallpaper> {
+    throw new HttpError(404, 'not_configured', '未配置 Unsplash Access Key');
   }
   subscribe({ onRevision }: { onRevision(r: number): void }) {
     this.listeners.add(onRevision);

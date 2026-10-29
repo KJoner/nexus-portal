@@ -13,12 +13,14 @@ import { attention, isPage, PAGES, searchIndex, summaries, type PageId } from '.
 import { AppearancePage } from './pages/AppearancePage';
 import { AppsPage } from './pages/AppsPage';
 import { DataPage } from './pages/DataPage';
+import { DisplayPage } from './pages/DisplayPage';
 import { HomeLayoutPage } from './pages/HomeLayoutPage';
 import { SearchPage } from './pages/SearchPage';
 import { CompactContext, Spinner } from './ui';
 
 const PAGE_VIEW: Record<PageId, () => ReactNode> = {
   appearance: () => <AppearancePage />,
+  display: () => <DisplayPage />,
   home: () => <HomeLayoutPage />,
   apps: () => <AppsPage />,
   search: () => <SearchPage />,

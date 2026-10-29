@@ -73,6 +73,75 @@ export const EngineSchema = z.object({
 });
 
 const Focal = z.tuple([z.number().min(0).max(100), z.number().min(0).max(100)]);
+const WallId = z.string().min(1).max(64);
+
+export const GALLERY_CATEGORY_IDS = ['nature', 'architecture', 'minimal', 'city', 'dark'] as const;
+
+/**
+ * 背景切换 (v0.2). `off` keeps `look.wallpaper`; the timed modes pick from the pool by time, so every
+ * device shows the same picture without writing anything; `potd` is Wikimedia's picture of the day.
+ */
+export const RotationSchema = z
+  .object({
+    mode: z.enum(['off', 'open', 'hourly', 'daily', 'interval', 'potd']).default('off'),
+    minutes: z.number().int().min(5).max(720).default(30),
+    /** library: my wallpapers; favorites: starred ones; gallery: 精选图库 categories. */
+    pool: z.enum(['library', 'favorites', 'gallery']).default('library'),
+    categories: z.array(z.enum(GALLERY_CATEGORY_IDS)).max(5).default([...GALLERY_CATEGORY_IDS]),
+  })
+  .prefault({});
+
+/** 显示方式: always, only on hover / focus (and when it has something urgent to say), or never. */
+const Show = z.enum(['show', 'hover', 'hide']);
+const OnOff = z.enum(['show', 'hide']);
+
+/**
+ * 首页显示与布局 (v0.2). Desktop and phone are separate so that one device's layout never rewrites
+ * the other's. Presets only change these fields, never apps or pins.
+ */
+export const UiSchema = z
+  .object({
+    preset: z.enum(['daily', 'minimal', 'custom']).default('daily'),
+    desktop: z
+      .object({
+        /** The whole top-left area: logo and navigation. */
+        topbar: Show.default('show'),
+        brand: z.boolean().default(true),
+        navHome: z.boolean().default(true),
+        navApps: z.boolean().default(true),
+        navOverview: z.boolean().default(true),
+        /** Service status; an unseen 异常 shows regardless. */
+        status: Show.default('show'),
+        settings: Show.default('show'),
+        clock: OnOff.default('show'),
+        /** Hidden search returns on `/`, Ctrl+K or a click on the empty slab. */
+        search: OnOff.default('show'),
+        shortcuts: OnOff.default('show'),
+        /** Labels under the icons only while the pointer is on them. */
+        labelsOnHover: z.boolean().default(false),
+        wallpaperName: Show.default('show'),
+        /** Credits a license requires stay visible whatever this says. */
+        wallpaperCredit: Show.default('show'),
+        /** 换一张 (the other actions appear when the pointer is on the bar). */
+        wallpaperActions: Show.default('show'),
+        searchWidth: z.number().int().min(640).max(960).default(760),
+        /** Vertical position, % of the viewport height relative to the default. */
+        offsetY: z.number().int().min(-12).max(12).default(0),
+        clockScale: z.number().min(0.7).max(1.4).default(1),
+      })
+      .prefault({}),
+    mobile: z
+      .object({
+        status: OnOff.default('show'),
+        /** Hidden settings button: long-press the wallpaper or use the search action instead. */
+        settings: OnOff.default('show'),
+        clock: OnOff.default('show'),
+        wallpaperCredit: OnOff.default('show'),
+        clockScale: z.number().min(0.7).max(1.4).default(1),
+      })
+      .prefault({}),
+  })
+  .prefault({});
 
 export const SettingsSchema = z.object({
   search: z.object({
@@ -118,12 +187,18 @@ export const SettingsSchema = z.object({
     iconSize: z.enum(['s', 'm', 'l']),
     motion: z.enum(['full', 'reduced', 'off']),
     focal: z.object({ desktop: Focal, mobile: Focal }),
+    rotation: RotationSchema,
+    /** Starred wallpapers (ids). */
+    favorites: z.array(WallId).max(200).default([]),
+    /** 不喜欢: never picked by rotation. */
+    blocked: z.array(WallId).max(500).default([]),
   }),
   privacy: z.object({
     guest: z.boolean(),
     recordRecent: z.boolean(),
     cacheIcons: z.boolean(),
   }),
+  ui: UiSchema,
 });
 
 export const ConfigSchema = z.object({
@@ -146,6 +221,7 @@ export type AppEntry = z.infer<typeof AppSchema>;
 export type Category = z.infer<typeof CategorySchema>;
 export type Engine = z.infer<typeof EngineSchema>;
 export type Settings = z.infer<typeof SettingsSchema>;
+export type UiSettings = z.infer<typeof UiSchema>;
 export type SettingsSection = keyof Settings;
 export type Config = z.infer<typeof ConfigSchema>;
 

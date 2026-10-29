@@ -1,19 +1,22 @@
-import { appHref, desktopShortcuts, hostOf, MAX_PINS, pinnedSites, shownServices, type AppEntry } from '@nexus/shared';
-import { Activity, ArrowUpRight, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, ExternalLink, Eye, EyeOff, GripVertical, Pencil, Pin, PinOff } from 'lucide-react';
+import { appHref, desktopShortcuts, hostOf, MAX_PINS, pinnedSites, shownServices, uiPreset, type AppEntry } from '@nexus/shared';
+import { Activity, ArrowUpRight, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, ExternalLink, Eye, EyeOff, GripVertical, Image, LayoutTemplate, Pencil, Pin, PinOff, Settings, SlidersHorizontal } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { ContextMenu, menuPoint, type MenuItem, type MenuState } from '../../../components/ContextMenu';
 import { ToastHost } from '../../../components/ToastHost';
 import { toast } from '../../../components/toast-store';
-import { flush, useConfig, useConfigStore } from '../../../data/config-store';
+import { dispatch, flush, useConfig, useConfigStore } from '../../../data/config-store';
 import { useServices } from '../../../data/status';
 import { useMotionLevel, useNow, useViewport } from '../../../lib/hooks';
 import { openApp } from '../../../lib/open';
+import { useProximity } from '../../../lib/proximity';
 import { storage } from '../../../lib/storage';
 import { formatClock, formatDate } from '../../../lib/time';
 import { homeActions } from '../actions';
 import type { QuickActionId } from '../search-model';
-import { useWallpaper, Wallpaper } from '../Wallpaper';
+import { useCurrentWallpaper } from '../rotation';
+import { Wallpaper } from '../Wallpaper';
+import { WallpaperBar } from '../WallpaperBar';
 import { Dock, dockHeights, extensionCols, type MenuSource } from './Dock';
 import { Drawer } from './Drawer';
 import { SearchSlab, type SearchSlabHandle } from './SearchSlab';
@@ -34,7 +37,9 @@ export function DesktopHome() {
   const now = useNow(look.showSeconds);
   const navigate = useNavigate();
   const { services, all, summary } = useServices();
-  const wp = useWallpaper(look);
+  const current = useCurrentWallpaper();
+  const ui = config.settings.ui.desktop;
+  const near = useProximity([ui.topbar, ui.status, ui.settings, ui.wallpaperName, ui.wallpaperCredit, ui.wallpaperActions].includes('hover'));
 
   const [drawer, setDrawer] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
@@ -47,9 +52,13 @@ export function DesktopHome() {
   const pillRef = useRef<HTMLButtonElement>(null);
 
   const showStatus = !privacy.guest;
-  const top = h >= 900 ? 228 : Math.round(h * 0.24);
+  // 布局微调: vertical offset and slab width, kept inside the window.
+  const top = Math.max(72, (h >= 900 ? 228 : Math.round(h * 0.24)) + Math.round((h * ui.offsetY) / 100));
+  const slabW = Math.min(ui.searchWidth, w - 120);
+  const clockH = ui.clock === 'show' ? Math.round(60 * ui.clockScale) + 20 : look.showDate ? 40 : 0;
   const iconSize = ICON[look.iconSize];
   const labels = home.labels.desktop;
+  const showShortcuts = ui.shortcuts === 'show';
   const pinned = useMemo(() => pinnedSites(config), [config]);
   const { first: dockSites, extra } = useMemo(() => desktopShortcuts(config), [config]);
   const { shortcuts } = home;
@@ -91,11 +100,17 @@ export function DesktopHome() {
     setDrawer(false);
   };
 
-  // Global keys: `/` or Ctrl/⌘+K focus search; Esc closes the top-most layer.
+  // Global keys: `/` or Ctrl/⌘+K focus search; `,` opens settings; Esc closes the top-most layer.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
-      const typing = (e.target as HTMLElement | null)?.closest('input, textarea, select, [contenteditable="true"]');
+      const typing = e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable="true"]');
+      // Always reachable, even with every control hidden (首页显示).
+      if (e.key === ',' && !typing && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        navigate('/settings');
+        return;
+      }
       if (((e.key === '/' && !typing) || (e.key.toLowerCase() === 'k' && (e.ctrlKey || e.metaKey))) && !drawer && !menu) {
         e.preventDefault();
         slabRef.current?.focus();
@@ -127,8 +142,28 @@ export function DesktopHome() {
 
   const onAction = (id: QuickActionId) => {
     if (id === 'status') openStatus();
-    else if (id === 'wallpaper') homeActions.nextWallpaper();
+    else if (id === 'wallpaper') current.next();
     else navigate('/settings');
+  };
+
+  /** Right-click on the empty wallpaper: a way back to settings when controls are hidden. */
+  const onBackgroundMenu = (e: MouseEvent<HTMLDivElement>) => {
+    if (e.target instanceof Element && e.target.closest('a, button, input, [role="dialog"], [role="menu"], main')) return;
+    e.preventDefault();
+    const minimal = config.settings.ui.preset === 'minimal';
+    setMenu({
+      ...menuPoint(e),
+      origin: null,
+      header: { target: { kind: 'system', icon: Settings }, name: 'Nexus', sub: '首页' },
+      items: [
+        { label: '打开设置', icon: Settings, hint: ',', onSelect: () => navigate('/settings') },
+        { label: '换一张壁纸', icon: Image, onSelect: current.next },
+        { label: '编辑首页…', icon: GripVertical, onSelect: enterEdit },
+        'sep',
+        { label: minimal ? '切换到日常模式' : '切换到极简模式', icon: LayoutTemplate, onSelect: () => dispatch({ type: 'settings.patch', section: 'ui', patch: uiPreset(minimal ? 'daily' : 'minimal', config.settings.ui) }) },
+        { label: '显示与布局…', icon: SlidersHorizontal, hint: '↗', onSelect: () => navigate('/settings/display') },
+      ],
+    });
   };
 
   const openMenu = (e: MenuEvent, app: AppEntry, from: MenuSource) => {
@@ -190,8 +225,8 @@ export function DesktopHome() {
   // so expanding never moves the clock or the search field.
   const addToExtension = edit && shortcuts.mode !== 'single' && dockSites.length >= home.dockSize && pinned.length < MAX_PINS;
   const extItems = extra.length + (addToExtension ? 1 : 0);
-  const cols = extensionCols(iconSize);
-  const room = h - top - 80 - 67 - (edit ? 62 : 0) - 56;
+  const cols = extensionCols(iconSize, slabW);
+  const room = h - top - clockH - 67 - (edit ? 62 : 0) - 56;
   const pagesFor = (r: number) => Math.max(1, Math.ceil(extItems / (cols * r)));
   const heightFor = (r: number) => {
     const m = dockHeights(iconSize, labels, Math.min(r, Math.ceil(extItems / cols) || 1), shortcuts.pager && pagesFor(r) > 1);
@@ -211,8 +246,8 @@ export function DesktopHome() {
   const breathe = summary.level === 'error' && !errorSeen && motion === 'full';
 
   return (
-    <div className="fixed inset-0 overflow-clip bg-base">
-      <Wallpaper look={look} variant="desktop" receded={drawer} />
+    <div className="fixed inset-0 overflow-clip bg-base" onContextMenu={onBackgroundMenu}>
+      <Wallpaper look={look} variant="desktop" receded={drawer} entry={current.entry} />
 
       <div inert={drawer}>
         <TopBar
@@ -222,6 +257,8 @@ export function DesktopHome() {
           statusOpen={statusOpen}
           breathe={breathe}
           staticRing={summary.level === 'error' && motion !== 'full'}
+          ui={ui}
+          near={near}
           onToggleStatus={() => (statusOpen ? setStatusOpen(false) : openStatus())}
           onOpenDrawer={openDrawer}
           onOpenOverview={openStatus}
@@ -229,23 +266,31 @@ export function DesktopHome() {
         {showStatus && <StatusPopover open={statusOpen} services={services} />}
 
         <main
-          className="absolute left-1/2 z-[3] w-[760px] transition-[opacity,transform] ease-soft"
+          className="absolute left-1/2 z-[3] transition-[opacity,transform] ease-soft"
           style={{
             top,
+            width: slabW,
             transform: `translateX(-50%) scale(${drawer && motion === 'full' ? 0.98 : 1})`,
             opacity: drawer ? 0 : 1,
             transitionDuration: '200ms, 320ms',
           }}
         >
-          <div className="flex items-baseline gap-4 px-2 pb-5">
-            <span className="text-[60px] leading-none font-light tracking-[-0.035em] tabular-nums">{formatClock(now, look.clock, look.showSeconds)}</span>
-            {look.showDate && <span className="text-[15px] text-ink/66">{formatDate(now)}</span>}
-          </div>
+          {(ui.clock === 'show' || look.showDate) && (
+            <div className="flex items-baseline gap-4 px-2 pb-5">
+              {ui.clock === 'show' && (
+                <span className="leading-none font-light tracking-[-0.035em] tabular-nums" style={{ fontSize: Math.round(60 * ui.clockScale) }}>
+                  {formatClock(now, look.clock, look.showSeconds)}
+                </span>
+              )}
+              {look.showDate && <span className="text-[15px] text-ink/66">{formatDate(now)}</span>}
+            </div>
+          )}
           <SearchSlab
             ref={slabRef}
             edit={edit}
-            maxPanel={h - top - 80 - 67 - 36}
-            dockHeight={metrics.first + (expanded ? metrics.extension : 0)}
+            maxPanel={h - top - clockH - 67 - 36}
+            dockHeight={showShortcuts || edit ? metrics.first + (expanded ? metrics.extension : 0) : 0}
+            hideInput={ui.search === 'hide'}
             onFocusSearch={() => {
               setStatusOpen(false);
               if (edit) setEdit(false);
@@ -265,6 +310,8 @@ export function DesktopHome() {
                 edit={edit}
                 iconSize={iconSize}
                 labels={labels}
+                labelsOnHover={ui.labelsOnHover}
+                slabWidth={slabW}
                 showBadges={showStatus}
                 allRef={allRef}
                 onMenu={openMenu}
@@ -291,16 +338,7 @@ export function DesktopHome() {
           )}
         </main>
 
-        <div className="absolute bottom-[26px] left-9 z-[2] flex gap-3 text-[12px] text-ink/50 transition-opacity duration-200" style={{ opacity: drawer ? 0 : 1 }}>
-          <span>
-            {wp.name}
-            {wp.credit ? ` · ${wp.credit}` : ''}
-          </span>
-          <span>·</span>
-          <button type="button" onClick={homeActions.nextWallpaper} className="border-0 bg-transparent p-0 text-[12px] text-ink/70 hover:text-ink">
-            换一张
-          </button>
-        </div>
+        <WallpaperBar current={current} ui={ui} near={near.bottomLeft} hidden={drawer} />
       </div>
 
       <Drawer

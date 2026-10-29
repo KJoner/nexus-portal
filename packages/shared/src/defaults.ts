@@ -1,4 +1,4 @@
-import type { AppEntry, Config, Engine } from './schema';
+import { UiSchema, type AppEntry, type Config, type Engine, type UiSettings } from './schema';
 
 /** Ember tones for self-hosted tiles and letter icons: [top, bottom]. */
 export const TONES: ReadonlyArray<readonly [string, string]> = [
@@ -17,10 +17,12 @@ export interface Wallpaper {
   credit?: string;
   /** Default focal point [x%, y%] for photos. */
   focal?: [number, number];
+  /** Brightness (0–1) of the band behind the clock and search. */
+  luma?: number;
 }
 
 export const BUILTIN_WALLPAPERS: readonly Wallpaper[] = [
-  { id: 'fallingwater', name: '流水别墅', kind: 'photo', src: '/wallpapers/fallingwater.jpg', credit: '宾夕法尼亚', focal: [50, 42] },
+  { id: 'fallingwater', name: '流水别墅', kind: 'photo', src: '/wallpapers/fallingwater.jpg', credit: '宾夕法尼亚', focal: [50, 42], luma: 0.42 },
   { id: 'ember', name: '暖炭', kind: 'color', src: 'linear-gradient(160deg,#3a3129 0%,#1d1a16 70%)' },
   { id: 'moss', name: '夜苔', kind: 'color', src: 'linear-gradient(160deg,#2f3a31 0%,#181c18 70%)' },
   { id: 'slate', name: '石墨', kind: 'color', src: 'linear-gradient(160deg,#30353d 0%,#17191d 70%)' },
@@ -70,6 +72,17 @@ export const DEFAULT_ENGINES: readonly Engine[] = [
   { id: 'duckduckgo', name: 'DuckDuckGo', urlTemplate: 'https://duckduckgo.com/?q=%s', prefix: 'd', builtin: true, kind: 'web', icon: 'duckduckgo' },
   { id: 'links', name: '我的收藏', urlTemplate: '', prefix: 'lw', builtin: true, kind: 'linkwarden', icon: '' },
 ];
+
+/** 首页显示预设: 日常 is the default look; 极简 keeps the clock, search and shortcuts. */
+export function uiPreset(preset: 'daily' | 'minimal', current: UiSettings): UiSettings {
+  const d = UiSchema.parse({});
+  if (preset === 'daily') return { ...d, desktop: { ...d.desktop, searchWidth: current.desktop.searchWidth, offsetY: current.desktop.offsetY, clockScale: current.desktop.clockScale }, mobile: { ...d.mobile, clockScale: current.mobile.clockScale } };
+  return {
+    preset: 'minimal',
+    desktop: { ...current.desktop, topbar: 'hover', status: 'hover', settings: 'hover', clock: 'show', search: 'show', shortcuts: 'show', labelsOnHover: true, wallpaperName: 'hover', wallpaperCredit: 'hover', wallpaperActions: 'hover' },
+    mobile: { ...current.mobile, status: 'hide', settings: 'hide', clock: 'show', wallpaperCredit: 'hide' },
+  };
+}
 
 /** Apps are listed category by category (see `groupByCategory`). */
 export function defaultConfig(): Config {
@@ -128,8 +141,12 @@ export function defaultConfig(): Config {
         iconSize: 'm',
         motion: 'full',
         focal: { desktop: [50, 42], mobile: [46, 50] },
+        rotation: { mode: 'off', minutes: 30, pool: 'library', categories: ['nature', 'architecture', 'minimal', 'city', 'dark'] },
+        favorites: [],
+        blocked: [],
       },
       privacy: { guest: false, recordRecent: true, cacheIcons: true },
+      ui: UiSchema.parse({}),
     },
   };
 }

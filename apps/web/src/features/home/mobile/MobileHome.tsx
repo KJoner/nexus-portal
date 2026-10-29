@@ -1,10 +1,10 @@
-import { hostOf, matchApps, MAX_PINS, mobileShortcuts, paginate, shownServices, type AppEntry, type SearchRow } from '@nexus/shared';
-import { Activity, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, ExternalLink, EyeOff, Pencil, Pin, PinOff, Plus, Search, Settings } from 'lucide-react';
+import { hostOf, matchApps, MAX_PINS, mobileShortcuts, paginate, shownServices, uiPreset, type AppEntry, type SearchRow } from '@nexus/shared';
+import { Activity, Ban, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, ExternalLink, EyeOff, Heart, Image, LayoutTemplate, Lock, Pencil, Pin, PinOff, Plus, Search, Settings } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { ActionSheet, type SheetItem, type SheetState } from '../../../components/ActionSheet';
 import { ToastHost } from '../../../components/ToastHost';
-import { useConfig, useConfigStore } from '../../../data/config-store';
+import { dispatch, useConfig, useConfigStore } from '../../../data/config-store';
 import { useServices, type ServiceView } from '../../../data/status';
 import { AppTile } from '../../../icons/AppTile';
 import { ALL_APPS_GLYPH } from '../../../icons/glyphs';
@@ -17,7 +17,9 @@ import { homeActions } from '../actions';
 import { activateRow, rowTile, useSearchModel, type QuickActionId } from '../search-model';
 import { actionStyle, dotStyle, messageColor, pillStyle, rowHighlighted } from '../status-style';
 import { RetryButton } from '../desktop/StatusPopover';
+import { useCurrentWallpaper } from '../rotation';
 import { Wallpaper } from '../Wallpaper';
+import { CreditText } from '../WallpaperBar';
 import { useLongPress } from './useLongPress';
 
 type Mode = 'home' | 'search' | 'apps';
@@ -39,6 +41,8 @@ export function MobileHome() {
   const now = useNow(look.showSeconds);
   const navigate = useNavigate();
   const { services, all, summary } = useServices();
+  const current = useCurrentWallpaper();
+  const ui = config.settings.ui.mobile;
   const [mode, setMode] = useState<Mode>('home');
   const [q, setQ] = useState('');
   const [engineId, setEngineId] = useState(config.settings.search.defaultEngine);
@@ -51,6 +55,7 @@ export function MobileHome() {
   const tile = TILE[look.iconSize] - (w < 380 ? 4 : 0);
   const labels = home.labels.mobile;
   const showStatus = !privacy.guest;
+  const statusPill = showStatus && (ui.status === 'show' || summary.level === 'error');
   const shownIds = useMemo(() => new Set(shownServices(config).map((a) => a.id)), [config]);
   const homeServices = services.filter((s) => shownIds.has(s.app.id));
   const capacity = Math.max(0, home.mobileRows * 4 - homeServices.length);
@@ -102,6 +107,24 @@ export function MobileHome() {
     setSheet({ header: { target: { kind: 'app', app }, name: app.name, sub: from === 'hosted' ? '自托管服务 · 在设置中管理' : hostOf(app.url) }, items });
   };
   const fromOf = (a: AppEntry, where: 'home' | 'apps'): From => (a.kind === 'service' ? 'hosted' : where);
+  const bgPress = useLongPress(() => {
+    const c = useConfigStore.getState().snapshot.config;
+    const { entry, rotating } = current;
+    const fav = c.settings.look.favorites.includes(entry.id);
+    const minimal = c.settings.ui.preset === 'minimal';
+    setSheet({
+      header: { target: { kind: 'system', icon: Image }, name: entry.name, sub: '壁纸与首页' },
+      items: [
+        { label: '打开设置', icon: Settings, onSelect: () => navigate('/settings') },
+        { label: '换一张壁纸', icon: Image, onSelect: current.next },
+        { label: fav ? '取消收藏当前壁纸' : '收藏当前壁纸', icon: Heart, onSelect: () => homeActions.toggleFavorite(entry) },
+        { label: '不喜欢这张', icon: Ban, onSelect: () => homeActions.dislike(entry, current.next) },
+        ...(rotating ? [{ label: '锁定当前壁纸', icon: Lock, onSelect: () => homeActions.lock(entry) }] : []),
+        { label: minimal ? '切换到日常模式' : '切换到极简模式', icon: LayoutTemplate, onSelect: () => dispatch({ type: 'settings.patch', section: 'ui', patch: uiPreset(minimal ? 'daily' : 'minimal', c.settings.ui) }) },
+      ],
+    });
+  });
+  const { consumeClick: swallowBgClick, ...bgHandlers } = bgPress.bind('wallpaper');
   const { bind, pressed } = useLongPress((id) => {
     const app = useConfigStore.getState().snapshot.config.apps.find((a) => a.id === id);
     if (app) openSheet(id, fromOf(app, mode === 'apps' ? 'apps' : 'home'));
@@ -114,7 +137,7 @@ export function MobileHome() {
 
   const onAction = (id: QuickActionId) => {
     if (id === 'status') openApps();
-    else if (id === 'wallpaper') homeActions.nextWallpaper();
+    else if (id === 'wallpaper') current.next();
     else navigate('/settings');
   };
 
@@ -122,7 +145,7 @@ export function MobileHome() {
   const rowH = tile + (labels ? 22 : 0);
   const rowsH = home.mobileRows * rowH + (home.mobileRows - 1) * 16;
   const dots = hasExtra && home.shortcuts.pager && !expanded;
-  const statusH = 32;
+  const statusH = statusPill ? 32 : 0;
   const homeH = 26 + statusH + 16 + rowsH + (dots ? DOTS_H : 0) + 8 + 14 + 52 + 14;
   // Pulled up: every pinned site in one scrolling grid, never covering the clock.
   const allRows = Math.ceil((homeSites.length + homeServices.length + (showAdd ? 1 : 0) + extra.length) / 4);
@@ -142,19 +165,30 @@ export function MobileHome() {
 
   return (
     <div className="nx-touch fixed inset-x-0 top-0 overflow-clip bg-base" style={rootStyle}>
-      <Wallpaper look={look} variant="mobile" receded={!isHome} />
+      <Wallpaper look={look} variant="mobile" receded={!isHome} entry={current.entry} />
+      {/* Long-press the wallpaper: settings and wallpaper actions, even with every control hidden. */}
+      {isHome && <div aria-hidden data-bg-press className="absolute inset-0" style={{ WebkitTouchCallout: 'none' }} {...bgHandlers} onClick={swallowBgClick} />}
 
-      <div className="absolute right-[22px] left-[26px] flex items-start transition-opacity duration-200 ease-soft" style={{ top: `calc(${SAFE_TOP} + ${small ? 32 : 25}px)`, opacity: isHome ? 1 : 0 }} inert={!isHome}>
-        <div className="flex flex-col gap-1.5">
-          <span className="leading-none font-light tracking-[-0.04em] tabular-nums" style={{ fontSize: small ? 50 : 58 }}>
-            {formatClock(now, look.clock, look.showSeconds)}
-          </span>
+      <div className="pointer-events-none absolute right-[22px] left-[26px] flex items-start transition-opacity duration-200 ease-soft" style={{ top: `calc(${SAFE_TOP} + ${small ? 32 : 25}px)`, opacity: isHome ? 1 : 0 }} inert={!isHome}>
+        <div className="flex min-w-0 flex-col gap-1.5">
+          {ui.clock === 'show' && (
+            <span className="leading-none font-light tracking-[-0.04em] tabular-nums" style={{ fontSize: Math.round((small ? 50 : 58) * ui.clockScale) }}>
+              {formatClock(now, look.clock, look.showSeconds)}
+            </span>
+          )}
           {look.showDate && <span className="text-[14px] text-ink/70">{formatDate(now)}</span>}
+          {(ui.wallpaperCredit === 'show' || current.entry.info?.required) && (current.entry.info || current.entry.credit) && (
+            <span className="pointer-events-auto truncate text-[11.5px] text-ink/50">
+              {current.entry.name} · <CreditText info={current.entry.info} fallback={current.entry.credit} />
+            </span>
+          )}
         </div>
         <span className="flex-1" />
-        <Link to="/settings" aria-label="设置" className="grid size-11 place-items-center rounded-full text-ink/85 backdrop-blur-[24px]" style={{ background: 'rgba(26,25,22,0.36)' }}>
-          <Settings className="size-[18px]" />
-        </Link>
+        {ui.settings === 'show' && (
+          <Link to="/settings" aria-label="设置" className="pointer-events-auto grid size-11 flex-none place-items-center rounded-full text-ink/85 backdrop-blur-[24px]" style={{ background: 'rgba(26,25,22,0.36)' }}>
+            <Settings className="size-[18px]" />
+          </Link>
+        )}
       </div>
 
       <div
@@ -184,7 +218,7 @@ export function MobileHome() {
 
         {/* home */}
         <div className="absolute top-[26px] right-3.5 left-3.5 flex flex-col transition-[opacity,transform] duration-200 ease-soft" style={{ bottom: contentB, ...layer(isHome, false) }} inert={!isHome}>
-          {showStatus && (
+          {statusPill && (
             <div className="flex items-center px-0.5">
               <button type="button" onClick={openApps} aria-label={`服务状态：${summary.text}，查看全部应用`} className="-my-1.5 flex h-11 items-center border-0 bg-transparent p-0">
                 <span className="flex h-8 items-center gap-2 rounded-full pr-3 pl-[11px] text-[12.5px]" style={pillStyle(summary.level)}>

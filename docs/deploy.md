@@ -88,6 +88,9 @@ home.example.com {
 | 代理环境 | 宿主机若运行 Clash / Mihomo 的 fake-ip 模式，公网域名会解析到 `198.18.0.0/15`，Nexus 视其为私有地址，检查可以正常进行 |
 | Linkwarden | 访问令牌用 `NEXUS_SECRET` 加密保存，接口只返回末 4 位。更换 `NEXUS_SECRET` 后需要在设置里重新填写令牌 |
 | 图标 | 默认由服务端从固定 CDN 拉取并缓存，浏览器不直接访问第三方图标服务 |
+| 精选图库 / 每日一图 | 服务端只访问 Wikimedia 的固定域名（`commons.wikimedia.org`、`upload.wikimedia.org`、`thumb.wikimedia.org`），同时最多 3 个请求；下载前核对许可（只接受 CC0、公有领域、CC BY / BY-SA），缓存到数据目录，浏览器同源加载 |
+| 网址导入壁纸 | 服务端下载一次：只允许公网地址（内网、回环、链路本地一律拒绝，每次重定向都重新检查），≤ 15 MB，必须是图片，并重新编码；只记录地址的主机与路径，不保存查询参数。宿主机若运行 fake-ip 代理，公网域名会解析到私有段，导入会被拒绝 |
+| Unsplash | 仅在设置了 `NEXUS_UNSPLASH_ACCESS_KEY` 时启用；Key 不会发给浏览器。按其 API 规定图片必须直链，浏览器会直接访问 `images.unsplash.com` |
 | 登录 | 单用户密码；每个 IP 15 分钟内最多 5 次失败，全局 30 次 |
 
 ## 4. 备份与恢复

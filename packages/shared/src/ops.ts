@@ -61,7 +61,7 @@ export const OpSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('engine.upsert'), engine: z.unknown(), index: Index.optional() }),
   z.object({ type: z.literal('engine.delete'), engineId: IdRef }),
   z.object({ type: z.literal('engine.move'), engineId: IdRef, toIndex: Index }),
-  z.object({ type: z.literal('settings.patch'), section: z.enum(['search', 'home', 'look', 'privacy']), patch: z.record(z.string(), z.unknown()) }),
+  z.object({ type: z.literal('settings.patch'), section: z.enum(['search', 'home', 'look', 'privacy', 'ui']), patch: z.record(z.string(), z.unknown()) }),
   z.object({ type: z.literal('config.replace'), config: z.unknown() }),
 ]);
 

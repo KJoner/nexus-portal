@@ -1,13 +1,14 @@
 import { homeCapacity, pinnedSites, shownServices, type Config, type Op, type SettingsSection } from '@nexus/shared';
-import { House, LayoutGrid, Palette, Search, ShieldCheck, type LucideIcon } from 'lucide-react';
+import { House, LayoutGrid, LayoutTemplate, Palette, Search, ShieldCheck, type LucideIcon } from 'lucide-react';
 import { toast } from '../../components/toast-store';
 import { dispatch } from '../../data/config-store';
 import type { WallpaperEntry } from '../home/Wallpaper';
 
-export type PageId = 'appearance' | 'home' | 'apps' | 'search' | 'data';
+export type PageId = 'appearance' | 'display' | 'home' | 'apps' | 'search' | 'data';
 
 export const PAGES: { id: PageId; label: string; short: string; icon: LucideIcon }[] = [
   { id: 'appearance', label: '外观与个性化', short: '外观与个性化', icon: Palette },
+  { id: 'display', label: '首页显示与布局', short: '显示与布局', icon: LayoutTemplate },
   { id: 'home', label: '首页与快捷方式', short: '首页与快捷方式', icon: House },
   { id: 'apps', label: '应用与服务', short: '应用与服务', icon: LayoutGrid },
   { id: 'search', label: '搜索', short: '搜索', icon: Search },
@@ -18,7 +19,12 @@ export const isPage = (p: string | undefined): p is PageId => PAGES.some((x) => 
 
 /** Settings search (R2 · 设置搜索): label + keywords → page. */
 export const INDEX: { page: PageId; label: string; kw: string }[] = [
-  ['appearance', '壁纸', '更换 上传 焦点 背景 图片'],
+  ['appearance', '壁纸', '更换 上传 焦点 背景 图片 图库 每日 unsplash 网址'],
+  ['appearance', '自动切换壁纸', '轮换 每天 每小时 每次打开 收藏 不喜欢 锁定'],
+  ['display', '首页显示预设', '极简 日常 自定义'],
+  ['display', '顶部导航与设置按钮', '导航 标志 logo 状态 设置 隐藏 悬停'],
+  ['display', '时钟、搜索框与快捷方式', '隐藏 名称 标签'],
+  ['display', '布局微调', '宽度 位置 时钟大小'],
   ['appearance', '背景遮罩与亮度', '遮罩 亮度 模糊'],
   ['appearance', '主题', '深色 浅色 跟随系统'],
   ['appearance', '时间与日期', '24 小时 12 秒 日期 时钟'],
@@ -47,8 +53,9 @@ export function searchIndex(q: string) {
   return s ? INDEX.filter((x) => (x.label + ' ' + x.kw).toLowerCase().includes(s)) : [];
 }
 
-const THEME = { dark: '深色', light: '浅色', auto: '跟随系统' } as const;
 const MOTION = { full: '完整', reduced: '减弱', off: '关闭' } as const;
+const ROTATION = { off: '固定壁纸', open: '每次打开换一张', hourly: '每小时换一张', daily: '每天换一张', interval: '定时切换', potd: '每日一图' } as const;
+const PRESET = { daily: '日常模式', minimal: '极简模式', custom: '自定义显示' } as const;
 
 export function summaries(c: Config, wp: WallpaperEntry, sync: string): Record<PageId, string> {
   const sites = c.apps.filter((a) => a.kind === 'site');
@@ -58,7 +65,8 @@ export function summaries(c: Config, wp: WallpaperEntry, sync: string): Record<P
   const pins = pinnedSites(c).length;
   const cap = homeCapacity(c);
   return {
-    appearance: `${wp.name} · ${THEME[c.settings.look.theme]} · 动画${MOTION[c.settings.look.motion]}`,
+    appearance: `${wp.name} · ${ROTATION[c.settings.look.rotation.mode]} · 动画${MOTION[c.settings.look.motion]}`,
+    display: `${PRESET[c.settings.ui.preset]} · 搜索面板 ${c.settings.ui.desktop.searchWidth}px`,
     home: `桌面 ${Math.min(pins, cap.desktop)} 个网站 + ${shownServices(c).length} 个服务 · 手机 ${c.settings.home.mobileRows} 行`,
     apps: `${sites.length} 个网站、${services.length} 个自托管服务${hidden ? ` · ${hidden} 个已隐藏` : ''}`,
     search: `默认 ${engine?.name ?? '—'} · ${c.engines.length} 个引擎 · 历史${c.settings.search.history ? '开启' : '关闭'}`,

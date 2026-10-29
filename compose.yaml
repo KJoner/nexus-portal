@@ -20,6 +20,7 @@ services:
       NEXUS_ALLOWED_ORIGINS: ${NEXUS_PUBLIC_URL:-}
       NEXUS_HEALTH_ALLOW_PRIVATE: ${NEXUS_HEALTH_ALLOW_PRIVATE:-true}
       NEXUS_COOKIE_SECURE: ${NEXUS_COOKIE_SECURE:-auto}
+      NEXUS_UNSPLASH_ACCESS_KEY: ${NEXUS_UNSPLASH_ACCESS_KEY:-}
     volumes:
       - nexus-data:/data
     # Everything the app writes lives in /data.

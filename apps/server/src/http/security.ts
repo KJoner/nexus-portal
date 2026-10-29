@@ -3,7 +3,7 @@ import type { Context, MiddlewareHandler } from 'hono';
 import { secureHeaders } from 'hono/secure-headers';
 import type { Env } from '../env';
 
-export const apiError = (c: Context, status: 400 | 401 | 403 | 404 | 413 | 415 | 422 | 429 | 500, code: string, message: string) => c.json({ error: { code, message } }, status);
+export const apiError = (c: Context, status: 400 | 401 | 403 | 404 | 413 | 415 | 422 | 429 | 500 | 502, code: string, message: string) => c.json({ error: { code, message } }, status);
 
 export function isHttps(c: Context, env: Env): boolean {
   if (env.trustProxy) {

@@ -22,6 +22,10 @@ interface Props {
   edit: boolean;
   iconSize: number;
   labels: boolean;
+  /** 首页显示: names appear only while the pointer (or focus) is on a tile. */
+  labelsOnHover?: boolean;
+  /** Outer width of the search slab (设置 · 搜索面板宽度). */
+  slabWidth?: number;
   showBadges: boolean;
   /** Extension visible. */
   expanded: boolean;
@@ -40,7 +44,6 @@ interface Props {
   onMoveTo(id: string, index: number): void;
 }
 
-const SLAB_INNER = 760 - 48;
 const GAP = 3;
 const SEP = 13;
 const EXT_GAP_X = 12;
@@ -63,27 +66,31 @@ export function dockHeights(iconSize: number, labels: boolean, rows: number, pag
 }
 
 /** Extension columns: the natural Dock cell with a little more air, as many as fit the slab. */
-export function extensionCols(iconSize: number): number {
-  return Math.max(5, Math.min(10, Math.floor((SLAB_INNER + EXT_GAP_X) / (iconSize + 12 + EXT_GAP_X))));
+export function extensionCols(iconSize: number, slabWidth = 760): number {
+  return Math.max(5, Math.min(12, Math.floor((slabWidth - 48 + EXT_GAP_X) / (iconSize + 12 + EXT_GAP_X))));
 }
 
-const itemClass = 'flex flex-col items-center gap-[9px] text-ink no-underline transition-transform duration-140 ease-soft';
+const itemClass = 'group/tile flex flex-col items-center gap-[9px] text-ink no-underline transition-transform duration-140 ease-soft';
 const liftClass = 'hover:-translate-y-[3px] active:-translate-y-px active:scale-[.96]';
 
 function focusDock(id: string) {
   requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-dock="${CSS.escape(id)}"]`)?.focus());
 }
 
-function Label({ name, labels, cell }: { name: string; labels: boolean; cell: number }) {
+function Label({ name, labels, onHover, cell }: { name: string; labels: boolean; onHover?: boolean; cell: number }) {
   if (!labels) return null;
+  // On-hover labels keep their space, so tiles never jump when a name appears.
   return (
-    <span className="truncate text-[12px] text-ink/80" style={{ maxWidth: cell + 8 }}>
+    <span
+      className={cn('truncate text-[12px] text-ink/80', onHover && 'opacity-0 transition-opacity duration-140 group-hover/tile:opacity-100 group-focus-visible/tile:opacity-100')}
+      style={{ maxWidth: cell + 8 }}
+    >
       {name}
     </span>
   );
 }
 
-type SiteProps = { app: AppEntry; index: number; total: number; cell: number; onReveal(id: string): void } & Pick<Props, 'edit' | 'iconSize' | 'labels' | 'onMenu' | 'onUnpin' | 'onMove'>;
+type SiteProps = { app: AppEntry; index: number; total: number; cell: number; onReveal(id: string): void } & Pick<Props, 'edit' | 'iconSize' | 'labels' | 'labelsOnHover' | 'onMenu' | 'onUnpin' | 'onMove'>;
 
 function DockSite(p: SiteProps) {
   const { app, edit, cell, iconSize, index, total } = p;
@@ -121,7 +128,7 @@ function DockSite(p: SiteProps) {
         className={cn(itemClass, !edit && liftClass, edit && 'cursor-[inherit]')}
       >
         <AppTile target={{ kind: 'app', app }} size={iconSize} />
-        <Label name={app.name} labels={p.labels} cell={cell} />
+        <Label name={app.name} labels={p.labels} onHover={p.labelsOnHover && !edit} cell={cell} />
       </a>
       {edit && (
         <button
@@ -187,15 +194,15 @@ function useWheelPaging(el: HTMLElement | null, pages: number, go: (dir: number)
 }
 
 export function Dock(props: Props) {
-  const { sites, extra, services, dockSize, edit, iconSize, labels, showBadges, expanded, rows, showPager } = props;
+  const { sites, extra, services, dockSize, edit, iconSize, labels, labelsOnHover, showBadges, expanded, rows, showPager, slabWidth = 760 } = props;
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   const showAdd = edit && sites.length < dockSize;
   const cells = sites.length + (showAdd ? 1 : 0) + services.length + 1;
   const seps = services.length ? 2 : 1;
   const natural = iconSize + 12;
-  const cell = Math.max(iconSize + 2, Math.min(natural, Math.floor((SLAB_INNER - (cells - 1) * GAP - seps * SEP) / cells)));
+  const cell = Math.max(iconSize + 2, Math.min(natural, Math.floor((slabWidth - 48 - (cells - 1) * GAP - seps * SEP) / cells)));
 
-  const cols = extensionCols(iconSize);
+  const cols = extensionCols(iconSize, slabWidth);
   const pages = paginate(extra, cols * rows);
   const [page, setPage] = useState(0);
   const [dir, setDir] = useState<'next' | 'prev' | null>(null);
@@ -250,7 +257,7 @@ export function Dock(props: Props) {
     }
   };
 
-  const siteProps = { edit, iconSize, labels, onMenu: props.onMenu, onUnpin: props.onUnpin, onMove: props.onMove, onReveal: reveal, total };
+  const siteProps = { edit, iconSize, labels, labelsOnHover, onMenu: props.onMenu, onUnpin: props.onUnpin, onMove: props.onMove, onReveal: reveal, total };
 
   return (
     <DndContext accessibility={dndAccessibility} sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
@@ -275,7 +282,7 @@ export function Dock(props: Props) {
             tabIndex={edit ? -1 : undefined}
           >
             <AppTile target={{ kind: 'app', app: s.app }} size={iconSize} status={showBadges ? s.level : undefined} />
-            <Label name={s.app.name} labels={labels} cell={cell} />
+            <Label name={s.app.name} labels={labels} onHover={labelsOnHover} cell={cell} />
           </a>
         ))}
         <Separator />
@@ -289,7 +296,7 @@ export function Dock(props: Props) {
           style={{ width: cell }}
         >
           <AppTile target={{ kind: 'all' }} size={iconSize} />
-          <Label name="全部应用" labels={labels} cell={cell} />
+          <Label name="全部应用" labels={labels} onHover={labelsOnHover} cell={cell} />
         </button>
       </div>
 

@@ -13,6 +13,8 @@ interface Props {
   /** Body shown while the search is idle (the Dock). */
   dock: ReactNode;
   dockHeight: number;
+  /** 首页显示 · 搜索框隐藏: the field folds away until focused (`/`, Ctrl+K). */
+  hideInput?: boolean;
   edit: boolean;
   maxPanel: number;
   onFocusSearch(): void;
@@ -27,7 +29,7 @@ function panelHeight(sections: SearchSection[], max: number) {
   return Math.min(8 + sections.reduce((n, s) => n + 30 + s.rows.length * 46, 0) + 44 + 6, max);
 }
 
-export const SearchSlab = forwardRef<SearchSlabHandle, Props>(function SearchSlab({ dock, dockHeight, edit, maxPanel, onFocusSearch, onAction }, ref) {
+export const SearchSlab = forwardRef<SearchSlabHandle, Props>(function SearchSlab({ dock, dockHeight, hideInput, edit, maxPanel, onFocusSearch, onAction }, ref) {
   const config = useConfig();
   const defaultEngine = config.settings.search.defaultEngine;
   const [q, setQ] = useState('');
@@ -146,7 +148,11 @@ export const SearchSlab = forwardRef<SearchSlabHandle, Props>(function SearchSla
             : '0 30px 80px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.07)',
       }}
     >
-      <div data-zone="search" className="flex h-[66px] items-center gap-3 pr-3.5 pl-[13px]">
+      <div
+        data-zone="search"
+        className="flex items-center gap-3 overflow-hidden pr-3.5 pl-[13px] transition-[height,opacity] duration-240 ease-soft"
+        style={{ height: hideInput && !open ? 0 : 66, opacity: hideInput && !open ? 0 : 1 }}
+      >
         <button
           ref={engBtnRef}
           type="button"
@@ -197,7 +203,7 @@ export const SearchSlab = forwardRef<SearchSlabHandle, Props>(function SearchSla
           <kbd className="grid h-6 min-w-6 place-items-center rounded-[7px] px-1.5 font-sans text-[12px] text-ink/62 shadow-[inset_0_0_0_1px_rgba(239,234,225,0.2)]">{!open ? '/' : hasQ ? '↵' : 'esc'}</kbd>
         </span>
       </div>
-      <div className="mx-[22px] h-px bg-ink/8" />
+      <div className="mx-[22px] h-px bg-ink/8" style={{ opacity: hideInput && !open ? 0 : 1 }} />
       <div className="relative overflow-hidden transition-[height] duration-320 ease-emph" style={{ height: bodyH }}>
         <div
           className="absolute inset-0 transition-[opacity,transform] ease-soft"

@@ -1,14 +1,15 @@
 import { pinnedSites, shownServices, wallpaperFile, type Settings } from '@nexus/shared';
-import { Check, CircleAlert, Trash2, Upload, X } from 'lucide-react';
+import { Check, CircleAlert, Heart, Trash2, Upload, X } from 'lucide-react';
 import { useState, type DragEvent } from 'react';
 import { deleteWallpaper, uploadWallpaper, useConfig } from '../../../data/config-store';
 import { AppTile } from '../../../icons/AppTile';
 import { cn } from '../../../lib/cn';
 import { formatClock, formatDate } from '../../../lib/time';
-import { useWallpapers, Wallpaper, type WallpaperEntry } from '../../home/Wallpaper';
-import { lookDiff, useLookDraft } from '../look-draft';
+import { remoteSrc, useWallpapers, Wallpaper, type WallpaperEntry } from '../../home/Wallpaper';
+import { lookDiff, lookPatch, useLookDraft } from '../look-draft';
 import { patch } from '../model';
-import { Button, Dialog, Group, NotYet, PageHeader, Row, Segmented, Slider, Spinner, Switch, useCompact } from '../ui';
+import { Button, Dialog, Group, PageHeader, Row, Segmented, Slider, Spinner, Switch, useCompact } from '../ui';
+import { RotationGroup, SourcePicker } from './WallpaperSources';
 
 type Look = Settings['look'];
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -93,7 +94,7 @@ function Preview({ look, device, onFocal }: { look: Look; device: 'desktop' | 'm
   );
 }
 
-function WallCard({ w, selected, onPick, onRemove }: { w: WallpaperEntry; selected: boolean; onPick(): void; onRemove?(): void }) {
+function WallCard({ w, selected, favorite, blocked, onPick, onRemove }: { w: WallpaperEntry; selected: boolean; favorite?: boolean; blocked?: boolean; onPick(): void; onRemove?(): void }) {
   const compact = useCompact();
   return (
     <div className={cn('relative flex flex-col gap-2', compact && 'w-[92px] flex-none snap-start gap-[7px]')}>
@@ -105,7 +106,18 @@ function WallCard({ w, selected, onPick, onRemove }: { w: WallpaperEntry; select
         className={cn('relative overflow-hidden border-0 p-0 transition-shadow duration-140', compact ? 'h-[148px] w-[92px] rounded-[14px]' : 'aspect-[16/10] rounded-xl')}
         style={{ background: w.kind === 'color' ? w.src : '#2a2724', boxShadow: selected ? '0 0 0 2px #1b1a17, 0 0 0 4px #e6c08a' : 'inset 0 0 0 1px rgba(239,234,225,0.08)' }}
       >
-        {w.kind === 'photo' && <img src={w.uploaded ? wallpaperFile(w.uploaded.id, w.uploaded.widths[0]!, 'webp') : w.src} alt="" loading="lazy" className="absolute inset-0 size-full object-cover" style={{ filter: w.uploaded ? 'none' : 'grayscale(1) contrast(1.05) brightness(.8)' }} />}
+        {w.kind === 'photo' && (
+          <img
+            src={w.uploaded?.remote ? remoteSrc(w.uploaded.remote, 400) : w.uploaded ? wallpaperFile(w.uploaded.id, w.uploaded.widths[0]!, 'webp') : w.src}
+            alt=""
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            className="absolute inset-0 size-full object-cover"
+            style={{ filter: w.uploaded ? 'none' : 'grayscale(1) contrast(1.05) brightness(.8)', opacity: blocked ? 0.4 : 1 }}
+          />
+        )}
+        {favorite && <Heart aria-label="已收藏" className="absolute top-1.5 left-1.5 size-3.5 text-amber" fill="currentColor" />}
+        {blocked && <span className="absolute top-1.5 left-1.5 rounded-md bg-black/55 px-1.5 text-[10.5px] leading-[18px] text-ink/80">不喜欢</span>}
         {selected && (
           <span className="absolute right-1.5 bottom-1.5 grid size-5 place-items-center rounded-full bg-amber">
             <Check className="size-3 text-on-amber" strokeWidth={3} />
@@ -140,7 +152,11 @@ export function AppearancePage() {
   const [removing, setRemoving] = useState<WallpaperEntry | null>(null);
   const diff = lookDiff(draft, applied);
   const set = <K extends keyof Look>(k: K, v: Look[K]) => setDraft({ ...look, [k]: v });
-  const pick = (w: WallpaperEntry) => setDraft({ ...look, wallpaper: w.id, focal: { desktop: w.focal ?? [50, 50], mobile: w.focal ?? [50, 50] } });
+  // Choosing a picture means keeping it: automatic switching stops (it can be turned back on below).
+  const pick = (w: WallpaperEntry) => setDraft({ ...look, wallpaper: w.id, focal: { desktop: w.focal ?? [50, 50], mobile: w.focal ?? [50, 50] }, rotation: { ...look.rotation, mode: 'off' } });
+  const card = (w: WallpaperEntry) => (
+    <WallCard key={w.id} w={w} selected={look.wallpaper === w.id} favorite={look.favorites.includes(w.id)} blocked={look.blocked.includes(w.id)} onPick={() => pick(w)} onRemove={w.uploaded ? () => setRemoving(w) : undefined} />
+  );
 
   const upload = async (file: File | undefined) => {
     setHover(false);
@@ -221,35 +237,35 @@ export function AppearancePage() {
   const groups = (
     <>
       <Group title="壁纸">
-        {compact ? (
-          <div className="flex flex-col gap-2 py-3">
-            <div className="nx-scroll-hidden flex snap-x snap-mandatory gap-2.5 overflow-x-auto px-3">
-              {walls.map((w) => (
-                <WallCard key={w.id} w={w} selected={look.wallpaper === w.id} onPick={() => pick(w)} onRemove={w.uploaded ? () => setRemoving(w) : undefined} />
-              ))}
-              {uploadCard}
-            </div>
-            {message && <div className="px-3">{message}</div>}
-          </div>
-        ) : (
-          <div>
-            <div className="grid grid-cols-5 gap-3.5 p-5">
-              {walls.map((w) => (
-                <WallCard key={w.id} w={w} selected={look.wallpaper === w.id} onPick={() => pick(w)} onRemove={w.uploaded ? () => setRemoving(w) : undefined} />
-              ))}
-              {uploadCard}
-            </div>
-            {message}
-          </div>
-        )}
+        <div>
+          <SourcePicker
+            look={look}
+            onPick={pick}
+            onRotation={(r) => setDraft({ ...look, rotation: { ...look.rotation, ...r } })}
+            onError={(text) => setMsg({ tone: 'error', text })}
+            library={
+              compact ? (
+                <div className="nx-scroll-hidden flex snap-x snap-mandatory gap-2.5 overflow-x-auto px-3">
+                  {walls.map(card)}
+                  {uploadCard}
+                </div>
+              ) : (
+                <div className="grid grid-cols-5 gap-3.5">
+                  {walls.map(card)}
+                  {uploadCard}
+                </div>
+              )
+            }
+          />
+          {message && <div className={compact ? 'px-3 pb-3' : undefined}>{message}</div>}
+        </div>
         <Row label="色调" sub="暖调单色让任意照片都与琥珀色界面协调" stacked>
           <Segmented label="色调" value={look.tone} options={[{ value: 'warm', label: '暖调单色' }, { value: 'original', label: '保留原色' }]} onChange={(v) => set('tone', v)} />
         </Row>
         {focalRow}
-        <Row label={<>每日轮换 <NotYet /></>} sub="从图库与上传中每天换一张" disabled>
-          <Switch label="每日轮换" checked={false} disabled />
-        </Row>
       </Group>
+
+      <RotationGroup look={look} set={(r, extra) => setDraft({ ...look, rotation: { ...look.rotation, ...r }, ...extra })} />
 
       <Group title="背景">
         {(
@@ -339,7 +355,7 @@ export function AppearancePage() {
           size={compact ? 'lg' : undefined}
           variant="primary"
           className={compact ? 'flex-[1.6]' : 'h-[38px] rounded-[11px] px-[18px] text-[13.5px]'}
-          onClick={() => draft && patch('look', draft, '外观已应用到首页') && resetDraft()}
+          onClick={() => draft && patch('look', lookPatch(draft, applied), '外观已应用到首页') && resetDraft()}
         >
           应用到首页
         </Button>

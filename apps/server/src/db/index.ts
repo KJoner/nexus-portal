@@ -6,7 +6,7 @@ import { EnvError } from '../env';
 export type DB = Database.Database;
 
 /** Append-only; `user_version` records how many have run. */
-const MIGRATIONS: string[] = [
+export const MIGRATIONS: readonly string[] = [
   `
   create table meta (key text primary key, value text not null);
 
@@ -83,6 +83,16 @@ const MIGRATIONS: string[] = [
   -- read (it would silently fall back to defaults). Bumping the version makes older releases
   -- refuse this database instead; rolling back means restoring the automatic backup.
   insert or replace into meta (key, value) values ('config_format', '2');
+  `,
+  `
+  -- v0.2: wallpapers from public sources (精选图库, 每日一图, Unsplash, imported addresses).
+  alter table wallpapers add column source text not null default 'upload';
+  alter table wallpapers add column ref text not null default '';
+  alter table wallpapers add column credit text not null default '';
+  alter table wallpapers add column luma real;
+  alter table wallpapers add column focal text not null default '';
+  alter table wallpapers add column remote text not null default '';
+  create index wallpapers_source_ref on wallpapers (source, ref);
   `,
 ];
 

@@ -201,6 +201,7 @@ docker compose up -d
 | `NEXUS_SECRET` | 加密服务凭据（Linkwarden 令牌）的密钥，≥ 16 位；未设置时在数据目录生成 `secret.key` |
 | `NEXUS_HEALTH_ALLOW_PRIVATE` | 健康检查与集成是否可访问局域网 / Tailscale 地址，默认 `true` |
 | `NEXUS_HEALTH_ALLOW_LOOPBACK` | 是否允许访问回环地址，默认 `false` |
+| `NEXUS_UNSPLASH_ACCESS_KEY` | 可选。填写后，外观设置中出现 Unsplash 壁纸来源；Key 只在服务器使用，每个部署需自行申请 |
 
 Compose 额外读取 `NEXUS_VERSION`（镜像标签）、`NEXUS_IMAGE`、`NEXUS_BIND`、`NEXUS_PORT` 和 `NEXUS_PUBLIC_URL`（会传给 `NEXUS_ALLOWED_ORIGINS`），说明见 [`.env.example`](.env.example)。
 

@@ -1,7 +1,7 @@
 import { homeCapacity, MAX_PINS, type Op } from '@nexus/shared';
 import { toast } from '../../components/toast-store';
 import { dispatch, useConfigStore } from '../../data/config-store';
-import { wallpaperList } from './Wallpaper';
+import type { WallpaperEntry } from './Wallpaper';
 
 const cfg = () => useConfigStore.getState().snapshot.config;
 const nameOf = (id: string) => cfg().apps.find((a) => a.id === id)?.name ?? id;
@@ -47,11 +47,23 @@ export const homeActions = {
   moveTo(appId: string, toIndex: number) {
     dispatch({ type: 'pin.move', appId, toIndex });
   },
-  nextWallpaper() {
+  /** 收藏 / 取消收藏 the picture on screen (synced: every device shares favorites). */
+  toggleFavorite(entry: WallpaperEntry) {
     const look = cfg().settings.look;
-    const list = wallpaperList(useConfigStore.getState().wallpapers);
-    const i = list.findIndex((w) => w.id === look.wallpaper);
-    const next = list[(i + 1) % list.length]!;
-    commit({ type: 'settings.patch', section: 'look', patch: { wallpaper: next.id } }, `已换成「${next.name}」`);
+    const on = look.favorites.includes(entry.id);
+    const favorites = on ? look.favorites.filter((x) => x !== entry.id) : [...look.favorites, entry.id];
+    commit({ type: 'settings.patch', section: 'look', patch: { favorites } }, on ? `已取消收藏「${entry.name}」` : `已收藏「${entry.name}」`);
+  },
+  /** 不喜欢这张: rotation never picks it again; `next` moves on right away. */
+  dislike(entry: WallpaperEntry, next: () => void) {
+    const look = cfg().settings.look;
+    if (look.blocked.includes(entry.id)) return next();
+    if (commit({ type: 'settings.patch', section: 'look', patch: { blocked: [...look.blocked, entry.id] } }, `不再显示「${entry.name}」`)) next();
+  },
+  /** 锁定: stop rotating and keep this picture (with its own focal point). */
+  lock(entry: WallpaperEntry) {
+    const look = cfg().settings.look;
+    const focal = entry.focal ?? [50, 50];
+    commit({ type: 'settings.patch', section: 'look', patch: { wallpaper: entry.id, rotation: { ...look.rotation, mode: 'off' }, focal: { desktop: focal, mobile: focal } } }, `已固定「${entry.name}」为壁纸`);
   },
 };

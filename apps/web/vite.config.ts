@@ -42,10 +42,10 @@ export default defineConfig({
             options: { cacheName: 'nexus-fonts', expiration: { maxEntries: 400 } },
           },
           {
-            // Uploaded wallpaper variants never change (new upload → new id).
-            urlPattern: ({ url }) => /^\/api\/wallpapers\/[^/]+\/[^/]+$/.test(url.pathname),
+            // Library wallpaper variants never change (new picture → new id); gallery previews neither.
+            urlPattern: ({ url }) => /^\/api\/wallpapers\/[^/]+\/[^/]+$/.test(url.pathname) || /^\/api\/gallery\/[^/]+\/preview$/.test(url.pathname),
             handler: 'CacheFirst',
-            options: { cacheName: 'nexus-wallpapers', expiration: { maxEntries: 40 }, cacheableResponse: { statuses: [200] } },
+            options: { cacheName: 'nexus-wallpapers', expiration: { maxEntries: 80 }, cacheableResponse: { statuses: [200] } },
           },
           {
             urlPattern: ({ url }) => url.pathname.startsWith('/api/icon-cache/') || url.pathname.startsWith('/api/icons/'),

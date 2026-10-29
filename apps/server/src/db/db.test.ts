@@ -3,7 +3,7 @@ import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { openDb } from '.';
+import { MIGRATIONS, openDb } from '.';
 
 let dir: string;
 beforeEach(() => {
@@ -24,13 +24,14 @@ describe('migrations', () => {
 
   it('backs up an older database before migrating it, and the copy opens with the old data', () => {
     const file = join(dir, 'nexus.db');
-    const db = openDb(file);
-    const latest = db.pragma('user_version', { simple: true }) as number;
-    // Pretend this is a v0.1 database (3 migrations) with a stored configuration.
-    db.prepare("delete from meta where key = 'config_format'").run();
-    db.prepare("insert into config (id, revision, updated_at, data) values (1, 7, 'x', '{}')").run();
+    // A v0.1 database: the first three migrations and a stored configuration.
+    const db = new Database(file);
+    for (const m of MIGRATIONS.slice(0, 3)) db.exec(m);
     db.pragma('user_version = 3');
+    db.prepare("insert into config (id, revision, updated_at, data) values (1, 7, 'x', '{}')").run();
+    db.prepare("insert into wallpapers (id, name, width, height, widths, placeholder, created_at) values ('up-aaaaaaaaaaaa', 'old', 1, 1, '[1]', '', 'x')").run();
     db.close();
+    const latest = MIGRATIONS.length;
 
     openDb(file).close();
     const backups = readdirSync(join(dir, 'backups'));
@@ -42,6 +43,8 @@ describe('migrations', () => {
     copy.close();
     const upgraded = new Database(file, { readonly: true });
     expect(upgraded.pragma('user_version', { simple: true })).toBe(latest);
+    // Uploads made by v0.1 become library entries of source 'upload'.
+    expect(upgraded.prepare('select source, ref, credit from wallpapers').get()).toEqual({ source: 'upload', ref: '', credit: '' });
     upgraded.close();
   });
 

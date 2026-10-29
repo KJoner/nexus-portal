@@ -1,6 +1,6 @@
 import { getConnInfo } from '@hono/node-server/conninfo';
 import { serveStatic } from '@hono/node-server/serve-static';
-import { AppSchema, OpBatchSchema, OpError, validateApp, type ConfigResponse } from '@nexus/shared';
+import { AppSchema, OpBatchSchema, OpError, validateApp, type ConfigResponse, type WallpaperSourcesResponse } from '@nexus/shared';
 import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
@@ -20,6 +20,9 @@ import { isValidIconKey, type IconProxy, type IconSource } from './icons/proxy';
 import { LinkwardenError, type Linkwarden } from './integrations/linkwarden';
 import { fetchSuggestions } from './integrations/suggest';
 import { IconError, MAX_ICON_BYTES, type IconStore } from './icons/store';
+import type { getBytes } from './net/http';
+import type { NetPolicy } from './net/ip';
+import { importFromUrl, SourceError, type Daily, type Ensured, type Gallery, type Unsplash } from './wallpapers/sources';
 import { MAX_UPLOAD_BYTES, WallpaperError, type WallpaperStore } from './wallpapers/store';
 
 export interface Deps {
@@ -33,12 +36,22 @@ export interface Deps {
   iconProxy: IconProxy;
   linkwarden: Linkwarden;
   suggestFetch?: typeof fetch;
+  sources: WallpaperSources;
+}
+
+/** v0.2 wallpaper sources. Remote imports use their own, stricter network policy (public only). */
+export interface WallpaperSources {
+  gallery: Gallery;
+  daily: Daily;
+  unsplash: Unsplash;
+  importPolicy: NetPolicy;
+  importFetch?: typeof getBytes;
 }
 
 const COOKIE = 'nexus_session';
 const LoginSchema = z.object({ password: z.string().min(1).max(256) });
 
-export function createApp({ env, repo, auth, limiter, wallpapers, icons, health, iconProxy, linkwarden, suggestFetch }: Deps) {
+export function createApp({ env, repo, auth, limiter, wallpapers, icons, health, iconProxy, linkwarden, suggestFetch, sources }: Deps) {
   const app = new Hono();
 
   const clientKey = (c: Context) => {
@@ -243,6 +256,76 @@ export function createApp({ env, repo, auth, limiter, wallpapers, icons, health,
     // Ids are never reused, so variants are immutable — but private to this user.
     c.header('Cache-Control', 'private, max-age=31536000, immutable');
     return c.body(Readable.toWeb(createReadStream(path)) as ReadableStream);
+  });
+
+  // ── Wallpaper sources (精选图库 · 每日一图 · Unsplash · 网址导入) ──────────
+  const SOURCE_STATUS = { not_found: 404, invalid: 400, blocked: 422, license: 422, not_configured: 404, unavailable: 502, too_large: 413 } as const;
+  const sourceError = (c: Context, e: unknown) => {
+    if (e instanceof SourceError) return apiError(c, SOURCE_STATUS[e.code], e.code, e.message);
+    if (e instanceof WallpaperError) return apiError(c, e.code === 'too_large' ? 413 : 415, e.code, e.message);
+    throw e;
+  };
+  /** A new library entry bumps the revision so every device fetches the updated wallpaper list. */
+  const added = (c: Context, r: Ensured) => {
+    if (r.created) repo.touch();
+    return c.json(r.wallpaper, r.created ? 201 : 200);
+  };
+  app.get('/api/wallpaper-sources', (c) => c.json({ gallery: sources.gallery.list(), unsplash: sources.unsplash.configured } satisfies WallpaperSourcesResponse));
+  app.get('/api/gallery/:id/preview', async (c) => {
+    try {
+      const body = await sources.gallery.preview(c.req.param('id'));
+      c.header('Content-Type', 'image/webp');
+      c.header('Cache-Control', 'private, max-age=604800');
+      return c.body(new Uint8Array(body));
+    } catch (e) {
+      return sourceError(c, e);
+    }
+  });
+  app.post('/api/gallery/:id', async (c) => {
+    try {
+      return added(c, await sources.gallery.ensure(c.req.param('id')));
+    } catch (e) {
+      return sourceError(c, e);
+    }
+  });
+  app.post('/api/daily', bodyLimit({ maxSize: 1024 }), async (c) => {
+    const body = (await c.req.json().catch(() => null)) as { date?: unknown } | null;
+    if (typeof body?.date !== 'string') return apiError(c, 400, 'invalid', '缺少日期');
+    try {
+      const r = await sources.daily.ensure(body.date);
+      if (r.created) {
+        const look = repo.snapshot().config.settings.look;
+        void sources.daily.prune(new Set([look.wallpaper, r.wallpaper.id, ...look.favorites])).catch(() => undefined);
+      }
+      return added(c, r);
+    } catch (e) {
+      return sourceError(c, e);
+    }
+  });
+  app.post('/api/wallpapers/import', bodyLimit({ maxSize: 4096 }), async (c) => {
+    const body = (await c.req.json().catch(() => null)) as { url?: unknown } | null;
+    if (typeof body?.url !== 'string' || body.url.length > 2048) return apiError(c, 400, 'invalid', '请输入图片地址');
+    try {
+      const w = await importFromUrl(wallpapers, body.url, sources.importPolicy, sources.importFetch);
+      repo.touch();
+      return c.json(w, 201);
+    } catch (e) {
+      return sourceError(c, e);
+    }
+  });
+  app.get('/api/unsplash/photos', async (c) => {
+    try {
+      return c.json({ photos: await sources.unsplash.search(c.req.query('q') ?? '', Number(c.req.query('page') ?? 1)) });
+    } catch (e) {
+      return sourceError(c, e);
+    }
+  });
+  app.post('/api/unsplash/:id', async (c) => {
+    try {
+      return added(c, await sources.unsplash.use(c.req.param('id')));
+    } catch (e) {
+      return sourceError(c, e);
+    }
   });
 
   app.delete('/api/wallpapers/:id', async (c) => {

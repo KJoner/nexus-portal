@@ -24,6 +24,8 @@ export interface Env {
   allowLoopback: boolean;
   /** Encrypts integration tokens at rest; a key file in the data directory is used when unset. */
   secret: string | null;
+  /** Optional Unsplash access key (each deployment registers its own); stays on the server. */
+  unsplashKey: string | null;
 }
 
 export class EnvError extends Error {}
@@ -61,5 +63,6 @@ export function readEnv(source: NodeJS.ProcessEnv = process.env): Env {
     allowPrivate: !['0', 'false'].includes(source.NEXUS_HEALTH_ALLOW_PRIVATE ?? ''),
     allowLoopback: ['1', 'true'].includes(source.NEXUS_HEALTH_ALLOW_LOOPBACK ?? ''),
     secret: source.NEXUS_SECRET?.trim() || null,
+    unsplashKey: source.NEXUS_UNSPLASH_ACCESS_KEY?.trim() || null,
   };
 }
