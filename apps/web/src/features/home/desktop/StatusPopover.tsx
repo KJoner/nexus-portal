@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { Link } from 'react-router';
+import { checkNow } from '../../../data/config-store';
 import type { ServiceView } from '../../../data/status';
 import { AppTile } from '../../../icons/AppTile';
 import { appLinkProps, recordAppOpen } from '../../../lib/open';
@@ -48,7 +50,9 @@ export function StatusPopover({ open, services }: Props) {
               <span className="truncate">{s.message}</span>
             </span>
           </span>
-          {s.level === 'off' ? (
+          {s.level === 'unknown' ? (
+            <RetryButton appId={s.app.id} style={actionStyle(s.level)} />
+          ) : s.level === 'off' ? (
             <Link to={`/settings/apps?edit=${s.app.id}`} className="flex h-[30px] flex-none items-center rounded-[9px] px-3 text-[12.5px] no-underline transition-colors duration-140 hover:!bg-ink/14" style={actionStyle(s.level)}>
               开启
             </Link>
@@ -66,5 +70,26 @@ export function StatusPopover({ open, services }: Props) {
         </Link>
       </div>
     </div>
+  );
+}
+
+/** R1.5 · 未知: the only action is 重试 — run the check now instead of waiting for the interval. */
+export function RetryButton({ appId, style, className }: { appId: string; style: React.CSSProperties; className?: string }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={() => {
+        setBusy(true);
+        void checkNow(appId)
+          .catch(() => undefined)
+          .finally(() => setBusy(false));
+      }}
+      className={className ?? 'flex h-[30px] flex-none items-center rounded-[9px] border-0 px-3 text-[12.5px] transition-colors duration-140 hover:!bg-ink/14 disabled:opacity-60'}
+      style={style}
+    >
+      {busy ? '检查中…' : '重试'}
+    </button>
   );
 }

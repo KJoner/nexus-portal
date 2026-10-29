@@ -5,7 +5,7 @@ import { toast } from '../../../components/toast-store';
 import { logout, useConfig, useConfigStore, useSaveState } from '../../../data/config-store';
 import { formatHm } from '../../../lib/time';
 import { apply, patch } from '../model';
-import { Button, Dialog, Group, NotYet, PageHeader, Row, Switch, useCompact } from '../ui';
+import { Button, Dialog, Group, PageHeader, Row, Switch, useCompact } from '../ui';
 
 const FORMAT = 'nexus-config';
 
@@ -125,8 +125,8 @@ export function DataPage() {
         <Row label="记录最近使用" sub="用于搜索框的「最近」；只保存在本浏览器">
           <Switch label="记录最近使用" checked={pr.recordRecent} onChange={(v) => patch('privacy', { recordRecent: v })} />
         </Row>
-        <Row label={<>本地缓存图标 <NotYet /></>} sub="由 Nexus 服务端缓存品牌图标，之后不再向第三方图标服务请求" disabled>
-          <Switch label="本地缓存图标" checked={pr.cacheIcons} disabled />
+        <Row label="本地缓存图标" sub="由 Nexus 服务端获取并缓存品牌图标，浏览器不再直接请求第三方图标服务；图标源故障时继续使用缓存">
+          <Switch label="本地缓存图标" checked={pr.cacheIcons} onChange={(v) => patch('privacy', { cacheIcons: v })} />
         </Row>
       </Group>
 

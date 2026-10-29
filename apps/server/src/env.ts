@@ -18,6 +18,12 @@ export interface Env {
   allowedOrigins: string[];
   sessionDays: number;
   webDist: string | null;
+  /** Health checks and integrations may reach LAN / Tailscale addresses (default on). */
+  allowPrivate: boolean;
+  /** …and loopback (default off: protects Nexus itself and local admin ports). */
+  allowLoopback: boolean;
+  /** Encrypts integration tokens at rest; a key file in the data directory is used when unset. */
+  secret: string | null;
 }
 
 export class EnvError extends Error {}
@@ -31,6 +37,7 @@ export function readEnv(source: NodeJS.ProcessEnv = process.env): Env {
     generatedPassword = true;
   }
   if (password && password.length < 8) throw new EnvError('NEXUS_PASSWORD 至少需要 8 个字符');
+  if (source.NEXUS_SECRET && source.NEXUS_SECRET.trim().length < 16) throw new EnvError('NEXUS_SECRET 至少需要 16 个字符');
 
   const dist = source.NEXUS_WEB_DIST ?? resolve(import.meta.dirname, '../../web/dist');
   const cookie = source.NEXUS_COOKIE_SECURE ?? 'auto';
@@ -51,5 +58,8 @@ export function readEnv(source: NodeJS.ProcessEnv = process.env): Env {
       .filter(Boolean),
     sessionDays: Number(source.NEXUS_SESSION_DAYS ?? 30),
     webDist: existsSync(resolve(dist, 'index.html')) ? dist : null,
+    allowPrivate: !['0', 'false'].includes(source.NEXUS_HEALTH_ALLOW_PRIVATE ?? ''),
+    allowLoopback: ['1', 'true'].includes(source.NEXUS_HEALTH_ALLOW_LOOPBACK ?? ''),
+    secret: source.NEXUS_SECRET?.trim() || null,
   };
 }

@@ -1,6 +1,7 @@
-import { applyOps, ConfigSchema, defaultConfig, invertOp, normalizeConfig, OpError, applyOp, type Config, type ConfigResponse, type Op, type Snapshot, type UploadedWallpaper } from '@nexus/shared';
+import { applyOps, ConfigSchema, defaultConfig, invertOp, normalizeConfig, OpError, applyOp, type AppEntry, type Config, type ConfigResponse, type Op, type Snapshot, type UploadedWallpaper } from '@nexus/shared';
 import { create } from 'zustand';
 import { storage } from '../lib/storage';
+import { useStatusStore } from './status-store';
 import { HttpError, httpTransport, NetworkError, type Transport } from './transport';
 
 export type SaveState =
@@ -186,6 +187,7 @@ export async function refresh(): Promise<void> {
     await flush();
     if (useConfigStore.getState().auth === 'anonymous') return;
     accept(await transport.getConfig());
+    useStatusStore.getState().replace(await transport.getStatus());
   } catch (e) {
     onFailure(e);
   }
@@ -202,16 +204,50 @@ function scheduleRetry() {
 }
 
 let unsubscribe: (() => void) | null = null;
+let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+let reconnectDelay = 2000;
+
 function connectEvents() {
   unsubscribe?.();
-  unsubscribe = transport.subscribe(
-    (revision) => {
+  clearTimeout(reconnectTimer);
+  unsubscribe = transport.subscribe({
+    // Anything pushed before this connection existed (a status change during boot, events across a
+    // server restart) would otherwise be missed: re-sync on every open, the first one included.
+    onOpen() {
+      reconnectDelay = 2000;
+      void refresh();
+    },
+    onRevision(revision) {
       retryDelay = 3000;
       const s = useConfigStore.getState();
       if (!s.online || !s.confirmed || revision > s.confirmed.revision) void refresh();
     },
-    () => void refresh(),
-  );
+    onStatus: (e) => useStatusStore.getState().apply(e),
+    // The browser gave up (server down, proxy error, 401): reconnect with backoff once it answers.
+    onClosed() {
+      unsubscribe?.();
+      unsubscribe = null;
+      reconnectTimer = setTimeout(() => {
+        reconnectDelay = Math.min(reconnectDelay * 2, 60_000);
+        void refresh().then(() => {
+          if (useConfigStore.getState().auth !== 'authenticated') return;
+          if (useConfigStore.getState().online) connectEvents();
+          else connectLater();
+        });
+      }, reconnectDelay);
+    },
+  });
+}
+
+function connectLater() {
+  clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(() => {
+    void refresh().then(() => {
+      const s = useConfigStore.getState();
+      if (s.auth === 'authenticated') (s.online ? connectEvents : connectLater)();
+    });
+  }, reconnectDelay);
+  reconnectDelay = Math.min(reconnectDelay * 2, 60_000);
 }
 
 let started = false;
@@ -219,8 +255,12 @@ let started = false;
 export function startSync() {
   if (started) return;
   started = true;
-  void refresh().then(() => useConfigStore.getState().auth === 'authenticated' && connectEvents());
-  window.addEventListener('online', () => void refresh());
+  const connect = () => {
+    const s = useConfigStore.getState();
+    if (s.auth === 'authenticated') (s.online ? connectEvents : connectLater)();
+  };
+  void refresh().then(connect);
+  window.addEventListener('online', () => void refresh().then(() => !unsubscribe && connect()));
   document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && void refresh());
 }
 
@@ -238,8 +278,12 @@ export async function logout(): Promise<void> {
   } finally {
     unsubscribe?.();
     unsubscribe = null;
+    clearTimeout(reconnectTimer);
     storage.remove(CACHE_KEY);
     storage.remove('nexus.recent.v1');
+    // Private images cached by the Service Worker go too.
+    if (typeof caches !== 'undefined') for (const name of ['nexus-wallpapers', 'nexus-icons']) void caches.delete(name);
+    useStatusStore.getState().replace([]);
     useConfigStore.setState({ ...initialState(), auth: 'anonymous' });
   }
 }
@@ -251,6 +295,18 @@ export async function uploadWallpaper(file: File): Promise<UploadedWallpaper> {
 }
 
 export const uploadIcon = (file: File) => transport.uploadIcon(file);
+export const testHealth = (app: AppEntry) => transport.testHealth(app);
+export const linkwardenApi = {
+  status: () => transport.linkwarden(),
+  connect: (baseUrl: string, token?: string) => transport.connectLinkwarden(baseUrl, token),
+  disconnect: () => transport.disconnectLinkwarden(),
+  search: (q: string, signal: AbortSignal) => transport.searchBookmarks(q, signal),
+};
+export const suggestApi = (engineId: string, q: string, signal: AbortSignal) => transport.suggest(engineId, q, signal);
+
+export async function checkNow(appId: string) {
+  useStatusStore.getState().apply(await transport.checkNow(appId));
+}
 
 export async function deleteWallpaper(id: string): Promise<void> {
   accept(await transport.deleteWallpaper(id));

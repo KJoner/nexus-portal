@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { EnvError } from '../env';
 
 export type DB = Database.Database;
 
@@ -52,6 +53,31 @@ const MIGRATIONS: string[] = [
     created_at text not null
   );
   `,
+  `
+  -- Last health result per service; the checker resumes from here after a restart.
+  create table health_status (
+    app_id text primary key,
+    level text not null,
+    message text not null,
+    checked_at text not null,
+    latency_ms integer,
+    fails integer not null default 0,
+    key text not null,
+    via text not null default 'ext'
+  );
+  `,
+  `
+  -- Credentials for read-only integrations; token_enc is AES-256-GCM (see integrations/secret.ts).
+  create table integrations (
+    id text primary key,
+    base_url text not null,
+    token_enc text not null,
+    token_last4 text not null,
+    last_ok_at text,
+    last_error text,
+    updated_at text not null
+  );
+  `,
 ];
 
 export function openDb(file: string): DB {
@@ -66,6 +92,11 @@ export function openDb(file: string): DB {
 
 function migrate(db: DB) {
   const current = db.pragma('user_version', { simple: true }) as number;
+  // A database written by a newer release: running older code on it could corrupt data.
+  if (current > MIGRATIONS.length) {
+    db.close();
+    throw new EnvError(`数据库版本（${current}）比当前程序（${MIGRATIONS.length}）新：请使用较新的镜像，或先恢复升级前的数据备份再回滚到旧版本`);
+  }
   for (let v = current; v < MIGRATIONS.length; v++) {
     db.transaction(() => {
       db.exec(MIGRATIONS[v]!);

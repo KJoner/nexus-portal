@@ -10,23 +10,49 @@ import { Auth } from './auth/sessions';
 import { ConfigRepo } from './config/repo';
 import { openDb, type DB } from './db';
 import type { Env } from './env';
+import { HealthChecker } from './health/checker';
+import { IconProxy } from './icons/proxy';
 import { IconStore } from './icons/store';
+import { Linkwarden } from './integrations/linkwarden';
+import { SecretBox } from './integrations/secret';
+import { randomBytes } from 'node:crypto';
 import { WallpaperStore } from './wallpapers/store';
 
 const PASSWORD = 'correct horse battery';
+const suggestCalls: string[] = [];
+const fakeSuggest = (async (input: string | URL | Request) => {
+  suggestCalls.push(String(input));
+  return new Response(JSON.stringify(['rust', ['rust async', 'rustup']]), { headers: { 'content-type': 'application/json' } });
+}) as typeof fetch;
+const cdnCalls: string[] = [];
+let cdnDown = false;
+/** Stand-in for the icon CDNs: one known icon, a redirect off the allow-list, everything else 404. */
+const fakeCdn = (async (input: string | URL | Request) => {
+  const url = String(input);
+  cdnCalls.push(url);
+  if (cdnDown) throw new TypeError('fetch failed');
+  if (url.endsWith('/github.svg')) return new Response('<svg xmlns="http://www.w3.org/2000/svg"/>', { headers: { 'content-type': 'image/svg+xml' } });
+  if (url.endsWith('/evil.svg')) return new Response(null, { status: 302, headers: { location: 'http://169.254.169.254/latest' } });
+  if (url.endsWith('/html.svg')) return new Response('<html>', { headers: { 'content-type': 'text/html' } });
+  return new Response(null, { status: 404 });
+}) as typeof fetch;
 let dir: string;
 let db: DB;
 let auth: Auth;
+let deps: Parameters<typeof createApp>[0];
 let app: ReturnType<typeof createApp>;
 
-const env: Env = { production: false, host: '127.0.0.1', port: 0, dataDir: '', password: PASSWORD, generatedPassword: false, cookieSecure: 'auto', trustProxy: false, allowedOrigins: ['https://home.example.com'], sessionDays: 30, webDist: null };
+const env: Env = { production: false, host: '127.0.0.1', port: 0, dataDir: '', password: PASSWORD, generatedPassword: false, cookieSecure: 'auto', trustProxy: false, allowedOrigins: ['https://home.example.com'], sessionDays: 30, webDist: null, allowPrivate: true, allowLoopback: false, secret: null };
 
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'nexus-test-'));
   db = openDb(':memory:');
   auth = new Auth(db, 30);
   await auth.ensurePassword(PASSWORD);
-  app = createApp({ env, repo: new ConfigRepo(db), auth, limiter: new LoginLimiter(), wallpapers: new WallpaperStore(db, dir), icons: new IconStore(join(dir, 'icons')) });
+  const repo = new ConfigRepo(db);
+  const health = new HealthChecker(db, repo, { allowPrivate: true, allowLoopback: false }, async () => ({ reached: true, status: 200, latencyMs: 12, message: 'HTTP 200' }));
+  deps = { env, repo, auth, limiter: new LoginLimiter(), wallpapers: new WallpaperStore(db, dir), icons: new IconStore(join(dir, 'icons')), health, iconProxy: new IconProxy(join(dir, 'icon-cache'), fakeCdn), linkwarden: new Linkwarden(db, new SecretBox(randomBytes(32)), { allowPrivate: true, allowLoopback: false }), suggestFetch: fakeSuggest };
+  app = createApp(deps);
 });
 afterEach(() => {
   db.close();
@@ -64,6 +90,15 @@ describe('access protection', () => {
     const limited = await bad();
     expect(limited.status).toBe(429);
     expect(Number(limited.headers.get('retry-after'))).toBeGreaterThan(0);
+  });
+
+  it('behind a trusted proxy, forged X-Forwarded-For entries do not reset the limit', async () => {
+    const proxied = createApp({ ...deps, env: { ...env, trustProxy: true } });
+    const bad = (i: number, peer = '203.0.113.7') =>
+      proxied.request('/api/auth/login', { method: 'POST', headers: { ...write, 'x-forwarded-for': `10.9.9.${i}, ${peer}` }, body: JSON.stringify({ password: 'nope' }) });
+    for (let i = 0; i < 5; i++) expect((await bad(i)).status).toBe(401);
+    expect((await bad(99)).status).toBe(429);
+    expect((await bad(100, '203.0.113.8')).status).toBe(401);
   });
 
   it('a session grants access and logout revokes it', async () => {
@@ -206,5 +241,81 @@ describe('app icons', () => {
     expect(file.status).toBe(422);
     const xxe = await post(cookie, '<?xml version="1.0"?><!DOCTYPE s [<!ENTITY x SYSTEM "file:///etc/passwd">]><svg xmlns="http://www.w3.org/2000/svg"><text>&x;</text></svg>', 'x.svg', 'image/svg+xml');
     expect(xxe.status).toBe(422);
+  });
+});
+
+describe('health API', () => {
+  it('tests a draft without saving it and enforces the same-host rule', async () => {
+    const cookie = await login();
+    const cfg = (await (await app.request('/api/config', { headers: { cookie } })).json()) as ConfigResponse;
+    const lb = { ...cfg.config.apps.find((a) => a.id === 'litebox')!, lanUrl: 'http://192.168.1.10:8008' };
+    const post = (a: unknown) => app.request('/api/health/test', { method: 'POST', headers: { ...write, cookie }, body: JSON.stringify({ app: a }) });
+    const ok = await post({ ...lb, health: { enabled: true, target: '/api/status', intervalSec: 60 } });
+    expect(await ok.json()).toEqual({ ok: true, level: 'ok', message: 'HTTP 200 · 12 ms · 内网' });
+    const foreign = await post({ ...lb, health: { enabled: true, target: 'http://169.254.169.254/latest', intervalSec: 60 } });
+    expect(foreign.status).toBe(422);
+    const after = (await (await app.request('/api/config', { headers: { cookie } })).json()) as ConfigResponse;
+    expect(after.revision).toBe(1);
+  });
+
+  it('lists statuses and runs a check on demand', async () => {
+    const cookie = await login();
+    expect(await (await app.request('/api/status', { headers: { cookie } })).json()).toEqual([]);
+    expect((await app.request('/api/status/litebox/check', { method: 'POST', headers: { ...write, cookie } })).status).toBe(404);
+  });
+});
+
+describe('icon cache proxy', () => {
+  it('fetches allow-listed icons once, then serves them from disk (even when the CDN is down)', async () => {
+    const cookie = await login();
+    cdnCalls.length = 0;
+    cdnDown = false;
+    const first = await app.request('/api/icon-cache/di/github', { headers: { cookie } });
+    expect(first.status).toBe(200);
+    expect(first.headers.get('content-type')).toBe('image/svg+xml');
+    expect(first.headers.get('content-security-policy')).toContain('sandbox');
+    cdnDown = true;
+    expect((await app.request('/api/icon-cache/di/github', { headers: { cookie } })).status).toBe(200);
+    expect(cdnCalls).toEqual(['https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/github.svg']);
+  });
+
+  it('rejects bad keys, off-list redirects and non-image types', async () => {
+    const cookie = await login();
+    cdnDown = false;
+    expect((await app.request('/api/icon-cache/di/..%2Fsecret', { headers: { cookie } })).status).toBe(400);
+    expect((await app.request('/api/icon-cache/fav/localhost', { headers: { cookie } })).status).toBe(400);
+    expect((await app.request('/api/icon-cache/xx/github', { headers: { cookie } })).status).toBe(400);
+    expect((await app.request('/api/icon-cache/di/evil', { headers: { cookie } })).status).toBe(502);
+    expect(cdnCalls.some((u) => u.includes('169.254'))).toBe(false);
+    expect((await app.request('/api/icon-cache/di/html', { headers: { cookie } })).status).toBe(502);
+    expect((await app.request('/api/icon-cache/di/nope', { headers: { cookie } })).status).toBe(404);
+  });
+
+  it('requires a session', async () => {
+    expect((await app.request('/api/icon-cache/di/github')).status).toBe(401);
+  });
+});
+
+describe('linkwarden API', () => {
+  it('never exposes the token and refuses forbidden targets', async () => {
+    const cookie = await login();
+    expect(await (await app.request('/api/integrations/linkwarden', { headers: { cookie } })).json()).toMatchObject({ configured: false, tokenLast4: '' });
+    expect((await app.request('/api/bookmarks?q=rust', { headers: { cookie } })).status).toBe(404);
+    const put = await app.request('/api/integrations/linkwarden', { method: 'PUT', headers: { ...write, cookie }, body: JSON.stringify({ baseUrl: 'http://127.0.0.1:3000', token: 'x' }) });
+    expect(put.status).toBe(422);
+    expect((await app.request('/api/integrations/linkwarden', { headers: { cookie } })).status).toBe(200);
+    expect((await app.request('/api/bookmarks?q=x')).status).toBe(401);
+  });
+});
+
+describe('search suggestions', () => {
+  it('stay off until enabled, then proxy only the fixed endpoints', async () => {
+    const cookie = await login();
+    suggestCalls.length = 0;
+    expect((await app.request('/api/suggest?engine=google&q=rust', { headers: { cookie } })).status).toBe(403);
+    await ops(cookie, { clientId: 'c', batchId: 's1', ops: [{ type: 'settings.patch', section: 'search', patch: { suggest: true } }] });
+    expect(await (await app.request('/api/suggest?engine=google&q=rust', { headers: { cookie } })).json()).toEqual({ suggestions: ['rust async', 'rustup'] });
+    expect(await (await app.request('/api/suggest?engine=mdn&q=rust', { headers: { cookie } })).json()).toEqual({ suggestions: [] });
+    expect(suggestCalls).toEqual(['https://suggestqueries.google.com/complete/search?client=firefox&ie=utf-8&oe=utf-8&q=rust']);
   });
 });

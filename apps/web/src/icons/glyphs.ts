@@ -21,15 +21,18 @@ const DASHBOARD_ICONS = 'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons
 const SIMPLE_ICONS = 'https://cdn.simpleicons.org/';
 
 /**
- * Remote brand icon address. Batch 3 routes these through the Nexus icon cache (`/api/icons/...`);
- * keeping the mapping here means only this function changes.
+ * Brand icon address. With 本地缓存图标 on (default) the Nexus server fetches and caches it, so the
+ * browser never contacts a third-party icon service; off, the browser loads the CDN directly.
  */
-export function libraryIconUrl(ref: string): string {
+export function libraryIconUrl(ref: string, cached: boolean): string {
   const slug = ref.trim().toLowerCase();
-  if (slug.startsWith('si:')) return SIMPLE_ICONS + encodeURIComponent(slug.slice(3));
-  return DASHBOARD_ICONS + encodeURIComponent(slug) + '.svg';
+  const si = slug.startsWith('si:');
+  const name = encodeURIComponent(si ? slug.slice(3) : slug);
+  if (cached) return `/api/icon-cache/${si ? 'si' : 'di'}/${name}`;
+  return si ? SIMPLE_ICONS + name : `${DASHBOARD_ICONS}${name}.svg`;
 }
 
-export function faviconUrl(host: string): string {
-  return `https://icons.duckduckgo.com/ip3/${encodeURIComponent(host)}.ico`;
+export function faviconUrl(host: string, cached: boolean): string {
+  const h = encodeURIComponent(host.toLowerCase().replace(/:\d+$/, ''));
+  return cached ? `/api/icon-cache/fav/${h}` : `https://icons.duckduckgo.com/ip3/${h}.ico`;
 }

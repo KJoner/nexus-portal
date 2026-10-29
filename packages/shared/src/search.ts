@@ -40,7 +40,7 @@ export type SearchRow =
   | (RowBase & { kind: 'action'; actionId: string });
 
 export interface SearchSection {
-  id: 'url' | 'apps' | 'bookmarks' | 'web' | 'recent' | 'actions';
+  id: 'url' | 'apps' | 'bookmarks' | 'web' | 'suggest' | 'recent' | 'actions';
   title: string;
   rows: SearchRow[];
 }
@@ -54,6 +54,8 @@ export interface SearchInput {
   maxApps: number;
   /** `null` while unavailable — the section is simply omitted. */
   bookmarks: readonly Bookmark[] | null;
+  /** Query completions from the web engine (搜索建议), when enabled. */
+  suggestions?: readonly string[] | null;
   recent: readonly RecentItem[];
   actions: readonly QuickAction[];
   formatAgo?: (at: number) => string;
@@ -169,6 +171,17 @@ export function buildSearch(input: SearchInput): SearchResult {
   const href = web ? engineSearchUrl(web, q) : null;
   if (web && href) {
     out.push({ id: 'web', title: '网页', rows: [{ key: `web:${web.id}`, kind: 'web', title: `在 ${web.name} 中搜索「${q}」`, sub: '网页搜索', engineId: web.id, href, query: q }] });
+  }
+  if (web && input.suggestions?.length) {
+    const seen = new Set([q.toLowerCase()]);
+    const rows = input.suggestions
+      .filter((x) => x.trim() && !seen.has(x.trim().toLowerCase()) && seen.add(x.trim().toLowerCase()))
+      .slice(0, 4)
+      .flatMap((text, k): SearchRow[] => {
+        const href = engineSearchUrl(web, text);
+        return href ? [{ key: `sug:${k}`, kind: 'web', title: text, sub: `${web.name} 建议`, engineId: web.id, href, query: text }] : [];
+      });
+    if (rows.length) out.push({ id: 'suggest', title: '搜索建议', rows });
   }
   if (marks && engine.kind !== 'linkwarden') out.push(marks);
 

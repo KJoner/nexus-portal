@@ -1,4 +1,4 @@
-import { applyOps, CLIENT_HEADER, defaultConfig, OpError, type ApiErrorBody, type ConfigResponse, type OpBatch, type UploadedWallpaper } from '@nexus/shared';
+import { applyOps, CLIENT_HEADER, defaultConfig, OpError, type ApiErrorBody, type AppEntry, type Bookmark, type ConfigResponse, type HealthTestResult, type LinkwardenStatus, type OpBatch, type ServiceStatus, type UploadedWallpaper } from '@nexus/shared';
 
 /** Server answered with an error status. */
 export class HttpError extends Error {
@@ -29,8 +29,16 @@ export interface Transport {
   uploadWallpaper(file: File): Promise<UploadedWallpaper>;
   uploadIcon(file: File): Promise<string>;
   deleteWallpaper(id: string): Promise<ConfigResponse>;
-  /** Revision numbers pushed by the server. Returns an unsubscribe function. */
-  subscribe(onRevision: (revision: number) => void, onClosed: () => void): () => void;
+  getStatus(): Promise<ServiceStatus[]>;
+  linkwarden(): Promise<LinkwardenStatus>;
+  connectLinkwarden(baseUrl: string, token?: string): Promise<LinkwardenStatus>;
+  disconnectLinkwarden(): Promise<LinkwardenStatus>;
+  searchBookmarks(q: string, signal: AbortSignal): Promise<Bookmark[]>;
+  suggest(engineId: string, q: string, signal: AbortSignal): Promise<string[]>;
+  checkNow(appId: string): Promise<ServiceStatus>;
+  testHealth(app: AppEntry): Promise<HealthTestResult>;
+  /** Server pushes: config revisions and health results. Returns an unsubscribe function. */
+  subscribe(h: { onOpen(): void; onRevision(revision: number): void; onStatus(s: ServiceStatus | { appId: string; removed: true }): void; onClosed(): void }): () => void;
 }
 
 async function request<T>(path: string, init: RequestInit = {}, timeoutMs = 8000): Promise<T> {
@@ -41,7 +49,8 @@ async function request<T>(path: string, init: RequestInit = {}, timeoutMs = 8000
     const headers = new Headers(init.headers);
     headers.set(CLIENT_HEADER, '1');
     if (init.body && typeof init.body === 'string') headers.set('Content-Type', 'application/json');
-    res = await fetch(path, { ...init, headers, credentials: 'same-origin', signal: ctrl.signal });
+    const signal = init.signal ? AbortSignal.any([init.signal, ctrl.signal]) : ctrl.signal;
+    res = await fetch(path, { ...init, headers, credentials: 'same-origin', signal });
   } catch {
     throw new NetworkError();
   } finally {
@@ -78,13 +87,24 @@ export const httpTransport: Transport = {
     form.append('file', file);
     return (await request<{ id: string }>('/api/icons', { method: 'POST', body: form }, 30_000)).id;
   },
-  subscribe(onRevision, onClosed) {
+  getStatus: () => request('/api/status'),
+  linkwarden: () => request('/api/integrations/linkwarden'),
+  connectLinkwarden: (baseUrl, token) => request('/api/integrations/linkwarden', { method: 'PUT', body: JSON.stringify({ baseUrl, token: token || undefined }) }, 15_000),
+  disconnectLinkwarden: () => request('/api/integrations/linkwarden', { method: 'DELETE' }),
+  suggest: async (engineId, q, signal) => (await request<{ suggestions: string[] }>(`/api/suggest?engine=${encodeURIComponent(engineId)}&q=${encodeURIComponent(q)}`, { signal }, 4000)).suggestions,
+  searchBookmarks: async (q, signal) => (await request<{ bookmarks: Bookmark[] }>(`/api/bookmarks?q=${encodeURIComponent(q)}`, { signal }, 6000)).bookmarks,
+  checkNow: (appId) => request(`/api/status/${encodeURIComponent(appId)}/check`, { method: 'POST' }, 15_000),
+  testHealth: (app) => request('/api/health/test', { method: 'POST', body: JSON.stringify({ app }) }, 15_000),
+  subscribe({ onOpen, onRevision, onStatus, onClosed }) {
     if (typeof EventSource === 'undefined') return () => {};
     const es = new EventSource('/api/events');
+    // Every (re)connect may have missed events, e.g. across a server restart: re-sync then.
+    es.onopen = () => onOpen();
     es.addEventListener('revision', (e) => {
       const r = Number((JSON.parse((e as MessageEvent<string>).data) as { revision: number }).revision);
       if (Number.isFinite(r)) onRevision(r);
     });
+    es.addEventListener('status', (e) => onStatus(JSON.parse((e as MessageEvent<string>).data)));
     // EventSource retries on its own; CLOSED means it gave up (e.g. 401), so the caller re-checks.
     es.onerror = () => es.readyState === EventSource.CLOSED && onClosed();
     return () => es.close();
@@ -149,7 +169,32 @@ export class MemoryTransport implements Transport {
   async uploadIcon(): Promise<string> {
     throw new HttpError(415, 'unsupported', 'not in tests');
   }
-  subscribe(onRevision: (r: number) => void) {
+  async getStatus(): Promise<ServiceStatus[]> {
+    this.guard();
+    return [];
+  }
+  async linkwarden(): Promise<LinkwardenStatus> {
+    return { configured: false, baseUrl: '', tokenLast4: '', lastOkAt: null, lastError: null };
+  }
+  async connectLinkwarden(): Promise<LinkwardenStatus> {
+    throw new HttpError(422, 'unreachable', 'not in tests');
+  }
+  async disconnectLinkwarden() {
+    return this.linkwarden();
+  }
+  async searchBookmarks(): Promise<Bookmark[]> {
+    return [];
+  }
+  async suggest(): Promise<string[]> {
+    return [];
+  }
+  async checkNow(appId: string): Promise<ServiceStatus> {
+    return { appId, level: 'ok', message: 'HTTP 200 · 1 ms', checkedAt: new Date().toISOString(), latencyMs: 1 };
+  }
+  async testHealth(): Promise<HealthTestResult> {
+    return { ok: true, level: 'ok', message: 'HTTP 200 · 1 ms' };
+  }
+  subscribe({ onRevision }: { onRevision(r: number): void }) {
     this.listeners.add(onRevision);
     return () => this.listeners.delete(onRevision);
   }

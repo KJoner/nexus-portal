@@ -1,6 +1,7 @@
 import { hostOf, TONES, type AppEntry, type Engine, type StatusLevel } from '@nexus/shared';
 import type { LucideIcon } from 'lucide-react';
 import { memo, useState, type CSSProperties } from 'react';
+import { useConfigStore } from '../data/config-store';
 import { cn } from '../lib/cn';
 import { ALL_APPS_GLYPH, BUILTIN_GLYPHS, faviconUrl, libraryIconUrl } from './glyphs';
 
@@ -33,7 +34,7 @@ interface Resolved {
   icon?: LucideIcon;
 }
 
-function resolve(t: TileTarget): Resolved {
+function resolve(t: TileTarget, cached: boolean): Resolved {
   switch (t.kind) {
     case 'all':
       return { surface: GLASS, src: ALL_APPS_GLYPH, scale: 0.46, letter: '' };
@@ -44,7 +45,7 @@ function resolve(t: TileTarget): Resolved {
     case 'engine': {
       const e = t.engine;
       if (e.kind === 'linkwarden') return { surface: ember(2), src: BUILTIN_GLYPHS.linkwarden!, scale: 0.64, letter: '' };
-      const src = e.icon ? libraryIconUrl(e.icon) : faviconUrl(hostOf(e.urlTemplate.replace('%s', '')));
+      const src = e.icon ? libraryIconUrl(e.icon, cached) : faviconUrl(hostOf(e.urlTemplate.replace('%s', '')), cached);
       return { surface: PORCELAIN, src, scale: 0.54, letter: e.name.slice(0, 1) };
     }
     case 'app': {
@@ -60,11 +61,11 @@ function resolve(t: TileTarget): Resolved {
         case 'letter':
           return { surface: ember(a.icon.tone), src: null, scale: 0, letter };
         case 'library':
-          return { surface, src: a.icon.ref ? libraryIconUrl(a.icon.ref) : null, scale: svc ? 0.58 : 0.54, letter };
+          return { surface, src: a.icon.ref ? libraryIconUrl(a.icon.ref, cached) : null, scale: svc ? 0.58 : 0.54, letter };
         case 'upload':
           return { surface, src: a.icon.ref ? `/api/icons/${encodeURIComponent(a.icon.ref)}.png` : null, scale: svc ? 0.58 : 0.54, letter };
         case 'auto':
-          return { surface, src: faviconUrl(hostOf(a.url)), scale: svc ? 0.58 : 0.54, letter };
+          return { surface, src: faviconUrl(hostOf(a.url), cached), scale: svc ? 0.58 : 0.54, letter };
       }
     }
   }
@@ -86,7 +87,8 @@ interface Props {
 }
 
 export const AppTile = memo(function AppTile({ target, size, status, lazy, className, style }: Props) {
-  const r = resolve(target);
+  const cached = useConfigStore((s) => s.snapshot.config.settings.privacy.cacheIcons);
+  const r = resolve(target, cached);
   const [, bump] = useState(0);
   const src = r.src && !failed.has(r.src) ? r.src : null;
   const Icon = r.icon;

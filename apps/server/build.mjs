@@ -3,7 +3,7 @@ import { build } from 'esbuild';
 // Bundles the server and @nexus/shared into one ESM file; native modules stay external.
 await build({
   entryPoints: ['src/index.ts'],
-  outfile: 'dist/index.js',
+  outfile: 'dist/index.mjs',
   bundle: true,
   platform: 'node',
   target: 'node22',

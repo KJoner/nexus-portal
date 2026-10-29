@@ -28,7 +28,8 @@ export const headers = () =>
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
-      fontSrc: ["'self'"],
+      // Vite inlines small font subsets as data: URIs.
+      fontSrc: ["'self'", 'data:'],
       connectSrc: ["'self'"],
       frameAncestors: ["'none'"],
       baseUri: ["'none'"],

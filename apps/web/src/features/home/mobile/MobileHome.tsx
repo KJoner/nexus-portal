@@ -15,6 +15,7 @@ import { formatClock, formatDate } from '../../../lib/time';
 import { homeActions } from '../actions';
 import { activateRow, rowTile, useSearchModel, type QuickActionId } from '../search-model';
 import { actionStyle, dotStyle, messageColor, pillStyle, rowHighlighted } from '../status-style';
+import { RetryButton } from '../desktop/StatusPopover';
 import { Wallpaper } from '../Wallpaper';
 import { useLongPress } from './useLongPress';
 
@@ -415,7 +416,9 @@ function MobileApps({ open, q, contentB, layer, all, showStatus, bind, pressed, 
                   <span className="truncate text-[12.5px] text-ink/50">{s.app.description}</span>
                 )}
               </span>
-              {s.level === 'off' && showStatus ? (
+              {s.level === 'unknown' && showStatus ? (
+                <RetryButton appId={s.app.id} style={actionStyle(s.level)} className="flex h-11 flex-none items-center rounded-xl border-0 px-3.5 text-[13px] disabled:opacity-60" />
+              ) : s.level === 'off' && showStatus ? (
                 <Link to={`/settings/apps?edit=${s.app.id}`} className="flex h-11 flex-none items-center rounded-xl px-3.5 text-[13px] no-underline" style={actionStyle(s.level)}>
                   开启
                 </Link>

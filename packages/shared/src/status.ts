@@ -16,6 +16,14 @@ export interface ServiceStatus {
   message: string;
   checkedAt: string | null;
   latencyMs: number | null;
+  /** Which address was checked: the LAN one when the app has it. */
+  via?: 'lan' | 'ext';
+}
+
+export interface HealthTestResult {
+  ok: boolean;
+  level: StatusLevel;
+  message: string;
 }
 
 export interface StatusSummary {

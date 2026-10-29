@@ -1,7 +1,7 @@
-import { buildSearch, engineSearchUrl, flattenRows, type Config, type Engine, type QuickAction, type SearchRow } from '@nexus/shared';
+import { buildSearch, engineSearchUrl, flattenRows, resolvePrefix, type Bookmark, type Config, type Engine, type QuickAction, type SearchRow } from '@nexus/shared';
 import { Activity, Globe, History, Image, Search, Settings } from 'lucide-react';
-import { useMemo } from 'react';
-import { useConfig } from '../../data/config-store';
+import { useEffect, useMemo, useState } from 'react';
+import { linkwardenApi, suggestApi, useConfig } from '../../data/config-store';
 import { useRecentStore, visibleRecent } from '../../data/recent';
 import { useServices } from '../../data/status';
 import type { TileTarget } from '../../icons/AppTile';
@@ -17,9 +17,60 @@ export function useEngines(): Engine[] {
   return useMemo(() => config.engines.filter((e) => e.kind === 'web' || config.settings.search.linkwarden), [config.engines, config.settings.search.linkwarden]);
 }
 
+/**
+ * Linkwarden matches for the typed text, fetched through Nexus (the token stays on the server).
+ * Debounced; a newer query cancels the older request; any failure simply hides the 收藏 section.
+ */
+function useBookmarks(query: string, enabled: boolean): Bookmark[] | null {
+  const [state, setState] = useState<{ q: string; items: Bookmark[] } | null>(null);
+  const q = query.trim();
+  useEffect(() => {
+    if (!enabled || !q) return;
+    const ctrl = new AbortController();
+    const t = setTimeout(() => {
+      linkwardenApi.search(q, ctrl.signal).then(
+        (items) => setState({ q, items }),
+        () => !ctrl.signal.aborted && setState({ q, items: [] }),
+      );
+    }, 200);
+    return () => {
+      clearTimeout(t);
+      ctrl.abort();
+    };
+  }, [q, enabled]);
+  return enabled && q && state?.q === q ? state.items : null;
+}
+
+/** 搜索建议 for the effective web engine, debounced and cancellable; off by default (privacy). */
+function useSuggestions(query: string, engineId: string, enabled: boolean): string[] | null {
+  const [state, setState] = useState<{ key: string; items: string[] } | null>(null);
+  const q = query.trim();
+  const key = `${engineId}|${q}`;
+  useEffect(() => {
+    if (!enabled || !q) return;
+    const ctrl = new AbortController();
+    const t = setTimeout(() => {
+      suggestApi(engineId, q, ctrl.signal).then(
+        (items) => setState({ key, items }),
+        () => undefined,
+      );
+    }, 150);
+    return () => {
+      clearTimeout(t);
+      ctrl.abort();
+    };
+  }, [key, q, engineId, enabled]);
+  return enabled && q && state?.key === key ? state.items : null;
+}
+
 export function useSearchModel(query: string, engineId: string, maxApps: number) {
   const config = useConfig();
   const engines = useEngines();
+  const { engine: prefixed, rest } = resolvePrefix(query, engines);
+  const bookmarks = useBookmarks(rest, config.settings.search.linkwarden && !config.settings.privacy.guest);
+  const effective = prefixed ?? engines.find((e) => e.id === engineId);
+  const webId = effective?.kind === 'web' ? effective.id : (engines.find((e) => e.kind === 'web')?.id ?? 'google');
+  const suggestions = useSuggestions(rest, webId, config.settings.search.suggest && !config.settings.privacy.guest);
   const recentItems = useRecentStore((s) => s.items);
   const { summary } = useServices();
   const wp = useWallpaper(config.settings.look);
@@ -40,13 +91,14 @@ export function useSearchModel(query: string, engineId: string, maxApps: number)
       apps: config.apps,
       showApps: config.settings.search.showApps,
       maxApps,
-      bookmarks: null,
+      bookmarks,
+      suggestions,
       recent: visibleRecent(recentItems, config.settings),
       actions,
       formatAgo,
     });
     return { engines, result, rows: flattenRows(result.sections) };
-  }, [config, engines, recentItems, summary.text, wp, walls, query, engineId, maxApps]);
+  }, [config, engines, recentItems, summary.text, wp, walls, query, engineId, maxApps, bookmarks, suggestions]);
 }
 
 export function rowTile(row: SearchRow, config: Config, engine: Engine): TileTarget {
@@ -60,6 +112,7 @@ export function rowTile(row: SearchRow, config: Config, engine: Engine): TileTar
     case 'bookmark':
       return { kind: 'bookmark' };
     case 'web':
+      if (row.key.startsWith('sug:')) return { kind: 'system', icon: Search };
       return { kind: 'engine', engine: config.engines.find((e) => e.id === row.engineId) ?? engine };
     case 'recent': {
       const app = row.recent.appId ? config.apps.find((a) => a.id === row.recent.appId) : undefined;

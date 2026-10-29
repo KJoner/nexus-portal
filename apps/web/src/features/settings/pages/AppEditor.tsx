@@ -2,7 +2,7 @@ import { hostOf, LOCKED_CATEGORY, MAX_PINS, newAppId, slug, TONES, validateApp, 
 import { ChevronDown, Upload, X } from 'lucide-react';
 import { Dialog as RDialog } from 'radix-ui';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useConfig, uploadIcon } from '../../../data/config-store';
+import { testHealth, useConfig, uploadIcon } from '../../../data/config-store';
 import { BUILTIN_GLYPHS, libraryIconUrl } from '../../../icons/glyphs';
 import { AppTile } from '../../../icons/AppTile';
 import { cn } from '../../../lib/cn';
@@ -58,6 +58,7 @@ export function AppEditor({ appId, initialName, onClose, onDelete }: Props) {
   const [upBusy, setUpBusy] = useState(false);
   const [upErr, setUpErr] = useState('');
   const [newCat, setNewCat] = useState<string | null>(null);
+  const [test, setTest] = useState<{ busy: boolean; ok?: boolean; text?: string } | null>(null);
 
   const isNew = !existing;
   const svc = draft.kind === 'service';
@@ -71,6 +72,17 @@ export function AppEditor({ appId, initialName, onClose, onDelete }: Props) {
   const set = (fn: (d: AppEntry) => AppEntry) => {
     setDraft((d) => fn(structuredClone(d)));
     setConfirm(false);
+    setTest(null);
+  };
+
+  const runTest = async () => {
+    setTest({ busy: true });
+    try {
+      const r = await testHealth({ ...draft, id: draft.id || 'draft', name: draft.name.trim() || 'draft' });
+      setTest({ busy: false, ok: r.ok, text: r.message });
+    } catch (e) {
+      setTest({ busy: false, ok: false, text: e instanceof Error ? e.message : '测试失败' });
+    }
   };
   const touch = (k: FieldKey) => setTouched((t) => new Set(t).add(k));
 
@@ -85,7 +97,7 @@ export function AppEditor({ appId, initialName, onClose, onDelete }: Props) {
         set((d) => ({ ...d, icon: { ...d.icon, ref } }));
       };
       img.onerror = () => setLibMiss(true);
-      img.src = libraryIconUrl(ref);
+      img.src = libraryIconUrl(ref, config.settings.privacy.cacheIcons);
     }, 300);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -389,10 +401,18 @@ export function AppEditor({ appId, initialName, onClose, onDelete }: Props) {
             />
           </div>
           <div className="flex items-center gap-3">
-            <Button disabled>测试连接</Button>
-            <NotYet />
+            <Button disabled={test?.busy || !!v.errors.url || !!v.errors.lanUrl || !!v.errors.health} onClick={() => void runTest()} className={compact ? 'h-11 flex-1 text-[14.5px]' : undefined}>
+              {test?.busy && <Spinner />}
+              {test?.busy ? '正在测试…' : '测试连接'}
+            </Button>
+            {test && !test.busy && (
+              <span className="flex min-w-0 items-center gap-[7px] text-[12.5px]" style={{ color: test.ok ? '#c4d7be' : '#f4b2a3' }}>
+                <span className="size-[7px] flex-none rounded-full" style={{ background: test.ok ? '#a7bf9f' : '#e9765f' }} />
+                <span className="truncate">{test.text}</span>
+              </span>
+            )}
           </div>
-          <span className="text-[11.5px] leading-[1.6] text-ink/42">检查由 Nexus 服务端发起，浏览器不直接请求内网地址；只会访问这个应用自己的外网或内网主机。检测执行将在服务集成阶段上线。</span>
+          <span className="text-[11.5px] leading-[1.6] text-ink/42">检查由 Nexus 服务端发起，浏览器不直接请求内网地址；只会访问这个应用自己的外网或内网主机，不发送任何登录凭据。</span>
         </div>
       )}
     </div>

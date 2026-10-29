@@ -63,6 +63,13 @@ describe('buildSearch', () => {
     expect(r.query).toBe('天气');
   });
 
+  it('adds up to four suggestions that differ from the query', () => {
+    const r = buildSearch(input('rust', { suggestions: ['rust', 'rust async', 'Rust Async', 'rustup', 'rust book', 'rust tutorial'] }));
+    const sug = r.sections.find((s) => s.id === 'suggest')!;
+    expect(sug.rows.map((x) => x.title)).toEqual(['rust async', 'rustup', 'rust book', 'rust tutorial']);
+    expect(sug.rows[0]!.kind === 'web' && sug.rows[0]!.href).toBe('https://www.google.com/search?q=rust%20async');
+  });
+
   it('idle shows only real recent items and actions', () => {
     expect(buildSearch(input('')).sections).toEqual([]);
     const r = buildSearch(input('  ', { recent: [{ kind: 'app', title: 'GitHub', appId: 'github', url: 'https://github.com', at: 0 }], actions: [{ id: 'wallpaper', title: '更换壁纸', sub: '' }] }));

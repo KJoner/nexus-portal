@@ -191,6 +191,15 @@ PC 与手机差异字段放在 settings 内：`home.desktop.dockSize`（3–7）
 
 LiteBox、OBsync 如果没有确认可用的只读 API，只保留导航入口与通用健康检查，不猜测数据接口。
 
+**进度（2026-10-29）**：C3-1 至 C3-6 已完成首版。
+- 健康检查：服务端按应用间隔调度，并发上限 4；五态判定（单次失败为「未知」、连续 2 次为「异常」，4xx / 响应 > 3 秒 / 公网证书不受信任或 14 天内到期为「警告」）；结果持久化、SSE 推送；「测试连接」与「重试」为真实请求。
+- SSRF 防护：连接时校验 DNS 解析结果（防重绑定）；IP 字面量单独校验（测试中发现 Node 对 IP 直连不调用 lookup，已修复）；拒绝回环、链路本地与云元数据地址（含 IPv4 映射、NAT64、AWS IPv6 元数据）；不跟随重定向、5 秒超时、响应体上限 64 KB。Clash / Mihomo fake-ip 段（198.18.0.0/15、2001:2::/48）按私有地址处理。
+- Linkwarden：按官方仓库源码核实 `GET /api/v1/search`（Bearer 访问令牌，`data.links` / 无结果时 `data: []`）后实现；令牌 AES-256-GCM 加密保存，只返回末 4 位；先验证再保存。
+- 图标缓存代理、搜索建议（Google / Bing / DuckDuckGo 固定端点，默认关闭）、PWA（离线打开已实测）、Dockerfile / compose / 部署文档。
+- 跨浏览器：Playwright 24 项通过（Chrome、本机 Edge、WebKit iPhone 13）；真机项目见 `docs/acceptance.md`。
+- 验证中修复：推送连接在服务端重启后不重连；首次访问时 Service Worker 预缓存挤占 HTTP/1.1 连接导致推送延迟；推送连接建立前的状态事件丢失；生产 CSP 拦截内联字体；Docker 运行阶段缺少 `"type": "module"`（产物改为 `.mjs`）。
+- 本机 Docker 引擎未运行，镜像构建未实测；已在本机模拟运行阶段目录结构验证产物可独立运行。
+
 ### 主要风险
 
 | 风险 | 应对 |

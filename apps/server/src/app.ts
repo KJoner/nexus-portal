@@ -1,6 +1,6 @@
 import { getConnInfo } from '@hono/node-server/conninfo';
 import { serveStatic } from '@hono/node-server/serve-static';
-import { OpBatchSchema, OpError, type ConfigResponse } from '@nexus/shared';
+import { AppSchema, OpBatchSchema, OpError, validateApp, type ConfigResponse } from '@nexus/shared';
 import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
@@ -14,7 +14,11 @@ import type { LoginLimiter } from './auth/rate-limit';
 import type { Auth } from './auth/sessions';
 import type { ConfigRepo } from './config/repo';
 import type { Env } from './env';
+import type { HealthChecker } from './health/checker';
 import { apiError, csrf, headers, isHttps } from './http/security';
+import { isValidIconKey, type IconProxy, type IconSource } from './icons/proxy';
+import { LinkwardenError, type Linkwarden } from './integrations/linkwarden';
+import { fetchSuggestions } from './integrations/suggest';
 import { IconError, MAX_ICON_BYTES, type IconStore } from './icons/store';
 import { MAX_UPLOAD_BYTES, WallpaperError, type WallpaperStore } from './wallpapers/store';
 
@@ -25,17 +29,23 @@ export interface Deps {
   limiter: LoginLimiter;
   wallpapers: WallpaperStore;
   icons: IconStore;
+  health: HealthChecker;
+  iconProxy: IconProxy;
+  linkwarden: Linkwarden;
+  suggestFetch?: typeof fetch;
 }
 
 const COOKIE = 'nexus_session';
 const LoginSchema = z.object({ password: z.string().min(1).max(256) });
 
-export function createApp({ env, repo, auth, limiter, wallpapers, icons }: Deps) {
+export function createApp({ env, repo, auth, limiter, wallpapers, icons, health, iconProxy, linkwarden, suggestFetch }: Deps) {
   const app = new Hono();
 
   const clientKey = (c: Context) => {
     if (env.trustProxy) {
-      const fwd = c.req.header('x-forwarded-for')?.split(',')[0]?.trim();
+      // The trusted proxy appends the address it saw; entries to its left come from the client
+      // and can be forged (which would let anyone sidestep the per-address login limit).
+      const fwd = c.req.header('x-forwarded-for')?.split(',').at(-1)?.trim();
       if (fwd) return fwd;
     }
     try {
@@ -47,6 +57,12 @@ export function createApp({ env, repo, auth, limiter, wallpapers, icons }: Deps)
 
   const configResponse = (): ConfigResponse => ({ ...repo.snapshot(), wallpapers: wallpapers.list() });
 
+  // Registered before the global headers so this runs last and wins: an icon SVG opened
+  // directly must not execute anything.
+  app.use('/api/icon-cache/*', async (c, next) => {
+    await next();
+    c.res.headers.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
+  });
   app.use('*', headers());
   app.use('/api/*', async (c, next) => {
     await next();
@@ -118,9 +134,11 @@ export function createApp({ env, repo, auth, limiter, wallpapers, icons }: Deps)
     return streamSSE(c, async (stream) => {
       let open = true;
       const off = repo.onChange((revision) => void stream.writeSSE({ event: 'revision', data: JSON.stringify({ revision }) }));
+      const offStatus = health.onStatus((s) => void stream.writeSSE({ event: 'status', data: JSON.stringify(s) }));
       stream.onAbort(() => {
         open = false;
         off();
+        offStatus();
       });
       await stream.writeSSE({ event: 'revision', data: JSON.stringify({ revision: repo.snapshot().revision }), retry: 3000 });
       while (open) {
@@ -128,6 +146,72 @@ export function createApp({ env, repo, auth, limiter, wallpapers, icons }: Deps)
         if (open) await stream.write(': ping\n\n');
       }
     });
+  });
+
+  // ── Health checks ───────────────────────────────────────────────────────
+  app.get('/api/status', (c) => c.json(health.list()));
+
+  app.post('/api/status/:id/check', async (c) => {
+    const s = await health.runNow(c.req.param('id'));
+    return s ? c.json(s) : apiError(c, 404, 'not_found', '该服务没有开启健康检查');
+  });
+
+  /** 测试连接 for an unsaved draft. Same host rule and network policy as scheduled checks. */
+  app.post('/api/health/test', bodyLimit({ maxSize: 64 * 1024 }), async (c) => {
+    const body = (await c.req.json().catch(() => null)) as { app?: unknown } | null;
+    const parsed = AppSchema.safeParse(body?.app);
+    if (!parsed.success) return apiError(c, 400, 'invalid', '请先填写完整的地址');
+    const app = { ...parsed.data, health: { ...parsed.data.health, enabled: true } };
+    const err = validateApp(app, []).errors;
+    if (err.url || err.lanUrl || err.health) return apiError(c, 422, 'invalid', err.health ?? err.lanUrl ?? err.url!);
+    return c.json(await health.test(app));
+  });
+
+  // ── Linkwarden (read-only) ─────────────────────────────────────────────
+  const lwError = (c: Context, e: unknown) => {
+    if (!(e instanceof LinkwardenError)) throw e;
+    const status = e.code === 'not_configured' ? 404 : e.code === 'invalid' ? 400 : 422;
+    return apiError(c, status, e.code, e.message);
+  };
+
+  app.get('/api/integrations/linkwarden', (c) => c.json(linkwarden.status()));
+
+  app.put('/api/integrations/linkwarden', bodyLimit({ maxSize: 8 * 1024 }), async (c) => {
+    const body = (await c.req.json().catch(() => null)) as { baseUrl?: unknown; token?: unknown } | null;
+    if (typeof body?.baseUrl !== 'string' || (body.token !== undefined && typeof body.token !== 'string')) return apiError(c, 400, 'invalid', '请填写 Linkwarden 地址');
+    try {
+      return c.json(await linkwarden.connect(body.baseUrl, body.token as string | undefined));
+    } catch (e) {
+      if (e instanceof TypeError) return apiError(c, 400, 'invalid', '地址格式不正确');
+      return lwError(c, e);
+    }
+  });
+
+  app.delete('/api/integrations/linkwarden', (c) => {
+    linkwarden.disconnect();
+    return c.json(linkwarden.status());
+  });
+
+  app.get('/api/bookmarks', async (c) => {
+    const q = (c.req.query('q') ?? '').trim();
+    if (!q) return c.json({ bookmarks: [] });
+    try {
+      return c.json({ bookmarks: await linkwarden.search(q) });
+    } catch (e) {
+      return lwError(c, e);
+    }
+  });
+
+  /** 搜索建议 — off unless the user enabled it; failures just mean no suggestions. */
+  app.get('/api/suggest', async (c) => {
+    if (!repo.snapshot().config.settings.search.suggest) return apiError(c, 403, 'disabled', '搜索建议未开启');
+    const q = (c.req.query('q') ?? '').trim();
+    if (!q) return c.json({ suggestions: [] });
+    try {
+      return c.json({ suggestions: await fetchSuggestions(c.req.query('engine') ?? '', q, suggestFetch) });
+    } catch {
+      return c.json({ suggestions: [] });
+    }
   });
 
   // ── Wallpapers ──────────────────────────────────────────────────────────
@@ -196,6 +280,26 @@ export function createApp({ env, repo, auth, limiter, wallpapers, icons }: Deps)
     return c.body(Readable.toWeb(createReadStream(path)) as ReadableStream);
   });
 
+  /** Cached brand icons: /api/icon-cache/{di|si}/<slug>, /api/icon-cache/fav/<host>. */
+  app.get('/api/icon-cache/:source/:key', async (c) => {
+    const source = c.req.param('source') as IconSource;
+    const key = c.req.param('key').toLowerCase();
+    if (!['di', 'si', 'fav'].includes(source) || !isValidIconKey(source, key)) return apiError(c, 400, 'invalid', '图标名称不正确');
+    try {
+      const icon = await iconProxy.get(source, key);
+      if (icon.status === 404) {
+        c.header('Cache-Control', 'private, max-age=3600');
+        return apiError(c, 404, 'not_found', '图标不存在');
+      }
+      c.header('Content-Type', icon.type);
+      c.header('Cache-Control', 'private, max-age=86400');
+      return c.body(new Uint8Array(icon.body));
+    } catch {
+      c.header('Cache-Control', 'no-store');
+      return c.json({ error: { code: 'unavailable', message: '图标源暂时不可用' } }, 502);
+    }
+  });
+
   app.all('/api/*', (c) => apiError(c, 404, 'not_found', '接口不存在'));
 
   // ── Web app ─────────────────────────────────────────────────────────────
@@ -204,6 +308,16 @@ export function createApp({ env, repo, auth, limiter, wallpapers, icons }: Deps)
     app.use('/assets/*', async (c, next) => {
       await next();
       c.header('Cache-Control', 'public, max-age=31536000, immutable');
+    });
+    // The Service Worker and manifest must be re-checked on every load, or updates never arrive.
+    app.use('/sw.js', async (c, next) => {
+      await next();
+      c.header('Cache-Control', 'no-cache');
+    });
+    app.use('/manifest.webmanifest', async (c, next) => {
+      await next();
+      c.header('Cache-Control', 'no-cache');
+      c.header('Content-Type', 'application/manifest+json');
     });
     app.use('*', serveStatic({ root, rewriteRequestPath: (p) => p }));
     const indexHtml = readFile(join(root, 'index.html'), 'utf8');

@@ -31,3 +31,12 @@ export interface ApiErrorBody {
 export interface SessionResponse {
   authenticated: boolean;
 }
+
+export interface LinkwardenStatus {
+  configured: boolean;
+  baseUrl: string;
+  /** Last four characters only — the token itself never leaves the server. */
+  tokenLast4: string;
+  lastOkAt: string | null;
+  lastError: string | null;
+}
