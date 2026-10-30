@@ -18,7 +18,7 @@ import type { QuickActionId } from '../search-model';
 import { useCurrentWallpaper } from '../rotation';
 import { Wallpaper } from '../Wallpaper';
 import { WallpaperBar } from '../WallpaperBar';
-import { Dock, dockHeights, extensionCols, type MenuSource } from './Dock';
+import { Dock, DockHandle, dockHeights, extensionCols, useDockPeek, type MenuSource } from './Dock';
 import { Drawer } from './Drawer';
 import { SearchSlab, type SearchSlabHandle } from './SearchSlab';
 import { StatusPopover } from './StatusPopover';
@@ -126,7 +126,7 @@ export function DesktopHome() {
         setStatusOpen(false);
         pillRef.current?.focus();
       } else if (edit) void exitEdit();
-      else if (canToggle && expanded) toggleExpanded();
+      else if (canToggle && expanded) collapse();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -243,12 +243,16 @@ export function DesktopHome() {
   let rows = shortcuts.pageRows;
   while (rows > 1 && heightFor(rows).total > room) rows--;
   const metrics = heightFor(rows);
-  const expanded = extItems > 0 && (shortcuts.mode === 'double' || edit || expandedPref);
-  const toggleExpanded = () => {
-    setExpandedPref(!expanded);
-    if (shortcuts.remember) storage.set(EXPANDED_KEY, !expanded);
-  };
   const canToggle = shortcuts.mode === 'expand' && extra.length > 0 && !edit;
+  // Opened with the button it stays open; opened by the mouse it follows the mouse.
+  const peek = useDockPeek(canToggle && !expandedPref && !drawer, menu !== null);
+  const expanded = extItems > 0 && (shortcuts.mode === 'double' || edit || expandedPref || peek.open);
+  const pinExpanded = (v: boolean) => {
+    peek.close();
+    setExpandedPref(v);
+    if (shortcuts.remember) storage.set(EXPANDED_KEY, v);
+  };
+  const collapse = () => pinExpanded(false);
 
   const drawerW = Math.min(1040, w - 160);
   const breathe = summary.level === 'error' && !errorSeen && motion === 'full';
@@ -298,6 +302,7 @@ export function DesktopHome() {
             edit={edit}
             maxPanel={h - top - clockH - 67 - 36}
             dockHeight={showShortcuts || edit ? metrics.first + (expanded ? metrics.extension : 0) : 0}
+            dockHandle={showShortcuts && canToggle ? <DockHandle state={expandedPref ? 'pinned' : peek.open ? 'peek' : 'closed'} count={extra.length} hover={peek.button} onToggle={() => pinExpanded(!expandedPref)} /> : undefined}
             hideInput={ui.search === 'hide'}
             onFocusSearch={() => {
               setStatusOpen(false);
@@ -309,7 +314,7 @@ export function DesktopHome() {
                 sites={dockSites}
                 extra={extra}
                 expanded={expanded}
-                onToggleExpanded={canToggle ? toggleExpanded : undefined}
+                hover={peek.rows}
                 rows={rows}
                 showPager={shortcuts.pager}
                 addToExtension={addToExtension}

@@ -27,7 +27,7 @@ function whereOf(n: number, desktop: number, mobile: number, mobilePage: number,
 
 const MODE_SUB: Record<Shortcuts['mode'], string> = {
   single: '首页只显示第一排，其余固定的网站在「全部应用」中',
-  expand: '其余固定的网站收在面板底部，点击「另有 N 个」展开',
+  expand: '其余固定的网站收在面板底部，桌面上鼠标移到首排时临时展开，点击底部箭头固定展开',
   double: '扩展区始终展开显示',
 };
 

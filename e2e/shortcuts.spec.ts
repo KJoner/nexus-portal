@@ -63,6 +63,115 @@ test.describe('desktop', () => {
     await expect.poll(async () => (await slab.boundingBox())!.y + (await slab.boundingBox())!.height).toBeLessThan(600 - 40);
   });
 
+  test('the mouse opens the extension for a moment; the button keeps it open', async ({ home: page }) => {
+    await addPinnedSites(page.context().request, 20);
+    await page.reload();
+    const ext = page.getByRole('group', { name: /更多快捷方式/ });
+    const handle = page.getByRole('button', { name: /更多快捷方式/ });
+    const center = async (l: typeof ext) => {
+      const b = (await l.boundingBox())!;
+      return [b.x + b.width / 2, b.y + b.height / 2] as const;
+    };
+    const firstRow = await center(page.locator('[data-dock-row="first"]'));
+    const away = [60, 600] as const;
+
+    // Hovering the first row opens it, leaving folds it back.
+    await page.mouse.move(...firstRow);
+    await expect(ext).toBeVisible();
+    await expect(handle).toHaveAttribute('aria-expanded', 'true');
+    await page.mouse.move(...away);
+    await expect(handle).toHaveAttribute('aria-expanded', 'false');
+    await expect(ext).toBeHidden();
+
+    // First row → second row → button and back: it never folds on the way.
+    await page.mouse.move(...firstRow);
+    await expect(ext).toBeVisible();
+    await page.waitForTimeout(400);
+    await handle.evaluate((el) => {
+      const w = window as unknown as { flips: number };
+      w.flips = 0;
+      new MutationObserver((changes) => (w.flips += changes.length)).observe(el, { attributes: true, attributeFilter: ['aria-expanded'] });
+    });
+    await page.mouse.move(...(await center(ext)), { steps: 8 });
+    await page.mouse.move(...(await center(handle)), { steps: 8 });
+    await page.waitForTimeout(500);
+    await page.mouse.move(...firstRow, { steps: 8 });
+    await page.waitForTimeout(500);
+    await expect(handle).toHaveAttribute('aria-expanded', 'true');
+    expect(await page.evaluate(() => (window as unknown as { flips: number }).flips)).toBe(0);
+
+    // Only leaving everything folds it.
+    await page.mouse.move(...away);
+    await expect(handle).toHaveAttribute('aria-expanded', 'false');
+
+    // The button alone does not open it, so it stays put under the pointer.
+    await page.waitForTimeout(400);
+    const closedBox = (await handle.boundingBox())!;
+    await page.mouse.move(...(await center(handle)));
+    await page.waitForTimeout(400);
+    await expect(handle).toHaveAttribute('aria-expanded', 'false');
+    expect(await handle.boundingBox()).toEqual(closedBox);
+
+    // Clicking pins it: leaving no longer folds it.
+    await page.mouse.down();
+    await page.mouse.up();
+    await expect(page.getByRole('button', { name: '收起更多快捷方式' })).toBeVisible();
+    await page.mouse.move(...away);
+    await page.waitForTimeout(500);
+    await expect(ext).toBeVisible();
+
+    // Collapsing with the button ends that, and hover works again.
+    await page.getByRole('button', { name: '收起更多快捷方式' }).click();
+    await expect(handle).toHaveAttribute('aria-expanded', 'false');
+    await page.mouse.move(...away);
+    await page.waitForTimeout(400);
+    await expect(ext).toBeHidden();
+    await page.mouse.move(...firstRow);
+    await expect(ext).toBeVisible();
+
+    // Pinning from a peek keeps it open too; Esc from a peek folds it without pinning.
+    await page.getByRole('button', { name: /固定展开更多快捷方式/ }).click();
+    await expect(page.getByRole('button', { name: '收起更多快捷方式' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(handle).toHaveAttribute('aria-expanded', 'false');
+    await page.mouse.move(...firstRow);
+    await expect(ext).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(handle).toHaveAttribute('aria-expanded', 'false');
+    await page.mouse.move(...away);
+    await page.waitForTimeout(400);
+    await expect(ext).toBeHidden();
+  });
+
+  test('a menu opened on a peeking tile keeps the extension open under it', async ({ home: page }) => {
+    const pins = await addPinnedSites(page.context().request, 20);
+    await page.reload();
+    const ext = page.getByRole('group', { name: /更多快捷方式/ });
+    await page.locator('[data-dock-row="first"]').hover();
+    await expect(ext).toBeVisible();
+    await ext.locator(dock(pins[5]!)).click({ button: 'right' });
+    await page.getByRole('menuitem', { name: '向前移动' }).hover();
+    await page.waitForTimeout(500);
+    await expect(ext).toBeVisible();
+    await page.keyboard.press('Escape');
+    await page.mouse.move(60, 600);
+    await expect(ext).toBeHidden();
+  });
+
+  test('the button stays clear of the search panel and of the window edge', async ({ home: page }) => {
+    await addPinnedSites(page.context().request, 20);
+    await page.setViewportSize({ width: 1280, height: 600 });
+    await page.reload();
+    const handle = page.getByRole('button', { name: /更多快捷方式/ });
+    await handle.click();
+    const box = (await page.getByRole('button', { name: '收起更多快捷方式' }).boundingBox())!;
+    expect(box.height).toBeGreaterThanOrEqual(44);
+    expect(box.y + box.height).toBeLessThanOrEqual(600);
+    await page.getByRole('combobox', { name: '搜索' }).click();
+    const wrapper = page.locator('[inert]', { has: page.getByRole('button', { name: /更多快捷方式/ }) }).last();
+    await expect(wrapper).toHaveCSS('opacity', '0');
+  });
+
   test('edit mode: Alt+→ moves a pin from the first row into the extension', async ({ home: page }) => {
     const pins = await addPinnedSites(page.context().request, 3);
     await page.reload();

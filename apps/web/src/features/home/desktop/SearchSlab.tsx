@@ -14,6 +14,8 @@ interface Props {
   /** Body shown while the search is idle (the Dock). */
   dock: ReactNode;
   dockHeight: number;
+  /** Hangs under the slab's bottom edge, outside its clipped body; goes away while searching. */
+  dockHandle?: ReactNode;
   /** 首页显示 · 搜索框隐藏: the field folds away until focused (`/`, Ctrl+K). */
   hideInput?: boolean;
   edit: boolean;
@@ -30,7 +32,7 @@ function panelHeight(sections: SearchSection[], max: number, extra = 0) {
   return Math.min(8 + extra + sections.reduce((n, s) => n + 30 + s.rows.length * 46, 0) + 44 + 6, max);
 }
 
-export const SearchSlab = forwardRef<SearchSlabHandle, Props>(function SearchSlab({ dock, dockHeight, hideInput, edit, maxPanel, onFocusSearch, onAction }, ref) {
+export const SearchSlab = forwardRef<SearchSlabHandle, Props>(function SearchSlab({ dock, dockHeight, dockHandle, hideInput, edit, maxPanel, onFocusSearch, onAction }, ref) {
   const config = useConfig();
   const defaultEngine = config.settings.search.defaultEngine;
   const [q, setQ] = useState('');
@@ -277,6 +279,12 @@ export const SearchSlab = forwardRef<SearchSlabHandle, Props>(function SearchSla
           </div>
         </div>
       </div>
+
+      {dockHandle && (
+        <div inert={open} className="absolute top-full left-1/2 -translate-x-1/2 transition-opacity duration-140 ease-soft" style={{ opacity: open ? 0 : 1 }}>
+          {dockHandle}
+        </div>
+      )}
 
       <EngineMenu
         ref={engMenuRef}

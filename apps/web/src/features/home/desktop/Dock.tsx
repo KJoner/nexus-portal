@@ -3,8 +3,8 @@ import { horizontalListSortingStrategy, rectSortingStrategy, SortableContext, us
 import { CSS as DndCSS } from '@dnd-kit/utilities';
 import { hostOf, paginate } from '@nexus/shared';
 import type { AppEntry } from '@nexus/shared';
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Plus } from 'lucide-react';
-import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type Ref } from 'react';
+import { ChevronDown, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type Ref } from 'react';
 import type { ServiceView } from '../../../data/status';
 import { AppTile } from '../../../icons/AppTile';
 import { cn } from '../../../lib/cn';
@@ -29,8 +29,8 @@ interface Props {
   showBadges: boolean;
   /** Extension visible. */
   expanded: boolean;
-  /** Collapse / expand control; absent when the extension is always open or empty. */
-  onToggleExpanded?: () => void;
+  /** Mouse over the rows (悬停展开); the wrapper is what useDockPeek watches. */
+  hover?: HoverZone;
   /** Rows per extension page, already limited to what fits the viewport. */
   rows: number;
   showPager: boolean;
@@ -50,8 +50,67 @@ const EXT_GAP_X = 12;
 const EXT_GAP_Y = 14;
 const EXT_TOP = 18;
 const PAGER_H = 34;
-/** The expand control sits in the slab's bottom padding. */
-const HANDLE_H = 18;
+const EXT_BOTTOM = 18;
+/** A pointer passing through the first row does not open anything. */
+const PEEK_OPEN_MS = 160;
+/** Crossing between the rows and the button, or slipping out briefly, does not close anything. */
+const PEEK_CLOSE_MS = 260;
+
+export interface HoverZone {
+  onPointerEnter(e: PointerEvent): void;
+  onPointerLeave(e: PointerEvent): void;
+}
+
+/**
+ * 悬停展开: the mouse opens the extension for a moment. The rows open it and keep it open, the
+ * button only keeps it open: opening from the button would pull it away from under the pointer.
+ * Touch and pen never count, they use the button. `hold` keeps it open while a menu is up, whose
+ * tile would otherwise fold away under it.
+ */
+export function useDockPeek(enabled: boolean, hold: boolean) {
+  const [open, setOpen] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const inside = useRef(false);
+
+  const schedule = (next: boolean, ms: number) => {
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setOpen(next), ms);
+  };
+  const close = () => {
+    clearTimeout(timer.current);
+    setOpen(false);
+  };
+  const enter = (e: PointerEvent, opens: boolean) => {
+    if (e.pointerType !== 'mouse') return;
+    inside.current = true;
+    clearTimeout(timer.current);
+    if (opens && enabled && !hold && !open) schedule(true, PEEK_OPEN_MS);
+  };
+  const leave = (e: PointerEvent) => {
+    if (e.pointerType !== 'mouse') return;
+    inside.current = false;
+    clearTimeout(timer.current);
+    if (open && !hold) schedule(false, PEEK_CLOSE_MS);
+  };
+
+  useEffect(() => {
+    if (!enabled) close();
+  }, [enabled]);
+  useEffect(() => {
+    clearTimeout(timer.current);
+    if (!hold && open && !inside.current) schedule(false, PEEK_CLOSE_MS);
+    // Only when the menu comes or goes; a pointer leaving later is handled by leave().
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hold]);
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  return {
+    open: enabled && open,
+    close,
+    rows: { onPointerEnter: (e: PointerEvent) => enter(e, true), onPointerLeave: leave } satisfies HoverZone,
+    button: { onPointerEnter: (e: PointerEvent) => enter(e, false), onPointerLeave: leave } satisfies HoverZone,
+  };
+}
 
 /**
  * Heights the search slab animates between: the first row alone (R1.5: 64 + icon, 40 + icon
@@ -62,7 +121,7 @@ export function dockHeights(iconSize: number, labels: boolean, rows: number, pag
   const bottom = labels ? 15 : 18;
   const first = 22 + item + bottom;
   const grid = rows * item + (rows - 1) * EXT_GAP_Y;
-  return { first, item, rowGap: EXT_GAP_Y, extension: EXT_TOP + grid + (pager ? PAGER_H : 0) + HANDLE_H - bottom };
+  return { first, item, rowGap: EXT_GAP_Y, extension: EXT_TOP + grid + (pager ? PAGER_H : 0) + EXT_BOTTOM - bottom };
 }
 
 /** Extension columns: the natural Dock cell with a little more air, as many as fit the slab. */
@@ -159,6 +218,40 @@ function AddTile({ cell, iconSize, labels, label, onClick }: { cell: number; ico
 
 function Separator() {
   return <span aria-hidden className="mx-1.5 mt-2 h-10 w-px flex-none bg-ink/14" />;
+}
+
+export type DockHandleState = 'closed' | 'peek' | 'pinned';
+
+const HANDLE_TEXT: Record<DockHandleState, (n: number) => { label: string; title: string }> = {
+  closed: (n) => ({ label: `展开更多快捷方式（另有 ${n} 个）`, title: `另有 ${n} 个快捷方式` }),
+  peek: (n) => ({ label: `固定展开更多快捷方式（另有 ${n} 个）`, title: '固定展开' }),
+  pinned: () => ({ label: '收起更多快捷方式', title: '收起' }),
+};
+
+/**
+ * The expand control under the slab. The arrow shows what a click does, so it still points down
+ * while the extension is only peeking: the click keeps it open. One size in every state, so only
+ * the arrow changes; the wide transparent hit area is what makes it easy to reach.
+ */
+export function DockHandle({ state, count, hover, onToggle }: { state: DockHandleState; count: number; hover?: HoverZone; onToggle(): void }) {
+  const { label, title } = HANDLE_TEXT[state](count);
+  return (
+    <button
+      type="button"
+      {...hover}
+      onClick={onToggle}
+      aria-expanded={state !== 'closed'}
+      aria-label={label}
+      title={title}
+      className="group/handle grid h-11 w-32 place-items-center border-0 bg-transparent p-0 outline-none"
+    >
+      <span className="grid size-[30px] place-items-center rounded-full bg-[rgba(26,25,22,0.6)] text-ink/70 opacity-45 shadow-[0_6px_18px_rgba(0,0,0,0.28),inset_0_0_0_1px_rgba(239,234,225,0.1)] transition-[opacity,color,box-shadow] duration-200 ease-soft group-hover/handle:text-amber-hi group-hover/handle:opacity-100 group-hover/handle:shadow-[0_6px_18px_rgba(0,0,0,0.28),inset_0_0_0_1px_rgba(230,192,138,0.42)] group-hover/slab:opacity-100 group-focus-visible/handle:opacity-100 group-focus-visible/handle:outline-2 group-focus-visible/handle:outline-offset-2 group-focus-visible/handle:outline-amber pointer-coarse:opacity-100">
+        <span className={cn('grid transition-transform duration-240 ease-soft', state === 'pinned' && 'rotate-180')}>
+          <ChevronDown className="size-4 group-hover/handle:animate-nudge" />
+        </span>
+      </span>
+    </button>
+  );
 }
 
 /**
@@ -261,100 +354,88 @@ export function Dock(props: Props) {
 
   return (
     <DndContext accessibility={dndAccessibility} sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-      <div data-dock-row="first" className="flex items-start justify-center px-6 pt-[22px]" style={{ gap: GAP }}>
-        <SortableContext items={sites.map((a) => a.id)} strategy={horizontalListSortingStrategy}>
-          {sites.map((app, i) => (
-            <DockSite key={app.id} app={app} index={i} cell={cell} {...siteProps} />
-          ))}
-        </SortableContext>
-        {showAdd && <AddTile cell={cell} iconSize={iconSize} labels={labels} label={`添加 ${sites.length}/${dockSize}`} onClick={props.onOpenDrawer} />}
-        {services.length > 0 && <Separator />}
-        {services.map((s) => (
-          <a
-            key={s.app.id}
-            {...appLinkProps(s.app)}
-            title={`${s.app.name} · ${s.levelLabel}：${s.message}`}
-            aria-label={showBadges ? `${s.app.name}，${s.levelLabel}：${s.message}` : s.app.name}
-            onClick={(e) => (edit ? e.preventDefault() : recordAppOpen(s.app))}
-            onContextMenu={(e) => props.onMenu(e, s.app, 'hosted')}
-            className={cn(itemClass, 'flex-none', !edit && liftClass, edit && 'pointer-events-none opacity-40')}
-            style={{ width: cell }}
-            tabIndex={edit ? -1 : undefined}
-          >
-            <AppTile target={{ kind: 'app', app: s.app }} size={iconSize} status={showBadges ? s.level : undefined} />
-            <Label name={s.app.name} labels={labels} onHover={labelsOnHover} cell={cell} />
-          </a>
-        ))}
-        <Separator />
-        <button
-          ref={props.allRef}
-          type="button"
-          aria-label="全部应用"
-          onClick={props.onOpenDrawer}
-          tabIndex={edit ? -1 : undefined}
-          className={cn(itemClass, 'flex-none border-0 bg-transparent p-0', !edit && liftClass, edit && 'pointer-events-none opacity-40')}
-          style={{ width: cell }}
-        >
-          <AppTile target={{ kind: 'all' }} size={iconSize} />
-          <Label name="全部应用" labels={labels} onHover={labelsOnHover} cell={cell} />
-        </button>
-      </div>
-
-      {opened && (extra.length > 0 || props.addToExtension) && (
-        // Stays mounted while collapsed so the slab's height animation clips it instead of popping.
-        <div
-          ref={setExtEl}
-          role="group"
-          aria-label={pages.length > 1 ? `更多快捷方式，第 ${current + 1} / ${pages.length} 页` : '更多快捷方式'}
-          aria-hidden={!expanded}
-          inert={!expanded}
-          onKeyDown={onExtKey}
-          className="px-6 transition-opacity duration-200 ease-soft"
-          style={{ paddingTop: EXT_TOP, opacity: expanded ? 1 : 0 }}
-        >
-          <SortableContext items={shownExtra.map((a) => a.id)} strategy={rectSortingStrategy}>
-            <div
-              key={current}
-              className={cn('grid justify-center', dir === 'next' && 'nx-page-next', dir === 'prev' && 'nx-page-prev')}
-              style={{ gridTemplateColumns: `repeat(${cols}, ${natural}px)`, columnGap: EXT_GAP_X, rowGap: EXT_GAP_Y }}
-            >
-              {shownExtra.map((app, k) => (
-                <DockSite key={app.id} app={app} index={sites.length + current * cols * rows + k} cell={natural} {...siteProps} />
-              ))}
-              {props.addToExtension && lastPage && shownExtra.length < cols * rows && <AddTile cell={natural} iconSize={iconSize} labels={labels} label="添加" onClick={props.onOpenDrawer} />}
-            </div>
+      <div className="h-full" {...props.hover}>
+        <div data-dock-row="first" className="flex items-start justify-center px-6 pt-[22px]" style={{ gap: GAP }}>
+          <SortableContext items={sites.map((a) => a.id)} strategy={horizontalListSortingStrategy}>
+            {sites.map((app, i) => (
+              <DockSite key={app.id} app={app} index={i} cell={cell} {...siteProps} />
+            ))}
           </SortableContext>
-          {showPager && pages.length > 1 && (
-            <div className="flex items-center justify-center gap-1 pt-2" style={{ height: PAGER_H }}>
-              <button type="button" aria-label="上一页" disabled={current === 0} onClick={() => go(-1)} className="grid size-7 place-items-center rounded-full border-0 bg-transparent text-ink/60 hover:bg-ink/10 hover:text-ink disabled:opacity-25">
-                <ChevronLeft className="size-3.5" />
-              </button>
-              {pages.map((_, p) => (
-                <button key={p} type="button" aria-label={`第 ${p + 1} 页`} aria-current={p === current ? 'page' : undefined} onClick={() => goTo(p)} className="grid h-7 w-4 place-items-center border-0 bg-transparent p-0">
-                  <span className="block h-1.5 rounded-full transition-[width,background] duration-200 ease-soft" style={{ width: p === current ? 14 : 6, background: p === current ? 'rgba(239,234,225,0.78)' : 'rgba(239,234,225,0.26)' }} />
-                </button>
-              ))}
-              <button type="button" aria-label="下一页" disabled={lastPage} onClick={() => go(1)} className="grid size-7 place-items-center rounded-full border-0 bg-transparent text-ink/60 hover:bg-ink/10 hover:text-ink disabled:opacity-25">
-                <ChevronRight className="size-3.5" />
-              </button>
-            </div>
-          )}
+          {showAdd && <AddTile cell={cell} iconSize={iconSize} labels={labels} label={`添加 ${sites.length}/${dockSize}`} onClick={props.onOpenDrawer} />}
+          {services.length > 0 && <Separator />}
+          {services.map((s) => (
+            <a
+              key={s.app.id}
+              {...appLinkProps(s.app)}
+              title={`${s.app.name} · ${s.levelLabel}：${s.message}`}
+              aria-label={showBadges ? `${s.app.name}，${s.levelLabel}：${s.message}` : s.app.name}
+              onClick={(e) => (edit ? e.preventDefault() : recordAppOpen(s.app))}
+              onContextMenu={(e) => props.onMenu(e, s.app, 'hosted')}
+              className={cn(itemClass, 'flex-none', !edit && liftClass, edit && 'pointer-events-none opacity-40')}
+              style={{ width: cell }}
+              tabIndex={edit ? -1 : undefined}
+            >
+              <AppTile target={{ kind: 'app', app: s.app }} size={iconSize} status={showBadges ? s.level : undefined} />
+              <Label name={s.app.name} labels={labels} onHover={labelsOnHover} cell={cell} />
+            </a>
+          ))}
+          <Separator />
+          <button
+            ref={props.allRef}
+            type="button"
+            aria-label="全部应用"
+            onClick={props.onOpenDrawer}
+            tabIndex={edit ? -1 : undefined}
+            className={cn(itemClass, 'flex-none border-0 bg-transparent p-0', !edit && liftClass, edit && 'pointer-events-none opacity-40')}
+            style={{ width: cell }}
+          >
+            <AppTile target={{ kind: 'all' }} size={iconSize} />
+            <Label name="全部应用" labels={labels} onHover={labelsOnHover} cell={cell} />
+          </button>
         </div>
-      )}
 
-      {props.onToggleExpanded && (
-        <button
-          type="button"
-          onClick={props.onToggleExpanded}
-          aria-expanded={expanded}
-          aria-label={expanded ? '收起更多快捷方式' : `展开更多快捷方式（另有 ${extra.length} 个）`}
-          title={expanded ? '收起' : `另有 ${extra.length} 个快捷方式`}
-          className="group/handle absolute bottom-0 left-1/2 flex h-[18px] -translate-x-1/2 items-center gap-1.5 rounded-t-lg border-0 bg-transparent px-3 text-[11px] text-ink/30 transition-colors duration-200 hover:text-ink/80 focus-visible:text-ink/80 group-hover/slab:text-ink/55"
-        >
-          {expanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
-          <span className="tabular-nums">{expanded ? '收起' : `另有 ${extra.length} 个`}</span>
-        </button>
-      )}
+        {opened && (extra.length > 0 || props.addToExtension) && (
+          // Stays mounted while collapsed so the slab's height animation clips it instead of popping.
+          <div
+            ref={setExtEl}
+            role="group"
+            aria-label={pages.length > 1 ? `更多快捷方式，第 ${current + 1} / ${pages.length} 页` : '更多快捷方式'}
+            aria-hidden={!expanded}
+            inert={!expanded}
+            onKeyDown={onExtKey}
+            className="px-6 transition-opacity duration-200 ease-soft"
+            style={{ paddingTop: EXT_TOP, opacity: expanded ? 1 : 0 }}
+          >
+            <SortableContext items={shownExtra.map((a) => a.id)} strategy={rectSortingStrategy}>
+              <div
+                key={current}
+                className={cn('grid justify-center', dir === 'next' && 'nx-page-next', dir === 'prev' && 'nx-page-prev')}
+                style={{ gridTemplateColumns: `repeat(${cols}, ${natural}px)`, columnGap: EXT_GAP_X, rowGap: EXT_GAP_Y }}
+              >
+                {shownExtra.map((app, k) => (
+                  <DockSite key={app.id} app={app} index={sites.length + current * cols * rows + k} cell={natural} {...siteProps} />
+                ))}
+                {props.addToExtension && lastPage && shownExtra.length < cols * rows && <AddTile cell={natural} iconSize={iconSize} labels={labels} label="添加" onClick={props.onOpenDrawer} />}
+              </div>
+            </SortableContext>
+            {showPager && pages.length > 1 && (
+              <div className="flex items-center justify-center gap-1 pt-2" style={{ height: PAGER_H }}>
+                <button type="button" aria-label="上一页" disabled={current === 0} onClick={() => go(-1)} className="grid size-7 place-items-center rounded-full border-0 bg-transparent text-ink/60 hover:bg-ink/10 hover:text-ink disabled:opacity-25">
+                  <ChevronLeft className="size-3.5" />
+                </button>
+                {pages.map((_, p) => (
+                  <button key={p} type="button" aria-label={`第 ${p + 1} 页`} aria-current={p === current ? 'page' : undefined} onClick={() => goTo(p)} className="grid h-7 w-4 place-items-center border-0 bg-transparent p-0">
+                    <span className="block h-1.5 rounded-full transition-[width,background] duration-200 ease-soft" style={{ width: p === current ? 14 : 6, background: p === current ? 'rgba(239,234,225,0.78)' : 'rgba(239,234,225,0.26)' }} />
+                  </button>
+                ))}
+                <button type="button" aria-label="下一页" disabled={lastPage} onClick={() => go(1)} className="grid size-7 place-items-center rounded-full border-0 bg-transparent text-ink/60 hover:bg-ink/10 hover:text-ink disabled:opacity-25">
+                  <ChevronRight className="size-3.5" />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </DndContext>
   );
 }

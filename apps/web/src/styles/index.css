@@ -23,6 +23,7 @@
 
   --animate-pop: nx-pop 0.2s var(--ease-soft);
   --animate-breathe: nx-breathe 2.4s ease-in-out infinite;
+  --animate-nudge: nx-nudge 1.4s ease-in-out infinite;
   --animate-spin-slow: nx-spin 0.8s linear infinite;
 }
 
@@ -36,6 +37,10 @@
 }
 @keyframes nx-spin {
   to { transform: rotate(360deg); }
+}
+@keyframes nx-nudge {
+  0%, 100% { transform: none; }
+  50% { transform: translateY(2.5px); }
 }
 
 @layer base {
@@ -127,6 +132,10 @@
 [data-motion='reduced'] .nx-page-next,
 [data-motion='reduced'] .nx-page-prev {
   animation-name: nx-fade;
+}
+/* 减弱 keeps the expand arrow still; the highlight still answers the hover. */
+[data-motion='reduced'] .group\/handle svg {
+  animation: none;
 }
 
 /* R2 · 滑块: 4px track, 18px thumb (26px on phones). */
