@@ -17,7 +17,7 @@ export class SourceError extends Error {
 }
 
 /** Wikimedia asks every client for a descriptive User-Agent with a way to reach the operator. */
-const UA = 'NexusPortal/0.3.0 (https://github.com/KJoner/nexus-portal; self-hosted start page)';
+const UA = 'NexusPortal/0.3.1 (https://github.com/KJoner/nexus-portal; self-hosted start page)';
 const COMMONS_HOSTS = new Set(['commons.wikimedia.org', 'upload.wikimedia.org', 'thumb.wikimedia.org']);
 /** Commons serves these thumbnail widths from cache; other widths are rate limited. */
 const FULL_WIDTH = 3840;
