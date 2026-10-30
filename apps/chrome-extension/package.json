@@ -1,6 +1,6 @@
 {
   "name": "@nexus/chrome-extension",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "Nexus Portal 新标签页：Chrome 扩展（Manifest V3）",

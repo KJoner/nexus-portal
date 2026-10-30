@@ -175,6 +175,38 @@ test('read-only: menus offer opening and the portal’s settings, nothing that w
   await page.close();
 });
 
+test('the mouse opens the extra shortcuts for a moment; the button keeps them open', async () => {
+  const { config } = (await (await api.get('/api/config')).json()) as { config: { apps: (Record<string, unknown> & { id: string })[] } };
+  const gh = config.apps.find((a) => a.id === 'github')!;
+  const sites = Array.from({ length: 8 }, (_, i) => ({ ...gh, id: `ext-site-${i}`, name: `站点 ${i}`, url: `https://s${i}.example.com`, icon: { source: 'letter', ref: '', letter: 'S', tone: 0 } }));
+  await api.post('/api/config/ops', { headers: H, data: { clientId: 'e2e', batchId: `ext-pins-${Date.now()}`, ops: [...sites.map((app) => ({ type: 'app.upsert', app })), ...sites.map((s) => ({ type: 'pin.add', appId: s.id }))] } });
+
+  const page = await newTab();
+  await expireThrottle(page);
+  await page.reload();
+  const handle = page.getByRole('button', { name: /更多快捷方式/ });
+  await expect(handle).toBeVisible();
+  const ext = page.getByRole('group', { name: /更多快捷方式/ });
+
+  await page.locator('[data-dock-row="first"]').hover();
+  await expect(ext).toBeVisible();
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: 'test-results/extension-peek.png' });
+  await page.mouse.move(60, 600);
+  await expect(ext).toBeHidden();
+
+  // The extension has its own CSS build: the arrow's hover animation has to be in it too.
+  await page.waitForTimeout(400);
+  await handle.hover();
+  await expect(handle.locator('svg')).toHaveCSS('animation-name', 'nx-nudge');
+  await handle.click();
+  await expect(page.getByRole('button', { name: '收起更多快捷方式' })).toBeVisible();
+  await page.mouse.move(60, 600);
+  await page.waitForTimeout(500);
+  await expect(ext).toBeVisible();
+  await page.close();
+});
+
 test('offline, the cached navigation still opens', async () => {
   const page = await newTab();
   await expireThrottle(page);
