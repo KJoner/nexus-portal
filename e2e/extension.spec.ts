@@ -1,7 +1,7 @@
 /// <reference types="chrome" />
 import { chromium, expect, request, test, type APIRequestContext, type BrowserContext, type Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -23,6 +23,7 @@ let context: BrowserContext;
 let extId: string;
 let api: APIRequestContext;
 let profile: string;
+let updated: string | undefined;
 
 test.beforeAll(async () => {
   execFileSync(process.execPath, [resolve(EXT_DIR, '../../node_modules/vite/bin/vite.js'), 'build', '--logLevel', 'warn'], {
@@ -39,7 +40,7 @@ test.beforeAll(async () => {
     channel: 'chromium',
     locale: 'zh-CN',
     viewport: { width: 1440, height: 900 },
-    args: [`--disable-extensions-except=${BUILD}`, `--load-extension=${BUILD}`],
+    args: [`--disable-extensions-except=${BUILD}`, `--load-extension=${BUILD}`, '--enable-unsafe-extension-debugging'],
   });
   const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));
   extId = new URL(worker.url()).host;
@@ -49,6 +50,7 @@ test.afterAll(async () => {
   await context?.close();
   await api?.dispose();
   rmSync(profile, { recursive: true, force: true });
+  if (updated) rmSync(updated, { recursive: true, force: true });
 });
 
 /** Lets the next new tab check the server again (as if 30 s had passed). */
@@ -126,6 +128,44 @@ test('Ctrl+T opens the extension’s own page, rendered from the local cache', a
   expect(requests.filter((u) => stored.has(u))).toEqual([]);
   expect(problems).toEqual([]);
   await second.close();
+  await page.close();
+});
+
+test('an update from a different folder stays the same, connected extension', async () => {
+  const before = await newTab();
+  const read = (p: Page) => p.evaluate(async () => ({ stored: await chrome.storage.local.get(['server', 'cache']), access: (await chrome.permissions.getAll()).origins }));
+  const kept = await read(before);
+  expect(kept.stored.server).toBeTruthy();
+  await before.close();
+
+  const opened: Page[] = [];
+  const onPage = (p: Page) => opened.push(p);
+  context.on('page', onPage);
+  // What a ZIP dropped on chrome://extensions amounts to: unpacked into a new, randomly named
+  // folder and loaded from there. Without manifest.key this path would give another extension ID.
+  updated = mkdtempSync(join(tmpdir(), 'nexus-portal-chrome-v9.9.9_'));
+  cpSync(BUILD, updated, { recursive: true });
+  const manifest = join(updated, 'manifest.json');
+  writeFileSync(manifest, JSON.stringify({ ...JSON.parse(readFileSync(manifest, 'utf8')), version: '9.9.9' }));
+  const browser = await context.browser()!.newBrowserCDPSession();
+  const { id } = (await browser.send('Extensions.loadUnpacked' as never, { path: updated } as never)) as { id: string };
+  await browser.detach();
+  expect(id).toBe(extId);
+
+  // An update, so no welcome page; the new tab opens connected, straight from the kept cache.
+  const page = await newTab();
+  await expect(page.getByRole('link', { name: 'GitHub' }).first()).toBeVisible();
+  expect(await page.evaluate(() => chrome.runtime.getManifest().version)).toBe('9.9.9');
+  expect(await read(page)).toEqual(kept);
+  expect(opened.filter((p) => p.url().includes('welcome=1'))).toEqual([]);
+  context.off('page', onPage);
+
+  // The kept token still works: a check with the server succeeds, on the same device.
+  await expireThrottle(page);
+  const checked = page.waitForResponse(`${ORIGIN}/api/sync/config`);
+  await page.reload();
+  expect([200, 304]).toContain((await checked).status());
+  expect((await (await api.get('/api/devices')).json()) as unknown[]).toHaveLength(1);
   await page.close();
 });
 

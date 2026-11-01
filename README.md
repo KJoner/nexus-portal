@@ -115,10 +115,12 @@ scripts          镜像冒烟测试（CI 与本地共用）
 
 安装（Windows / macOS 的 Chrome）：
 
-1. 从 Releases 下载 `nexus-portal-chrome-vX.Y.Z.zip`（`ext-v` 前缀的版本），解压到一个固定的文件夹。
-2. 打开 `chrome://extensions`，开启「开发者模式」，点「加载已解压的扩展程序」，选择这个文件夹。
+1. 从 Releases 下载 `nexus-portal-chrome-vX.Y.Z.zip`（`ext-v` 前缀的版本）。
+2. 打开 `chrome://extensions`，开启「开发者模式」，把 ZIP 拖到这个页面上。
 
-连接方法、缓存与安全设计、发布流程、手动验收与上架 Chrome Web Store 的准备，见 [docs/extension.md](docs/extension.md)。
+更新时同样拖入新的 ZIP，连接和缓存都会保留。
+
+连接方法、更新说明、缓存与安全设计、发布流程、手动验收与上架 Chrome Web Store 的准备，见 [docs/extension.md](docs/extension.md)。
 
 ## 本地开发
 

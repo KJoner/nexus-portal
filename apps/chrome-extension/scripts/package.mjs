@@ -1,7 +1,8 @@
 // Packs dist/ into nexus-portal-chrome-v<version>.zip, manifest.json at the root of the archive,
-// so it unpacks straight into a folder that Chrome's 「加载已解压的扩展程序」 accepts (and that the
-// Chrome Web Store accepts as an upload). No dependencies: Node's zlib does deflate and CRC-32.
+// so it can be dragged onto chrome://extensions or unpacked into a folder for 「加载已解压的扩展程序」.
+// No dependencies: Node's zlib does deflate and CRC-32.
 // Entries are sorted and dated 1980-01-01, so the same build gives a byte-identical archive.
+import { createHash } from 'node:crypto';
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { crc32, deflateRawSync } from 'node:zlib';
@@ -14,6 +15,14 @@ const manifest = JSON.parse(readFileSync(join(dist, 'manifest.json'), 'utf8'));
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 if (manifest.version !== pkg.version) throw new Error(`manifest ${manifest.version} ≠ package.json ${pkg.version}`);
 if (manifest.host_permissions) throw new Error('dist/ is a test build (host_permissions present): run `npm run build` first');
+
+// Chrome keeps the connection, cache and granted site access under the extension ID, and without
+// manifest.key that ID comes from the install path, which is random for a dropped ZIP. Losing or
+// replacing the key turns the next update into a separate, unconnected extension.
+const EXTENSION_ID = 'fofncjblmjaocmkmmkdnjdejkgjelcck';
+const hash = createHash('sha256').update(Buffer.from(manifest.key ?? '', 'base64')).digest('hex');
+const id = [...hash.slice(0, 32)].map((c) => String.fromCharCode(97 + parseInt(c, 16))).join('');
+if (id !== EXTENSION_ID) throw new Error(`manifest.json 的 key 对应扩展 ID ${id}，应为 ${EXTENSION_ID}：改动后所有已安装的扩展都要重新连接`);
 
 function walk(dir) {
   return readdirSync(dir).flatMap((name) => {

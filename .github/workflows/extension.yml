@@ -5,8 +5,8 @@ name: Chrome extension
 #   push / pull request that touches the extension or the code it reuses → checks + ZIP artifact
 #   Actions › Chrome extension › Run workflow                         → the same, on demand
 #   tag ext-vX.Y.Z (= apps/chrome-extension/package.json)             → also a GitHub Release
-# The ZIP unpacks into a folder Chrome's 「加载已解压的扩展程序」 accepts, manifest.json at its
-# root; the same file is what the Chrome Web Store takes as an upload.
+# The ZIP, manifest.json at its root, can be dropped on chrome://extensions or unpacked for
+# 「加载已解压的扩展程序」. The Chrome Web Store needs it without manifest.key (docs/extension.md).
 on:
   push:
     branches: [main]
@@ -160,9 +160,9 @@ jobs:
             echo
             echo "### 安装（Chrome 开发者模式）"
             echo
-            echo "1. 下载 \`nexus-portal-chrome-v$VERSION.zip\` 并解压到一个固定的文件夹"
+            echo "1. 下载 \`nexus-portal-chrome-v$VERSION.zip\`"
             echo "2. 打开 \`chrome://extensions\`，开启右上角「开发者模式」"
-            echo "3. 点「加载已解压的扩展程序」，选择解压出的文件夹（里面直接是 manifest.json）"
+            echo "3. 把 ZIP 拖到这个页面上。以后更新时同样拖入，不要先移除旧版本"
             echo
             echo "需要 Nexus Portal 服务端 0.3.0 或更高版本。详见 docs/extension.md。"
           } >> notes.md
