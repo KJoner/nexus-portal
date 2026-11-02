@@ -31,6 +31,9 @@ export function wallpaperList(uploads: readonly UploadedWallpaper[]): WallpaperE
   ];
 }
 
+/** One picture as a wallpaper entry. */
+export const entryOf = (u: UploadedWallpaper): WallpaperEntry => wallpaperList([u]).at(-1)!;
+
 export function useWallpapers(): WallpaperEntry[] {
   const uploads = useConfigStore((s) => s.wallpapers);
   return wallpaperList(uploads);

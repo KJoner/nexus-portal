@@ -42,6 +42,12 @@ export default defineConfig({
             options: { cacheName: 'nexus-fonts', expiration: { maxEntries: 400 } },
           },
           {
+            // 每日一图 turns over daily: a small cache of its own that cannot push out library pictures.
+            urlPattern: ({ url }) => /^\/api\/wallpapers\/dl-[^/]+\/[^/]+$/.test(url.pathname),
+            handler: 'CacheFirst',
+            options: { cacheName: 'nexus-daily', expiration: { maxEntries: 6, maxAgeSeconds: 7 * 86_400 }, cacheableResponse: { statuses: [200] } },
+          },
+          {
             // Library wallpaper variants never change (new picture → new id); gallery previews neither.
             urlPattern: ({ url }) => /^\/api\/wallpapers\/[^/]+\/[^/]+$/.test(url.pathname) || /^\/api\/gallery\/[^/]+\/preview$/.test(url.pathname),
             handler: 'CacheFirst',

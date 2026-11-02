@@ -5,6 +5,7 @@ import { deleteWallpaper, uploadWallpaper, useConfig } from '../../../data/confi
 import { AppTile } from '../../../icons/AppTile';
 import { cn } from '../../../lib/cn';
 import { formatClock, formatDate } from '../../../lib/time';
+import { useDailyEntry } from '../../home/rotation';
 import { remoteSrc, useWallpapers, Wallpaper, type WallpaperEntry } from '../../home/Wallpaper';
 import { lookDiff, lookPatch, useLookDraft } from '../look-draft';
 import { patch } from '../model';
@@ -19,7 +20,7 @@ const MOTION_SUB = {
   off: '所有变化瞬时完成；异常改为静态描边',
 } as const;
 
-function Preview({ look, device, onFocal }: { look: Look; device: 'desktop' | 'mobile'; onFocal(xy: [number, number]): void }) {
+function Preview({ look, entry, device, onFocal }: { look: Look; entry: WallpaperEntry | null; device: 'desktop' | 'mobile'; onFocal(xy: [number, number]): void }) {
   const config = useConfig();
   const compact = useCompact();
   const now = new Date();
@@ -41,7 +42,7 @@ function Preview({ look, device, onFocal }: { look: Look; device: 'desktop' | 'm
       className="relative flex-none cursor-crosshair overflow-hidden bg-base transition-[width,height] duration-320 ease-emph"
       style={{ width: box.w, height: box.h, borderRadius: box.r, boxShadow: '0 20px 50px rgba(0,0,0,0.45), 0 0 0 1px rgba(239,234,225,0.08)' }}
     >
-      <Wallpaper look={scaled} variant={device} receded={false} />
+      <Wallpaper look={scaled} variant={device} receded={false} entry={entry ?? undefined} />
       <span className="pointer-events-none absolute size-4 -translate-1/2 rounded-full" style={{ left: `${focal[0]}%`, top: `${focal[1]}%`, boxShadow: '0 0 0 1.5px #e6c08a, 0 0 0 4px rgba(0,0,0,0.25)' }} />
       {compact ? (
         <>
@@ -144,6 +145,8 @@ export function AppearancePage() {
   const setDraft = useLookDraft((s) => s.set);
   const resetDraft = useLookDraft((s) => s.reset);
   const look = draft ?? applied;
+  const potd = look.rotation.mode === 'potd';
+  const daily = useDailyEntry(potd);
   const walls = useWallpapers();
   const [device, setDevice] = useState<'desktop' | 'mobile'>(compact ? 'mobile' : 'desktop');
   const [busy, setBusy] = useState(false);
@@ -155,7 +158,7 @@ export function AppearancePage() {
   // Choosing a picture means keeping it: automatic switching stops (it can be turned back on below).
   const pick = (w: WallpaperEntry) => setDraft({ ...look, wallpaper: w.id, focal: { desktop: w.focal ?? [50, 50], mobile: w.focal ?? [50, 50] }, rotation: { ...look.rotation, mode: 'off' } });
   const card = (w: WallpaperEntry) => (
-    <WallCard key={w.id} w={w} selected={look.wallpaper === w.id} favorite={look.favorites.includes(w.id)} blocked={look.blocked.includes(w.id)} onPick={() => pick(w)} onRemove={w.uploaded ? () => setRemoving(w) : undefined} />
+    <WallCard key={w.id} w={w} selected={!potd && look.wallpaper === w.id} favorite={look.favorites.includes(w.id)} blocked={look.blocked.includes(w.id)} onPick={() => pick(w)} onRemove={w.uploaded ? () => setRemoving(w) : undefined} />
   );
 
   const upload = async (file: File | undefined) => {
@@ -385,7 +388,7 @@ export function AppearancePage() {
   if (compact) {
     return (
       <>
-        <Preview look={look} device="mobile" onFocal={(xy) => setDraft({ ...look, focal: { ...look.focal, mobile: xy } })} />
+        <Preview look={look} entry={daily} device="mobile" onFocal={(xy) => setDraft({ ...look, focal: { ...look.focal, mobile: xy } })} />
         {groups}
         {applyBar}
         {removeDialog}
@@ -406,11 +409,11 @@ export function AppearancePage() {
           <Segmented<'desktop' | 'mobile'> size="sm" label="预览设备" value={device} options={[{ value: 'desktop', label: '桌面' }, { value: 'mobile', label: '手机' }]} onChange={setDevice} />
         </div>
         <div className="grid min-h-[360px] place-items-center rounded-[20px] py-4" style={{ background: 'rgba(0,0,0,0.18)' }}>
-          <Preview look={look} device={device} onFocal={(xy) => setDraft({ ...look, focal: { ...look.focal, [device]: xy } })} />
+          <Preview look={look} entry={daily} device={device} onFocal={(xy) => setDraft({ ...look, focal: { ...look.focal, [device]: xy } })} />
         </div>
         <div className="flex justify-between text-[12px] text-ink/46">
           <span>点击画面设置{device === 'desktop' ? '桌面' : '手机'}焦点</span>
-          <span>{walls.find((w) => w.id === look.wallpaper)?.name}</span>
+          <span>{(daily ?? walls.find((w) => w.id === look.wallpaper))?.name}</span>
         </div>
       </aside>
       {applyBar}

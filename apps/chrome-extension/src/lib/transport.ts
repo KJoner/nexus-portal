@@ -1,4 +1,4 @@
-import type { Bookmark, ServiceStatus, WallpaperSourcesResponse } from '@nexus/shared';
+import type { Bookmark, DailyResponse, ServiceStatus, WallpaperSourcesResponse } from '@nexus/shared';
 import { HttpError, NetworkError, type Transport } from '@web/data/transport';
 import { ApiError, deviceApi, type Fetch } from './api';
 import { KEYS, type Area, type ServerRecord, type SyncRecord } from './storage';
@@ -16,7 +16,7 @@ function asPortalError(e: unknown): never {
 
 /**
  * The portal's Transport for the new tab: the read-only calls the home makes on its own (search
- * suggestions, Linkwarden bookmarks, the 精选图库 catalog) go through /api/sync with the device
+ * suggestions, Linkwarden bookmarks, the 精选图库 catalog, 每日一图) go through /api/sync with the device
  * token; every write is refused. Configuration and status arrive through sync.ts instead.
  */
 export function extensionTransport(area: Area, fetchImpl: Fetch): Transport {
@@ -57,7 +57,9 @@ export function extensionTransport(area: Area, fetchImpl: Fetch): Transport {
       return data;
     },
     galleryWallpaper: readOnly,
-    dailyWallpaper: readOnly,
+    /** The first request of a day can wait for the server's download. */
+    dailyWallpaper: () => get<DailyResponse>('daily', undefined, 60_000),
+    keepDaily: readOnly,
     importWallpaper: readOnly,
     unsplashPhotos: readOnly,
     unsplashWallpaper: readOnly,

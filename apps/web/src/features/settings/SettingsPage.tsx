@@ -7,6 +7,7 @@ import { useConfig, useConfigStore, useSaveState } from '../../data/config-store
 import { cn } from '../../lib/cn';
 import { useViewport } from '../../lib/hooks';
 import { formatHm } from '../../lib/time';
+import { useDailyEntry } from '../home/rotation';
 import { useWallpaper } from '../home/Wallpaper';
 import { lookDiff, useLookDraft } from './look-draft';
 import { attention, isPage, PAGES, searchIndex, summaries, type PageId } from './model';
@@ -38,7 +39,8 @@ function useSyncSummary(): string {
 /** The home wallpaper pushed back to atmosphere: blur 48, brightness 42 %, 62 % warm black (R2). */
 function Backdrop() {
   const look = useConfig().settings.look;
-  const wp = useWallpaper(look);
+  const fixed = useWallpaper(look);
+  const wp = useDailyEntry(look.rotation.mode === 'potd') ?? fixed;
   return (
     <>
       <div aria-hidden className="absolute -inset-[60px] isolate" style={{ background: wp.kind === 'photo' ? '#a69e8e' : '#1b1a17', filter: 'blur(48px) brightness(.42)' }}>

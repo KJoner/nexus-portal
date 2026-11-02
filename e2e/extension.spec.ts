@@ -247,6 +247,27 @@ test('the mouse opens the extra shortcuts for a moment; the button keeps them op
   await page.close();
 });
 
+test('每日一图 comes from the server, through the extension\'s own cache, and writes nothing', async () => {
+  const before = ((await (await api.get('/api/config')).json()) as { revision: number; config: { settings: { look: { rotation: Record<string, unknown> } } } });
+  const { rotation } = before.config.settings.look;
+  await api.post('/api/config/ops', { headers: H, data: { clientId: 'e2e', batchId: `ext-daily-${Date.now()}`, ops: [{ type: 'settings.patch', section: 'look', patch: { rotation: { ...rotation, mode: 'potd' } } }] } });
+  const opened = await newTab();
+  await expireThrottle(opened);
+  await opened.close();
+  const page = await newTab();
+  const daily = page.waitForResponse((r) => r.url().endsWith('/api/sync/daily'));
+  await page.reload();
+  expect((await daily).status()).toBe(200);
+  await expect.poll(() => page.evaluate(() => [...document.images].some((i) => i.src.startsWith('blob:chrome-extension://') && i.complete && i.naturalWidth === 1280))).toBe(true);
+  await expect(page.getByText('每日一图 · 测试').first()).toBeVisible();
+  await expect(page.getByRole('button', { name: '换一张' })).toHaveCount(0);
+  const after = (await (await api.get('/api/config')).json()) as { revision: number; wallpapers: { source: string }[] };
+  expect(after.revision).toBe(before.revision + 1);
+  expect(after.wallpapers.filter((w) => w.source === 'daily' || w.source === 'saved')).toEqual([]);
+  await api.post('/api/config/ops', { headers: H, data: { clientId: 'e2e', batchId: `ext-daily-off-${Date.now()}`, ops: [{ type: 'settings.patch', section: 'look', patch: { rotation } }] } });
+  await page.close();
+});
+
 test('offline, the cached navigation still opens', async () => {
   const page = await newTab();
   await expireThrottle(page);

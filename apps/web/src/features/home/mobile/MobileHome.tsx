@@ -129,7 +129,7 @@ export function MobileHome() {
           ? []
           : [
               { label: fav ? '取消收藏当前壁纸' : '收藏当前壁纸', icon: Heart, onSelect: () => homeActions.toggleFavorite(entry) },
-              { label: '不喜欢这张', icon: Ban, onSelect: () => homeActions.dislike(entry, current.next) },
+              ...(current.canStep ? [{ label: '不喜欢这张', icon: Ban, onSelect: () => homeActions.dislike(entry, current.next) }] : []),
               ...(rotating ? [{ label: '锁定当前壁纸', icon: Lock, onSelect: () => homeActions.lock(entry) }] : []),
               { label: minimal ? '切换到日常模式' : '切换到极简模式', icon: LayoutTemplate, onSelect: () => dispatch({ type: 'settings.patch', section: 'ui', patch: uiPreset(minimal ? 'daily' : 'minimal', c.settings.ui) }) },
             ]),

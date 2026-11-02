@@ -14,6 +14,7 @@ import {
   type PairingRequest,
   type ServiceStatus,
   type UnsplashPhoto,
+  type DailyResponse,
   type UploadedWallpaper,
   type WallpaperSourcesResponse,
 } from '@nexus/shared';
@@ -55,10 +56,11 @@ export interface Transport {
   suggest(engineId: string, q: string, signal: AbortSignal): Promise<string[]>;
   checkNow(appId: string): Promise<ServiceStatus>;
   testHealth(app: AppEntry): Promise<HealthTestResult>;
-  /** v0.2 wallpaper sources: each call returns the library entry it made or already had. */
+  /** v0.2 wallpaper sources: the POST calls return the library entry they made or already had. */
   wallpaperSources(): Promise<WallpaperSourcesResponse>;
   galleryWallpaper(id: string): Promise<UploadedWallpaper>;
-  dailyWallpaper(date: string): Promise<UploadedWallpaper>;
+  dailyWallpaper(): Promise<DailyResponse>;
+  keepDaily(id: string): Promise<UploadedWallpaper>;
   importWallpaper(url: string): Promise<UploadedWallpaper>;
   unsplashPhotos(q: string, page: number): Promise<UnsplashPhoto[]>;
   unsplashWallpaper(id: string): Promise<UploadedWallpaper>;
@@ -128,7 +130,8 @@ export const httpTransport: Transport = {
   wallpaperSources: () => request('/api/wallpaper-sources'),
   // Downloads and re-encodes a large original on the server: allow time.
   galleryWallpaper: (id) => request(`/api/gallery/${encodeURIComponent(id)}`, { method: 'POST' }, 60_000),
-  dailyWallpaper: (date) => request('/api/daily', { method: 'POST', body: JSON.stringify({ date }) }, 60_000),
+  dailyWallpaper: () => request('/api/daily', {}, 60_000),
+  keepDaily: (id) => request(`/api/daily/${encodeURIComponent(id)}/keep`, { method: 'POST' }, 15_000),
   importWallpaper: (url) => request('/api/wallpapers/import', { method: 'POST', body: JSON.stringify({ url }) }, 60_000),
   unsplashPhotos: async (q, page) => (await request<{ photos: UnsplashPhoto[] }>(`/api/unsplash/photos?q=${encodeURIComponent(q)}&page=${page}`, {}, 10_000)).photos,
   unsplashWallpaper: (id) => request(`/api/unsplash/${encodeURIComponent(id)}`, { method: 'POST' }, 15_000),
@@ -243,8 +246,11 @@ export class MemoryTransport implements Transport {
   async galleryWallpaper(): Promise<UploadedWallpaper> {
     throw new HttpError(502, 'unavailable', '暂时无法连接 Wikimedia Commons');
   }
-  async dailyWallpaper(): Promise<UploadedWallpaper> {
+  async dailyWallpaper(): Promise<DailyResponse> {
     throw new HttpError(502, 'unavailable', '暂时无法连接 Wikimedia Commons');
+  }
+  async keepDaily(): Promise<UploadedWallpaper> {
+    throw new HttpError(404, 'not_found', '这张每日一图已经过期，无法收藏');
   }
   async importWallpaper(): Promise<UploadedWallpaper> {
     throw new HttpError(422, 'blocked', 'not in tests');

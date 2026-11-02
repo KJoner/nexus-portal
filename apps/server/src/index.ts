@@ -12,12 +12,14 @@ import { IconProxy } from './icons/proxy';
 import { IconStore } from './icons/store';
 import { Linkwarden } from './integrations/linkwarden';
 import { SecretBox } from './integrations/secret';
+import { cleanLegacyDaily } from './wallpapers/legacy';
 import { Commons, Daily, Gallery, Unsplash } from './wallpapers/sources';
 import { WallpaperStore } from './wallpapers/store';
 
 async function main() {
   const env = readEnv();
-  const db = openDb(join(env.dataDir, 'nexus.db'));
+  const dbFile = join(env.dataDir, 'nexus.db');
+  const db = openDb(dbFile);
   const auth = new Auth(db, env.sessionDays);
   const result = await auth.ensurePassword({ hash: env.passwordHash, plain: env.passwordHash ? null : env.password });
   if (result === 'missing') throw new EnvError('尚未设置访问密码：用 deploy.sh 设置（写入 NEXUS_PASSWORD_HASH），或设置环境变量 NEXUS_PASSWORD（至少 8 个字符）');
@@ -29,10 +31,17 @@ async function main() {
   if (generated) console.log('[nexus] 未设置 NEXUS_SECRET，已在数据目录生成 secret.key 用于加密服务凭据；备份时请一并保存');
   health.start();
   const wallpapers = new WallpaperStore(db, join(env.dataDir, 'wallpapers'));
+  // Housekeeping: a failure is logged and retried at the next start, it never keeps the portal down.
+  await cleanLegacyDaily({ db, dbFile, repo, store: wallpapers }).then(
+    (r) => {
+      if (r.removed || r.kept) console.log(`[nexus] 每日一图不再占用「我的壁纸」：移出 ${r.removed} 张自动生成的图片，保留 ${r.kept} 张收藏或使用中的图片${r.folder ? `；移出的文件暂存在 ${r.folder}，30 天后自动删除` : ''}`);
+    },
+    (e) => console.error('[nexus] 清理旧的每日一图失败，下次启动时重试', e),
+  );
   const commons = new Commons();
   const sources = {
     gallery: new Gallery(wallpapers, commons, join(env.dataDir, 'gallery-previews')),
-    daily: new Daily(wallpapers, commons),
+    daily: new Daily(wallpapers, commons, join(env.dataDir, 'daily-cache')),
     unsplash: new Unsplash(env.unsplashKey, wallpapers),
     // Imported wallpaper addresses must be public: they come from the internet, not the LAN.
     importPolicy: { allowPrivate: false, allowLoopback: false },

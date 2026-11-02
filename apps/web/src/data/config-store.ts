@@ -282,7 +282,7 @@ export async function logout(): Promise<void> {
     storage.remove(CACHE_KEY);
     storage.remove('nexus.recent.v1');
     // Private images cached by the Service Worker go too.
-    if (typeof caches !== 'undefined') for (const name of ['nexus-wallpapers', 'nexus-icons']) void caches.delete(name);
+    if (typeof caches !== 'undefined') for (const name of ['nexus-wallpapers', 'nexus-daily', 'nexus-icons']) void caches.delete(name);
     useStatusStore.getState().replace([]);
     useConfigStore.setState({ ...initialState(), auth: 'anonymous' });
   }
@@ -321,7 +321,9 @@ function adopt(w: UploadedWallpaper): UploadedWallpaper {
 export const wallpaperSources = {
   list: () => transport.wallpaperSources(),
   gallery: async (id: string) => adopt(await transport.galleryWallpaper(id)),
-  daily: async (date: string) => adopt(await transport.dailyWallpaper(date)),
+  /** The picture of the day is not a library entry, so nothing is adopted. */
+  daily: () => transport.dailyWallpaper(),
+  keepDaily: async (id: string) => adopt(await transport.keepDaily(id)),
   import: async (url: string) => adopt(await transport.importWallpaper(url)),
   unsplash: (q: string, page = 1) => transport.unsplashPhotos(q, page),
   useUnsplash: async (id: string) => adopt(await transport.unsplashWallpaper(id)),

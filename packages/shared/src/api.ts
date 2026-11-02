@@ -3,8 +3,8 @@ import type { Snapshot } from './schema';
 /** Header every API write must carry; a cross-site form or image request cannot add it (CSRF guard). */
 export const CLIENT_HEADER = 'X-Nexus-Client';
 
-/** Where a library wallpaper came from (v0.2). */
-export type WallpaperSource = 'upload' | 'url' | 'gallery' | 'daily' | 'unsplash';
+/** Where a wallpaper came from (v0.2). `daily` is never in the library; `saved` is one the user kept. */
+export type WallpaperSource = 'upload' | 'url' | 'gallery' | 'daily' | 'unsplash' | 'saved';
 
 /** Attribution shown with the wallpaper; `required` means the license asks for visible credit. */
 export interface WallpaperCredit {
@@ -29,7 +29,7 @@ export interface UploadedWallpaper {
   placeholder: string;
   createdAt: string;
   source: WallpaperSource;
-  /** Source key: gallery id, POTD date, Unsplash photo id; '' for uploads. */
+  /** Source key: gallery id, POTD date, Unsplash photo id, the `dl-…` id of a kept 每日一图; '' for uploads. */
   ref: string;
   credit: WallpaperCredit | null;
   /** Mean brightness (0–1) of the band behind the clock and search; lifts the overlay on bright photos. */
@@ -63,6 +63,19 @@ export interface WallpaperSourcesResponse {
   /** Unsplash is available only when the deployer configured an access key. */
   unsplash: boolean;
 }
+
+/**
+ * 每日一图. Not a library entry: the server keeps the last two pictures in a cache of their own and
+ * nothing about them is synced; the shape only lets them render like any other wallpaper. `date` is
+ * the UTC day the picture is for, older than today while the source cannot be reached.
+ */
+export interface DailyResponse {
+  date: string;
+  wallpaper: UploadedWallpaper;
+}
+
+/** Ids of cached 每日一图 pictures. They follow the Commons file: the same file keeps its id. */
+export const isDailyId = (id: string) => /^dl-[0-9a-f]{12}$/.test(id);
 
 export interface UnsplashPhoto {
   id: string;

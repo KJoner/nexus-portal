@@ -1,10 +1,11 @@
-import { GALLERY_CATEGORIES, type GalleryCategory, type Settings, type UnsplashPhoto, type UploadedWallpaper } from '@nexus/shared';
+import { GALLERY_CATEGORIES, wallpaperFile, type GalleryCategory, type Settings, type UnsplashPhoto } from '@nexus/shared';
 import { Check, ImageDown, Search } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
-import { wallpaperSources } from '../../../data/config-store';
+import { useConfig, wallpaperSources } from '../../../data/config-store';
 import { cn } from '../../../lib/cn';
-import { localDay, useSourcesStore } from '../../home/rotation';
-import { wallpaperList, type WallpaperEntry } from '../../home/Wallpaper';
+import { homeActions } from '../../home/actions';
+import { useDailyEntry, useDailyStore, useSourcesStore } from '../../home/rotation';
+import { entryOf, type WallpaperEntry } from '../../home/Wallpaper';
 import { CreditText } from '../../home/WallpaperBar';
 import { Button, Group, Row, Segmented, Spinner, useCompact } from '../ui';
 
@@ -20,7 +21,6 @@ const TABS: { id: SourceTab; label: string }[] = [
   { id: 'url', label: '网址导入' },
 ];
 
-const entryOf = (w: UploadedWallpaper): WallpaperEntry => wallpaperList([w]).at(-1)!;
 const message = (e: unknown) => (e instanceof Error ? e.message : '操作失败');
 const chip = (on: boolean) => cn('flex h-[34px] flex-none items-center rounded-full border-0 px-[13px] text-[13px] whitespace-nowrap transition-colors duration-140', on ? 'bg-ink/14 text-ink' : 'bg-ink/5 text-ink/66 hover:text-ink');
 
@@ -101,43 +101,49 @@ function GalleryTab({ onPick, onError }: { onPick(e: WallpaperEntry): void; onEr
   );
 }
 
-/** 每日一图: Wikimedia Commons' Picture of the Day, used as the rotation mode `potd`. */
-function DailyTab({ look, onRotation, onError }: { look: Look; onRotation(r: Partial<Rotation>): void; onError(m: string): void }) {
-  const [today, setToday] = useState<WallpaperEntry | null>(null);
-  const [busy, setBusy] = useState(true);
-  useEffect(() => {
-    let live = true;
-    wallpaperSources.daily(localDay(new Date())).then(
-      (w) => live && setToday(entryOf(w)),
-      (e) => live && onError(message(e)),
-    ).finally(() => live && setBusy(false));
-    return () => {
-      live = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+/** 每日一图: Wikimedia Commons' Picture of the Day, the dynamic rotation mode `potd`. */
+function DailyTab({ look, onRotation }: { look: Look; onRotation(r: Partial<Rotation>): void }) {
+  const today = useDailyEntry(true);
+  const loading = useDailyStore((s) => s.loading);
+  const failed = useDailyStore((s) => s.fails > 0);
+  const favorites = useConfig().settings.look.favorites;
+  const [keeping, setKeeping] = useState(false);
   const on = look.rotation.mode === 'potd';
+  const kept = !!today && favorites.includes(today.id);
+  const keep = async () => {
+    setKeeping(true);
+    await homeActions.toggleFavorite(today!);
+    setKeeping(false);
+  };
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-start gap-4">
+      <div className="flex flex-wrap items-start gap-4">
         <div className="relative aspect-[16/10] w-[220px] flex-none overflow-hidden rounded-xl bg-ink/6">
-          {today?.uploaded && <img src={today.src} alt="" className="absolute inset-0 size-full object-cover" />}
-          {busy && (
+          {today?.uploaded && <img src={wallpaperFile(today.uploaded.id, today.uploaded.widths[0]!, 'webp')} alt="" className="absolute inset-0 size-full object-cover" />}
+          {loading && !today && (
             <span className="absolute inset-0 grid place-items-center">
               <Spinner />
             </span>
           )}
         </div>
-        <div className="flex min-w-0 flex-col gap-2 text-[13px] leading-[1.6] text-ink/66">
-          <span>每天自动换成 Wikimedia Commons 的「每日图片」；遇到竖幅图片时，使用最近一张横幅图片。</span>
+        <div className="flex min-w-[280px] flex-1 flex-col gap-2 text-[13px] leading-[1.6] text-ink/66">
+          <span>每天自动换成 Wikimedia Commons 的「每日图片」，所有设备在 UTC 零点一起更新；遇到竖幅图片时，使用最近一张横幅图片。图片只是临时缓存，不占用「我的壁纸」，想留下的话点收藏。</span>
           {today && (
             <span className="truncate text-[12px] text-ink/50">
-              今天：<CreditText info={today.info} />
+              {today.name}：<CreditText info={today.info} />
             </span>
           )}
-          <Button variant={on ? undefined : 'primary'} className="h-9 w-fit px-4" disabled={on} onClick={() => onRotation({ mode: 'potd' })}>
-            {on ? '已在使用每日一图' : '使用每日一图'}
-          </Button>
+          {!today && failed && <span className="text-[12px] text-ink/50">暂时无法获取每日图片，稍后会自动重试。</span>}
+          <div className="flex flex-wrap gap-2">
+            <Button variant={on ? undefined : 'primary'} className="h-9 w-fit px-4 whitespace-nowrap" disabled={on} onClick={() => onRotation({ mode: 'potd' })}>
+              {on ? '已在使用每日一图' : '使用每日一图'}
+            </Button>
+            {today && (
+              <Button className="h-9 w-fit px-4 whitespace-nowrap" disabled={keeping} onClick={() => void keep()}>
+                {kept ? '取消收藏' : '收藏这张'}
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -262,7 +268,7 @@ function UrlTab({ onPick, onError }: { onPick(e: WallpaperEntry): void; onError(
 /** 背景来源 tabs above the wallpaper grid. */
 export function SourcePicker({ look, library, onPick, onRotation, onError }: { look: Look; library: ReactNode; onPick(e: WallpaperEntry): void; onRotation(r: Partial<Rotation>): void; onError(m: string): void }) {
   const compact = useCompact();
-  const [tab, setTab] = useState<SourceTab>('library');
+  const [tab, setTab] = useState<SourceTab>(look.rotation.mode === 'potd' ? 'daily' : 'library');
   const unsplash = useSourcesStore((s) => s.data?.unsplash ?? false);
   const load = useSourcesStore((s) => s.load);
   useEffect(() => void load(), [load]);
@@ -278,7 +284,7 @@ export function SourcePicker({ look, library, onPick, onRotation, onError }: { l
       <div role="tabpanel" aria-label={TABS.find((t) => t.id === tab)!.label} className={cn(compact && tab !== 'library' && tab !== 'gallery' && 'px-3')}>
         {tab === 'library' && library}
         {tab === 'gallery' && <GalleryTab onPick={onPick} onError={onError} />}
-        {tab === 'daily' && <DailyTab look={look} onRotation={onRotation} onError={onError} />}
+        {tab === 'daily' && <DailyTab look={look} onRotation={onRotation} />}
         {tab === 'unsplash' && <UnsplashTab enabled={unsplash} onPick={onPick} onError={onError} />}
         {tab === 'url' && <UrlTab onPick={onPick} onError={onError} />}
       </div>

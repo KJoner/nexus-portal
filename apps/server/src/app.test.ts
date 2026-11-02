@@ -1,4 +1,4 @@
-import { CLIENT_HEADER, type ConfigResponse } from '@nexus/shared';
+import { CLIENT_HEADER, type ConfigResponse, type DailyResponse, type UploadedWallpaper } from '@nexus/shared';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -55,7 +55,7 @@ beforeEach(async () => {
   const health = new HealthChecker(db, repo, { allowPrivate: true, allowLoopback: false }, async () => ({ reached: true, status: 200, latencyMs: 12, message: 'HTTP 200' }));
   const wallpapers = new WallpaperStore(db, dir);
   const commons = new Commons(async () => new Response(null, { status: 503 }));
-  const sources = { gallery: new Gallery(wallpapers, commons, join(dir, 'previews'), []), daily: new Daily(wallpapers, commons), unsplash: new Unsplash(null, wallpapers), importPolicy: { allowPrivate: false, allowLoopback: false } };
+  const sources = { gallery: new Gallery(wallpapers, commons, join(dir, 'previews'), []), daily: new Daily(wallpapers, commons, join(dir, 'daily-cache')), unsplash: new Unsplash(null, wallpapers), importPolicy: { allowPrivate: false, allowLoopback: false } };
   const devices = new Devices(db);
   deps = { env, repo, auth, limiter: new LoginLimiter(), devices, pairings: new Pairings(devices), wallpapers, sources, icons: new IconStore(join(dir, 'icons')), health, iconProxy: new IconProxy(join(dir, 'icon-cache'), fakeCdn), linkwarden: new Linkwarden(db, new SecretBox(randomBytes(32)), { allowPrivate: true, allowLoopback: false }), suggestFetch: fakeSuggest };
   app = createApp(deps);
@@ -220,6 +220,103 @@ describe('wallpapers', () => {
     const cfg = (await res.json()) as ConfigResponse;
     expect(cfg.config.settings.look.wallpaper).toBe('fallingwater');
     expect(cfg.wallpapers).toEqual([]);
+  });
+});
+
+describe('每日一图', () => {
+  const potd = (day: string) => `Wide ${day}.jpg`;
+  /** Commons with one landscape picture per day; `down` takes it offline. */
+  const state = { down: false };
+  const commonsFetch = (async (input: string | URL | Request) => {
+    if (state.down) throw new TypeError('fetch failed');
+    const url = new URL(String(input));
+    const p = url.searchParams;
+    if (p.get('action') === 'expandtemplates') return Response.json({ expandtemplates: { wikitext: potd(p.get('text')!.slice(7, -2)) } });
+    if (url.host === 'commons.wikimedia.org') {
+      return Response.json({ query: { pages: [{ imageinfo: [{ url: 'https://upload.wikimedia.org/o/x.jpg', width: 3000, height: 2000, mime: 'image/jpeg', descriptionurl: 'https://commons.wikimedia.org/wiki/File:x', extmetadata: { LicenseShortName: { value: 'CC0' } } }] }] } });
+    }
+    return new Response(new Uint8Array(await sharp({ create: { width: 1600, height: 900, channels: 3, background: '#556677' } }).jpeg().toBuffer()), { headers: { 'content-type': 'image/jpeg' } });
+  }) as typeof fetch;
+  let clock: Date;
+  let cookie: string;
+  const revision = async () => ((await (await app.request('/api/config', { headers: { cookie } })).json()) as ConfigResponse).revision;
+
+  beforeEach(async () => {
+    state.down = false;
+    clock = new Date('2026-10-29T12:00:00Z');
+    const daily = new Daily(deps.wallpapers, new Commons(commonsFetch), join(dir, 'daily-cache'), () => clock);
+    app = createApp({ ...deps, sources: { ...deps.sources, daily } });
+    cookie = await login();
+  });
+
+  it('needs a session or a device token', async () => {
+    expect((await app.request('/api/daily')).status).toBe(401);
+    expect((await app.request('/api/sync/daily')).status).toBe(401);
+  });
+
+  it('a new day writes nothing: no library row, no revision, no configuration change', async () => {
+    const before = await revision();
+    const config = await (await app.request('/api/config', { headers: { cookie } })).json();
+    let events = 0;
+    const off = deps.repo.onChange(() => events++);
+    const first = await app.request('/api/daily', { headers: { cookie } });
+    expect(first.status).toBe(200);
+    const { date, wallpaper } = (await first.json()) as DailyResponse;
+    expect(date).toBe('2026-10-29');
+    clock = new Date('2026-10-30T12:00:00Z');
+    const next = (await (await app.request('/api/daily', { headers: { cookie } })).json()) as DailyResponse;
+    expect(next.wallpaper.id).not.toBe(wallpaper.id);
+    off();
+    expect(events).toBe(0);
+    expect(await revision()).toBe(before);
+    expect(await (await app.request('/api/config', { headers: { cookie } })).json()).toEqual(config);
+    expect(((await (await app.request('/api/wallpapers', { headers: { cookie } })).json()) as unknown[]).length).toBe(0);
+
+    // Files come through the same address as any wallpaper, private and immutable.
+    const file = await app.request(`/api/wallpapers/${next.wallpaper.id}/1280.webp`, { headers: { cookie } });
+    expect(file.status).toBe(200);
+    expect(file.headers.get('content-type')).toBe('image/webp');
+    expect(file.headers.get('cache-control')).toBe('private, max-age=31536000, immutable');
+    expect((await app.request(`/api/wallpapers/${next.wallpaper.id}/meta.json`, { headers: { cookie } })).status).toBe(404);
+  });
+
+  it('with the source down the last picture still answers; with none it is a gateway error', async () => {
+    state.down = true;
+    const failed = await app.request('/api/daily', { headers: { cookie } });
+    expect(failed.status).toBe(502);
+    expect(((await failed.json()) as { error: { code: string } }).error.code).toBe('unavailable');
+    state.down = false;
+    clock = new Date('2026-10-29T12:11:00Z');
+    expect((await app.request('/api/daily', { headers: { cookie } })).status).toBe(200);
+    clock = new Date('2026-10-30T12:00:00Z');
+    state.down = true;
+    expect(((await (await app.request('/api/daily', { headers: { cookie } })).json()) as DailyResponse).date).toBe('2026-10-29');
+  });
+
+  it('keeping a picture is the one thing that reaches the library, and it needs the write header', async () => {
+    const { wallpaper } = (await (await app.request('/api/daily', { headers: { cookie } })).json()) as DailyResponse;
+    expect((await app.request(`/api/daily/${wallpaper.id}/keep`, { method: 'POST', headers: { cookie } })).status).toBe(403);
+    const before = await revision();
+    const kept = await app.request(`/api/daily/${wallpaper.id}/keep`, { method: 'POST', headers: { ...write, cookie } });
+    expect(kept.status).toBe(201);
+    expect(await revision()).toBe(before + 1);
+    const copy = (await kept.json()) as UploadedWallpaper;
+    expect(((await (await app.request('/api/config', { headers: { cookie } })).json()) as ConfigResponse).wallpapers).toMatchObject([{ id: copy.id, source: 'saved', ref: wallpaper.id }]);
+    expect((await app.request(`/api/daily/${wallpaper.id}/keep`, { method: 'POST', headers: { ...write, cookie } })).status).toBe(200);
+    expect(await revision()).toBe(before + 1);
+    expect((await app.request('/api/daily/dl-000000000000/keep', { method: 'POST', headers: { ...write, cookie } })).status).toBe(404);
+  });
+
+  it('a paired device reads the picture and its files, and cannot keep one', async () => {
+    const { code, pairId, secret } = (await (await app.request('/api/pair/start', { method: 'POST', headers: { [CLIENT_HEADER]: '1', 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Chrome' }) })).json()) as { code: string; pairId: string; secret: string };
+    await app.request(`/api/devices/pairing/${code}`, { method: 'POST', headers: { ...write, cookie }, body: JSON.stringify({ approve: true }) });
+    const { token } = (await (await app.request('/api/pair/poll', { method: 'POST', headers: { [CLIENT_HEADER]: '1', 'content-type': 'application/json' }, body: JSON.stringify({ pairId, secret }) })).json()) as { token: string };
+    const auth = { authorization: `Bearer ${token}` };
+    const r = await app.request('/api/sync/daily', { headers: auth });
+    expect(r.status).toBe(200);
+    const { wallpaper } = (await r.json()) as DailyResponse;
+    expect((await app.request(`/api/sync/wallpapers/${wallpaper.id}/1280.webp`, { headers: auth })).status).toBe(200);
+    expect((await app.request(`/api/sync/daily/${wallpaper.id}/keep`, { method: 'POST', headers: { ...auth, [CLIENT_HEADER]: '1' } })).status).toBe(404);
   });
 });
 

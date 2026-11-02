@@ -88,6 +88,12 @@ export function createApp({ env, repo, auth, limiter, devices, pairings, wallpap
     const status = e.code === 'not_configured' ? 404 : e.code === 'invalid' ? 400 : 422;
     return apiError(c, status, e.code, e.message);
   };
+  const SOURCE_STATUS = { not_found: 404, invalid: 400, blocked: 422, license: 422, not_configured: 404, unavailable: 502, too_large: 413 } as const;
+  const sourceError = (c: Context, e: unknown) => {
+    if (e instanceof SourceError) return apiError(c, SOURCE_STATUS[e.code], e.code, e.message);
+    if (e instanceof WallpaperError) return apiError(c, e.code === 'too_large' ? 413 : 415, e.code, e.message);
+    throw e;
+  };
   const read = {
     status: (c: Context) => c.json(health.list()),
     bookmarks: async (c: Context) => {
@@ -111,8 +117,18 @@ export function createApp({ env, repo, auth, limiter, devices, pairings, wallpap
       }
     },
     wallpaperSources: (c: Context) => c.json({ gallery: sources.gallery.list(), unsplash: sources.unsplash.configured } satisfies WallpaperSourcesResponse),
+    /** Reads a cache, never the configuration: a new day costs no revision and no sync. */
+    daily: async (c: Context) => {
+      try {
+        return c.json(await sources.daily.current());
+      } catch (e) {
+        return sourceError(c, e);
+      }
+    },
     wallpaperFile: (c: Context) => {
-      const path = wallpapers.filePath(c.req.param('id')!, c.req.param('file')!);
+      const id = c.req.param('id')!;
+      const file = c.req.param('file')!;
+      const path = wallpapers.filePath(id, file) ?? sources.daily.filePath(id, file);
       if (!path) return apiError(c, 404, 'not_found', '壁纸不存在');
       const ext = path.slice(path.lastIndexOf('.') + 1);
       c.header('Content-Type', ext === 'jpg' ? 'image/jpeg' : `image/${ext}`);
@@ -238,6 +254,7 @@ export function createApp({ env, repo, auth, limiter, devices, pairings, wallpap
   app.get('/api/sync/bookmarks', read.bookmarks);
   app.get('/api/sync/suggest', read.suggest);
   app.get('/api/sync/wallpaper-sources', read.wallpaperSources);
+  app.get('/api/sync/daily', read.daily);
   app.get('/api/sync/wallpapers/:id/:file', read.wallpaperFile);
   app.get('/api/sync/icons/:file', read.icon);
   app.get('/api/sync/icon-cache/:source/:key', read.iconCache);
@@ -380,12 +397,6 @@ export function createApp({ env, repo, auth, limiter, devices, pairings, wallpap
   app.get('/api/wallpapers/:id/:file', read.wallpaperFile);
 
   // ── Wallpaper sources (精选图库 · 每日一图 · Unsplash · 网址导入) ──────────
-  const SOURCE_STATUS = { not_found: 404, invalid: 400, blocked: 422, license: 422, not_configured: 404, unavailable: 502, too_large: 413 } as const;
-  const sourceError = (c: Context, e: unknown) => {
-    if (e instanceof SourceError) return apiError(c, SOURCE_STATUS[e.code], e.code, e.message);
-    if (e instanceof WallpaperError) return apiError(c, e.code === 'too_large' ? 413 : 415, e.code, e.message);
-    throw e;
-  };
   /** A new library entry bumps the revision so every device fetches the updated wallpaper list. */
   const added = (c: Context, r: Ensured) => {
     if (r.created) repo.touch();
@@ -409,16 +420,10 @@ export function createApp({ env, repo, auth, limiter, devices, pairings, wallpap
       return sourceError(c, e);
     }
   });
-  app.post('/api/daily', bodyLimit({ maxSize: 1024 }), async (c) => {
-    const body = (await c.req.json().catch(() => null)) as { date?: unknown } | null;
-    if (typeof body?.date !== 'string') return apiError(c, 400, 'invalid', '缺少日期');
+  app.get('/api/daily', read.daily);
+  app.post('/api/daily/:id/keep', async (c) => {
     try {
-      const r = await sources.daily.ensure(body.date);
-      if (r.created) {
-        const look = repo.snapshot().config.settings.look;
-        void sources.daily.prune(new Set([look.wallpaper, r.wallpaper.id, ...look.favorites])).catch(() => undefined);
-      }
-      return added(c, r);
+      return added(c, await sources.daily.keep(c.req.param('id')));
     } catch (e) {
       return sourceError(c, e);
     }

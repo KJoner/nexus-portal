@@ -1,11 +1,13 @@
-import type { GalleryItem, UnsplashPhoto, UploadedWallpaper, WallpaperCredit } from '@nexus/shared';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { isDailyId, type DailyResponse, type GalleryItem, type UnsplashPhoto, type UploadedWallpaper, type WallpaperCredit } from '@nexus/shared';
+import { createHash, randomBytes } from 'node:crypto';
+import { readdirSync, readFileSync, rmSync } from 'node:fs';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { getBytes, UpstreamError } from '../net/http';
 import type { NetPolicy } from '../net/ip';
 import { GALLERY, type GalleryEntry } from './gallery';
-import type { WallpaperStore } from './store';
+import { encodeVariants, VARIANT, WallpaperError, type WallpaperStore } from './store';
 
 export class SourceError extends Error {
   constructor(
@@ -224,52 +226,142 @@ export class Gallery {
 }
 
 const isoDay = (d: Date) => d.toISOString().slice(0, 10);
+const dailyId = (file: string) => `dl-${createHash('sha256').update(file).digest('hex').slice(0, 12)}`;
+const dailyName = (date: string) => {
+  const [, m, d] = date.split('-').map(Number);
+  return `每日一图 · ${m}月${d}日`;
+};
 
-/** 每日一图: Wikimedia Commons' Picture of the Day, falling back to the latest landscape one. */
+/** Today's picture and the one before it, which keeps showing while the source is down. */
+const DAILY_KEEP = 2;
+/** After a failure the source is left alone for a while, however many devices ask. */
+const DAILY_RETRY_MS = 10 * 60_000;
+const DAILY_META = 'meta.json';
+
+/**
+ * 每日一图: Wikimedia Commons' Picture of the Day, falling back to the latest landscape one. The
+ * day is the UTC day (Commons' own), so every device agrees whatever its time zone.
+ *
+ * The pictures are a cache under `<data>/daily-cache/<id>/`, outside the library and the database,
+ * and nothing about them touches the configuration: a new day costs no revision and no sync. An id
+ * belongs to a Commons file, so a picture that serves several days is downloaded once. 收藏 and 锁定
+ * copy a picture into the library (`keep`); only then is it permanent.
+ */
 export class Daily {
-  private inflight = new Map<string, Promise<Ensured>>();
+  private cached = new Map<string, DailyResponse>();
+  private inflight = new Map<string, Promise<DailyResponse>>();
+  private keeping = new Map<string, Promise<Ensured>>();
+  private retryAt = 0;
 
   constructor(
     private store: WallpaperStore,
     private commons: Commons,
+    private dir: string,
     private now: () => Date = () => new Date(),
-  ) {}
+  ) {
+    this.load();
+  }
 
-  /** `date` is the viewer's local day; it may differ from the server's UTC day by one. */
-  ensure(date: string): Promise<Ensured> {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date))) return Promise.reject(new SourceError('invalid', '日期格式不正确'));
-    if (Math.abs(Date.parse(date) - Date.parse(isoDay(this.now()))) > 86_400_000) return Promise.reject(new SourceError('invalid', '只能获取今天的每日一图'));
-    const existing = this.store.findByRef('daily', date);
-    if (existing) return Promise.resolve({ wallpaper: existing, created: false });
-    return once(this.inflight, date, async () => {
-      // About a third of the pictures are portrait or square; look back up to a week for a wide one.
-      for (let back = 0; back < 7; back++) {
-        const day = isoDay(new Date(Date.parse(date) - back * 86_400_000));
-        const file = await this.commons.potd(day);
-        if (!file) continue;
-        let info: CommonsImage;
-        try {
-          info = await this.commons.info(file, FULL_WIDTH);
-        } catch (e) {
-          if (e instanceof SourceError && (e.code === 'license' || e.code === 'invalid')) continue;
-          throw e;
-        }
-        if (info.width / info.height < 1.3) continue;
-        const body = await this.commons.download(info.url, MAX_ORIGINAL);
-        const [, m, d] = date.split('-').map(Number);
-        const wallpaper = await this.store.add(body, `每日一图 · ${m}月${d}日`, { source: 'daily', ref: date, credit: info.credit, maxBytes: MAX_ORIGINAL });
-        return { wallpaper, created: true };
+  /** What an earlier run left; anything unreadable is a download that was cut short. */
+  private load() {
+    let names: string[];
+    try {
+      names = readdirSync(this.dir);
+    } catch {
+      return;
+    }
+    for (const id of names) {
+      try {
+        const entry = JSON.parse(readFileSync(join(this.dir, id, DAILY_META), 'utf8')) as DailyResponse;
+        if (!isDailyId(id) || entry.wallpaper.id !== id) throw new Error('not a cached picture');
+        this.cached.set(id, entry);
+      } catch {
+        rmSync(join(this.dir, id), { recursive: true, force: true });
       }
-      throw new SourceError('not_found', '最近一周没有适合做壁纸的横幅图片');
+    }
+  }
+
+  private newestFirst(): DailyResponse[] {
+    return [...this.cached.values()].sort((a, b) => (a.date < b.date ? 1 : -1));
+  }
+
+  /** Today's picture, or the last one there is while today's cannot be fetched. */
+  current(): Promise<DailyResponse> {
+    const date = isoDay(this.now());
+    const last = this.newestFirst()[0];
+    if (last?.date === date) return Promise.resolve(last);
+    if (this.now().getTime() < this.retryAt) return last ? Promise.resolve(last) : Promise.reject(new SourceError('unavailable', '暂时无法获取每日一图，请稍后再试'));
+    return once(this.inflight, date, async () => {
+      try {
+        const entry = await this.fetch(date);
+        this.retryAt = 0;
+        return entry;
+      } catch (e) {
+        this.retryAt = this.now().getTime() + DAILY_RETRY_MS;
+        if (last) return last;
+        throw e instanceof SourceError || e instanceof WallpaperError ? e : new SourceError('unavailable', '暂时无法获取每日一图，请稍后再试');
+      }
     });
   }
 
-  /** Drops daily pictures older than two weeks unless they are kept (current, favorites). */
-  async prune(keep: ReadonlySet<string>): Promise<number> {
-    const cutoff = isoDay(new Date(this.now().getTime() - 14 * 86_400_000));
-    const old = this.store.list().filter((w) => w.source === 'daily' && w.ref < cutoff && !keep.has(w.id));
-    for (const w of old) await this.store.remove(w.id);
-    return old.length;
+  private async fetch(date: string): Promise<DailyResponse> {
+    // About a third of the pictures are portrait or square; look back up to a week for a wide one.
+    for (let back = 0; back < 7; back++) {
+      const day = isoDay(new Date(Date.parse(date) - back * 86_400_000));
+      const file = await this.commons.potd(day);
+      if (!file) continue;
+      const id = dailyId(file);
+      const had = this.cached.get(id);
+      if (had) return this.write({ date, wallpaper: { ...had.wallpaper, name: dailyName(date) } });
+      let info: CommonsImage;
+      try {
+        info = await this.commons.info(file, FULL_WIDTH);
+      } catch (e) {
+        if (e instanceof SourceError && (e.code === 'license' || e.code === 'invalid')) continue;
+        throw e;
+      }
+      if (info.width / info.height < 1.3) continue;
+      const body = await this.commons.download(info.url, MAX_ORIGINAL);
+      // Encoded to one side and renamed, so a cut-off run never leaves half a picture under its id.
+      const tmp = join(this.dir, `tmp-${randomBytes(6).toString('hex')}`);
+      try {
+        const encoded = await encodeVariants(body, tmp, MAX_ORIGINAL);
+        const wallpaper: UploadedWallpaper = { id, name: dailyName(date), ...encoded, createdAt: this.now().toISOString(), source: 'daily', ref: day, credit: info.credit, focal: null };
+        await writeFile(join(tmp, DAILY_META), JSON.stringify({ date, wallpaper } satisfies DailyResponse));
+        await rename(tmp, join(this.dir, id));
+        return await this.write({ date, wallpaper });
+      } finally {
+        await rm(tmp, { recursive: true, force: true });
+      }
+    }
+    throw new SourceError('not_found', '最近一周没有适合做壁纸的横幅图片');
+  }
+
+  private async write(entry: DailyResponse): Promise<DailyResponse> {
+    const { id } = entry.wallpaper;
+    await writeFile(join(this.dir, id, DAILY_META), JSON.stringify(entry));
+    this.cached.set(id, entry);
+    for (const old of this.newestFirst().slice(DAILY_KEEP)) {
+      this.cached.delete(old.wallpaper.id);
+      await rm(join(this.dir, old.wallpaper.id), { recursive: true, force: true });
+    }
+    return entry;
+  }
+
+  /** Absolute path of a cached variant, or null. Both parts are pattern-checked: no path traversal. */
+  filePath(id: string, file: string): string | null {
+    const m = VARIANT.exec(file);
+    const entry = isDailyId(id) && m ? this.cached.get(id) : undefined;
+    return entry?.wallpaper.widths.includes(Number(m![1])) ? join(this.dir, id, file) : null;
+  }
+
+  /** The user wants this picture for good: one library copy per picture, whatever the cache does next. */
+  async keep(id: string): Promise<Ensured> {
+    const existing = this.store.findByRef('saved', id);
+    if (existing) return { wallpaper: existing, created: false };
+    const entry = this.cached.get(id);
+    if (!entry) throw new SourceError('not_found', '这张每日一图已经过期，无法收藏');
+    return once(this.keeping, id, async () => ({ wallpaper: await this.store.addEncoded(join(this.dir, id), entry.wallpaper, { source: 'saved', ref: id, credit: entry.wallpaper.credit }), created: true }));
   }
 }
 

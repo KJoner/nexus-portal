@@ -1,15 +1,17 @@
 import { WALLPAPER_WIDTHS, type UploadedWallpaper, type WallpaperCredit, type WallpaperSource } from '@nexus/shared';
 import { randomBytes } from 'node:crypto';
-import { mkdir, rm } from 'node:fs/promises';
-import { join } from 'node:path';
+import { cp, mkdir, rename, rm } from 'node:fs/promises';
+import { basename, join } from 'node:path';
 import sharp, { type Metadata, type Sharp } from 'sharp';
 import type { DB } from '../db';
 
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const FORMATS = new Set(['jpeg', 'png', 'webp', 'avif']);
-const PREFIX: Record<WallpaperSource, string> = { upload: 'up', url: 'up', gallery: 'gl', daily: 'dy', unsplash: 'us' };
+/** `dy` is only found on rows made before 每日一图 left the library. */
+const PREFIX: Record<WallpaperSource, string> = { upload: 'up', url: 'up', gallery: 'gl', daily: 'dy', unsplash: 'us', saved: 'up' };
 const ID = /^(up|gl|dy|us)-[a-z0-9]{12}$/;
-const FILE = /^(\d{3,4})\.(avif|webp|jpg)$/;
+/** A generated variant of a picture. */
+export const VARIANT = /^(\d{3,4})\.(avif|webp|jpg)$/;
 
 export class WallpaperError extends Error {
   constructor(
@@ -82,10 +84,52 @@ export async function bandLuma(image: Sharp): Promise<number> {
   return Math.round((channels[0]!.mean / 255) * 1000) / 1000;
 }
 
+export interface Encoded {
+  width: number;
+  height: number;
+  widths: number[];
+  placeholder: string;
+  luma: number;
+}
+
 /**
- * Library wallpapers live under `<data>/wallpapers/<id>/`. Every image is re-encoded, which strips
- * metadata (EXIF location) and guarantees the stored files are images regardless of what was sent.
- * Hotlinked photos (Unsplash, whose terms forbid re-hosting) are rows without files.
+ * Writes the variants of a picture into `folder`. Every image is re-encoded, which strips metadata
+ * (EXIF location) and guarantees the stored files are images regardless of what was sent.
+ */
+export async function encodeVariants(input: Buffer, folder: string, maxBytes = MAX_UPLOAD_BYTES): Promise<Encoded> {
+  if (input.length > maxBytes) throw new WallpaperError('too_large', `文件为 ${(input.length / 1048576).toFixed(1)} MB，超过 ${Math.round(maxBytes / 1048576)} MB 上限`);
+  let meta0: Metadata;
+  try {
+    meta0 = await sharp(input, { limitInputPixels: 120_000_000 }).metadata();
+  } catch {
+    throw new WallpaperError('unsupported', '无法识别的图片文件，请使用 JPG、PNG、WebP 或 AVIF');
+  }
+  if (!meta0.format || !FORMATS.has(meta0.format)) throw new WallpaperError('unsupported', `不支持 ${meta0.format ?? '该'} 格式，请使用 JPG、PNG、WebP 或 AVIF`);
+
+  const base = sharp(input, { limitInputPixels: 120_000_000 }).rotate();
+  // EXIF orientations 5–8 rotate by 90°, swapping the stored dimensions.
+  const swap = (meta0.orientation ?? 1) >= 5;
+  const width = (swap ? meta0.height : meta0.width) ?? 0;
+  const height = (swap ? meta0.width : meta0.height) ?? 0;
+  const widths: number[] = WALLPAPER_WIDTHS.filter((w) => w <= width);
+  if (!widths.length) widths.push(width);
+
+  await mkdir(folder, { recursive: true });
+  for (const w of widths) {
+    const resized = base.clone().resize({ width: w, withoutEnlargement: true });
+    await Promise.all([
+      resized.clone().avif({ quality: 55, effort: 4 }).toFile(join(folder, `${w}.avif`)),
+      resized.clone().webp({ quality: 78 }).toFile(join(folder, `${w}.webp`)),
+      resized.clone().jpeg({ quality: 82, mozjpeg: true }).toFile(join(folder, `${w}.jpg`)),
+    ]);
+  }
+  const tiny = await base.clone().resize({ width: 32 }).webp({ quality: 40 }).toBuffer();
+  return { width, height, widths, placeholder: `data:image/webp;base64,${tiny.toString('base64')}`, luma: await bandLuma(base) };
+}
+
+/**
+ * Library wallpapers live under `<data>/wallpapers/<id>/`. Hotlinked photos (Unsplash, whose terms
+ * forbid re-hosting) are rows without files.
  */
 export class WallpaperStore {
   constructor(
@@ -109,41 +153,25 @@ export class WallpaperStore {
   }
 
   async add(input: Buffer, rawName: string, meta: WallpaperMeta = { source: 'upload' }): Promise<UploadedWallpaper> {
-    const maxBytes = meta.maxBytes ?? MAX_UPLOAD_BYTES;
-    if (input.length > maxBytes) throw new WallpaperError('too_large', `文件为 ${(input.length / 1048576).toFixed(1)} MB，超过 ${Math.round(maxBytes / 1048576)} MB 上限`);
-    let meta0: Metadata;
-    try {
-      meta0 = await sharp(input, { limitInputPixels: 120_000_000 }).metadata();
-    } catch {
-      throw new WallpaperError('unsupported', '无法识别的图片文件，请使用 JPG、PNG、WebP 或 AVIF');
-    }
-    if (!meta0.format || !FORMATS.has(meta0.format)) throw new WallpaperError('unsupported', `不支持 ${meta0.format ?? '该'} 格式，请使用 JPG、PNG、WebP 或 AVIF`);
-
-    const base = sharp(input, { limitInputPixels: 120_000_000 }).rotate();
-    // EXIF orientations 5–8 rotate by 90°, swapping the stored dimensions.
-    const swap = (meta0.orientation ?? 1) >= 5;
-    const width = (swap ? meta0.height : meta0.width) ?? 0;
-    const height = (swap ? meta0.width : meta0.height) ?? 0;
-    const widths: number[] = WALLPAPER_WIDTHS.filter((w) => w <= width);
-    if (!widths.length) widths.push(width);
-
     const id = newId(meta.source);
     const folder = join(this.dir, id);
-    await mkdir(folder, { recursive: true });
     try {
-      for (const w of widths) {
-        const resized = base.clone().resize({ width: w, withoutEnlargement: true });
-        await Promise.all([
-          resized.clone().avif({ quality: 55, effort: 4 }).toFile(join(folder, `${w}.avif`)),
-          resized.clone().webp({ quality: 78 }).toFile(join(folder, `${w}.webp`)),
-          resized.clone().jpeg({ quality: 82, mozjpeg: true }).toFile(join(folder, `${w}.jpg`)),
-        ]);
-      }
-      const tiny = await base.clone().resize({ width: 32 }).webp({ quality: 40 }).toBuffer();
-      const placeholder = `data:image/webp;base64,${tiny.toString('base64')}`;
-      const luma = await bandLuma(base);
+      const encoded = await encodeVariants(input, folder, meta.maxBytes);
       const name = rawName.replace(/\.[^.]+$/, '').trim().slice(0, 40) || '我的壁纸';
-      return this.insert({ id, name, width, height, widths, placeholder, luma, meta });
+      return this.insert({ id, name, ...encoded, meta });
+    } catch (e) {
+      await rm(folder, { recursive: true, force: true });
+      throw e;
+    }
+  }
+
+  /** A picture whose variants already exist (a kept 每日一图): the files are copied, not encoded again. */
+  async addEncoded(from: string, w: UploadedWallpaper, meta: WallpaperMeta): Promise<UploadedWallpaper> {
+    const id = newId(meta.source);
+    const folder = join(this.dir, id);
+    try {
+      await cp(from, folder, { recursive: true, filter: (src) => src === from || VARIANT.test(basename(src)) });
+      return this.insert({ id, name: w.name, width: w.width, height: w.height, widths: w.widths, placeholder: w.placeholder, luma: w.luma, meta });
     } catch (e) {
       await rm(folder, { recursive: true, force: true });
       throw e;
@@ -159,7 +187,7 @@ export class WallpaperStore {
     return this.insert({ id: newId(meta.source), name: name.slice(0, 40) || '在线壁纸', width: size.width, height: size.height, widths: [], placeholder, luma, meta, remote });
   }
 
-  private insert(w: { id: string; name: string; width: number; height: number; widths: number[]; placeholder: string; luma: number; meta: WallpaperMeta; remote?: string }): UploadedWallpaper {
+  private insert(w: { id: string; name: string; width: number; height: number; widths: number[]; placeholder: string; luma: number | null; meta: WallpaperMeta; remote?: string }): UploadedWallpaper {
     const createdAt = new Date().toISOString();
     this.db
       .prepare('insert into wallpapers (id, name, width, height, widths, placeholder, created_at, source, ref, credit, luma, focal, remote) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
@@ -169,7 +197,7 @@ export class WallpaperStore {
 
   /** Absolute path of a variant, or null. Both parts are pattern-checked: no path traversal. */
   filePath(id: string, file: string): string | null {
-    const m = FILE.exec(file);
+    const m = VARIANT.exec(file);
     if (!ID.test(id) || !m) return null;
     const w = this.get(id);
     return w && w.widths.includes(Number(m[1])) ? join(this.dir, id, file) : null;
@@ -180,5 +208,18 @@ export class WallpaperStore {
     this.db.prepare('delete from wallpapers where id = ?').run(id);
     await rm(join(this.dir, id), { recursive: true, force: true });
     return true;
+  }
+
+  /** Takes a row out of the library and moves its files into `dest`; nothing is deleted. */
+  async moveOut(id: string, dest: string) {
+    await rename(join(this.dir, id), join(dest, id)).catch((e: NodeJS.ErrnoException) => {
+      if (e.code !== 'ENOENT') throw e;
+    });
+    this.db.prepare('delete from wallpapers where id = ?').run(id);
+  }
+
+  /** From now on the row is the user's own, however it got here. */
+  markSaved(id: string) {
+    this.db.prepare("update wallpapers set source = 'saved' where id = ?").run(id);
   }
 }

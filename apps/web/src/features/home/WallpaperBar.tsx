@@ -60,7 +60,7 @@ export function WallpaperBar({ current, ui, near, hidden }: { current: CurrentWa
   const { entry, rotating } = current;
   const info = entry.info;
   const credit = reveal(info?.required ? 'show' : ui.wallpaperCredit, near);
-  const actions = reveal(current.canStep ? ui.wallpaperActions : 'hide', near);
+  const actions = reveal(current.canStep || !host.readOnly ? ui.wallpaperActions : 'hide', near);
   const fav = look.favorites.includes(entry.id);
   const hasCredit = !!info || !!entry.credit;
   // A name shown only on hover takes no room until then, so a required credit sits flush left.
@@ -76,26 +76,36 @@ export function WallpaperBar({ current, ui, near, hidden }: { current: CurrentWa
       )}
       {!actions.hidden && (
         <span role="group" aria-label="壁纸操作" className={cn('flex items-center gap-0.5', actions.className)} style={actions.style}>
-          <span>·</span>
-          <button type="button" onClick={current.next} className="h-7 rounded-full border-0 bg-transparent px-1.5 text-[12px] text-ink/70 hover:text-ink">
-            换一张
-          </button>
+          {current.canStep && (
+            <>
+              <span>·</span>
+              <button type="button" onClick={current.next} className="h-7 rounded-full border-0 bg-transparent px-1.5 text-[12px] text-ink/70 hover:text-ink">
+                换一张
+              </button>
+            </>
+          )}
           {/* The rest stays out of the way until the pointer (or focus) is on the bar. */}
           <span className="flex items-center gap-0.5 opacity-0 transition-opacity duration-200 group-focus-within/wbar:opacity-100 group-hover/wbar:opacity-100">
-            <button type="button" aria-label="上一张壁纸" title="上一张" onClick={current.prev} className={iconBtn}>
-              <ChevronLeft className="size-3.5" />
-            </button>
-            <button type="button" aria-label="下一张壁纸" title="下一张" onClick={current.next} className={iconBtn}>
-              <ChevronRight className="size-3.5" />
-            </button>
+            {current.canStep && (
+              <>
+                <button type="button" aria-label="上一张壁纸" title="上一张" onClick={current.prev} className={iconBtn}>
+                  <ChevronLeft className="size-3.5" />
+                </button>
+                <button type="button" aria-label="下一张壁纸" title="下一张" onClick={current.next} className={iconBtn}>
+                  <ChevronRight className="size-3.5" />
+                </button>
+              </>
+            )}
             {!host.readOnly && (
               <>
             <button type="button" aria-label={fav ? '取消收藏当前壁纸' : '收藏当前壁纸'} aria-pressed={fav} title={fav ? '取消收藏' : '收藏'} onClick={() => homeActions.toggleFavorite(entry)} className={iconBtn}>
               <Heart className="size-3.5" fill={fav ? 'currentColor' : 'none'} style={fav ? { color: '#e6c08a' } : undefined} />
             </button>
-            <button type="button" aria-label="不喜欢这张" title="不喜欢这张（不再出现）" onClick={() => homeActions.dislike(entry, current.next)} className={iconBtn}>
-              <Ban className="size-3.5" />
-            </button>
+            {current.canStep && (
+              <button type="button" aria-label="不喜欢这张" title="不喜欢这张（不再出现）" onClick={() => homeActions.dislike(entry, current.next)} className={iconBtn}>
+                <Ban className="size-3.5" />
+              </button>
+            )}
             {rotating && (
               <button type="button" aria-label="锁定当前壁纸" title="锁定当前壁纸（停止自动切换）" onClick={() => homeActions.lock(entry)} className={iconBtn}>
                 <Lock className="size-3.5" />

@@ -1,7 +1,7 @@
-import { homeCapacity, MAX_PINS, type Op } from '@nexus/shared';
+import { homeCapacity, isDailyId, MAX_PINS, type Op } from '@nexus/shared';
 import { toast } from '../../components/toast-store';
-import { dispatch, useConfigStore } from '../../data/config-store';
-import type { WallpaperEntry } from './Wallpaper';
+import { dispatch, useConfigStore, wallpaperSources } from '../../data/config-store';
+import { entryOf, type WallpaperEntry } from './Wallpaper';
 
 const cfg = () => useConfigStore.getState().snapshot.config;
 const nameOf = (id: string) => cfg().apps.find((a) => a.id === id)?.name ?? id;
@@ -19,6 +19,17 @@ function commit(op: Op, msg: string, onFull?: () => void): boolean {
   }
   if (r.changed) toast({ msg, tone: 'undo', undo: r.undo });
   return true;
+}
+
+/** 每日一图 is only cached: a favorite or a fixed wallpaper needs the library copy, made here. */
+async function owned(entry: WallpaperEntry): Promise<WallpaperEntry | null> {
+  if (!isDailyId(entry.id)) return entry;
+  try {
+    return entryOf(await wallpaperSources.keepDaily(entry.id));
+  } catch (e) {
+    toast({ msg: e instanceof Error ? e.message : '保存失败', tone: 'error' });
+    return null;
+  }
 }
 
 export const homeActions = {
@@ -48,7 +59,9 @@ export const homeActions = {
     dispatch({ type: 'pin.move', appId, toIndex });
   },
   /** 收藏 / 取消收藏 the picture on screen (synced: every device shares favorites). */
-  toggleFavorite(entry: WallpaperEntry) {
+  async toggleFavorite(shown: WallpaperEntry) {
+    const entry = await owned(shown);
+    if (!entry) return;
     const look = cfg().settings.look;
     const on = look.favorites.includes(entry.id);
     const favorites = on ? look.favorites.filter((x) => x !== entry.id) : [...look.favorites, entry.id];
@@ -61,7 +74,9 @@ export const homeActions = {
     if (commit({ type: 'settings.patch', section: 'look', patch: { blocked: [...look.blocked, entry.id] } }, `不再显示「${entry.name}」`)) next();
   },
   /** 锁定: stop rotating and keep this picture (with its own focal point). */
-  lock(entry: WallpaperEntry) {
+  async lock(shown: WallpaperEntry) {
+    const entry = await owned(shown);
+    if (!entry) return;
     const look = cfg().settings.look;
     const focal = entry.focal ?? [50, 50];
     commit({ type: 'settings.patch', section: 'look', patch: { wallpaper: entry.id, rotation: { ...look.rotation, mode: 'off' }, focal: { desktop: focal, mobile: focal } } }, `已固定「${entry.name}」为壁纸`);

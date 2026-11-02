@@ -1,20 +1,25 @@
-import { wallpaperFile, type GalleryItem, type Settings, type WallpaperSourcesResponse } from '@nexus/shared';
+import { wallpaperFile, type DailyResponse, type GalleryItem, type Settings, type WallpaperSourcesResponse } from '@nexus/shared';
 import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 import { dispatch, useConfigStore, wallpaperSources } from '../../data/config-store';
 import { host } from '../../lib/host';
 import { storage } from '../../lib/storage';
-import { remoteSrc, useWallpapers, wallpaperList, type WallpaperEntry } from './Wallpaper';
+import { entryOf, remoteSrc, useWallpapers, wallpaperList, type WallpaperEntry } from './Wallpaper';
 
 type Rotation = Settings['look']['rotation'];
 
 /** One random pick per page load for 每次打开 (navigating inside the app keeps it). */
 const LOAD_SEED = Math.floor(Math.random() * 2 ** 31);
 const OFFSET_KEY = 'nexus.wallpaper.offset';
-const DAILY_KEY = 'nexus.wallpaper.daily';
+const DAILY_KEY = 'nexus.wallpaper.daily.v2';
 const LAST_KEY = 'nexus.wallpaper.last';
+// Up to 0.3.1: the id of a library row, which no longer exists.
+storage.remove('nexus.wallpaper.daily');
 
 export const localDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/** 每日一图 follows the UTC day, the day Commons uses, so every device agrees whatever its time zone. */
+export const utcDay = (d: Date) => d.toISOString().slice(0, 10);
 
 /** FNV-1a: stable across devices, so a timed rotation shows the same picture everywhere. */
 function hash(s: string): number {
@@ -91,6 +96,92 @@ export const useSourcesStore = create<{ data: WallpaperSourcesResponse | null; l
   },
 }));
 
+const DAILY_CHECK_MS = 60_000;
+const DAILY_RETRY_MS = 60_000;
+const DAILY_RETRY_MAX_MS = 30 * 60_000;
+
+function storedDaily(): DailyResponse | null {
+  const d = storage.get<DailyResponse>(DAILY_KEY);
+  return d?.date && d.wallpaper?.id ? d : null;
+}
+
+interface DailyState {
+  /** The last picture that arrived. It stays on screen until a newer one does, offline included. */
+  current: DailyResponse | null;
+  loading: boolean;
+  /** Attempts in a row that brought nothing new; each one waits twice as long. */
+  fails: number;
+  retryAt: number;
+  check(): void;
+}
+
+/**
+ * 每日一图 on this device: a value resolved by date, kept next to the other per-device state. It is
+ * never written to the configuration, so a new day syncs nothing. One request per day; while
+ * today's picture cannot be had, the last one stays and the check repeats with growing pauses.
+ */
+export const useDailyStore = create<DailyState>((set, get) => ({
+  current: storedDaily(),
+  loading: false,
+  fails: 0,
+  retryAt: 0,
+  check() {
+    const { current, loading, fails, retryAt } = get();
+    const t = Date.now();
+    const today = utcDay(new Date(t));
+    // The server's day decides: a device whose clock runs late must not ask again and again.
+    if ((current && current.date >= today) || loading || t < retryAt) return;
+    const other = storedDaily();
+    if (other && other.date >= today) return set({ current: other, fails: 0, retryAt: 0 });
+    const later = { fails: fails + 1, retryAt: t + Math.min(DAILY_RETRY_MAX_MS, DAILY_RETRY_MS * 2 ** fails) };
+    set({ loading: true });
+    wallpaperSources.daily().then(
+      (d) => {
+        storage.set(DAILY_KEY, d);
+        set({ current: d, loading: false, ...(d.date >= today ? { fails: 0, retryAt: 0 } : later) });
+      },
+      () => set({ loading: false, ...later }),
+    );
+  },
+}));
+
+/**
+ * The picture of the day as a wallpaper, kept current for as long as `enabled`: when something
+ * starts showing it, when the page comes back, when the network does, and once a minute so a page
+ * left open changes with the date. Hidden pages wait until they are looked at.
+ */
+export function useDailyEntry(enabled: boolean): WallpaperEntry | null {
+  const current = useDailyStore((s) => s.current);
+  const uploads = useConfigStore((s) => s.wallpapers);
+  useEffect(() => {
+    if (!enabled) return;
+    const check = () => {
+      if (document.visibilityState === 'visible') useDailyStore.getState().check();
+    };
+    const online = () => {
+      useDailyStore.setState({ retryAt: 0 });
+      check();
+    };
+    check();
+    const timer = setInterval(check, DAILY_CHECK_MS);
+    document.addEventListener('visibilitychange', check);
+    window.addEventListener('focus', check);
+    window.addEventListener('online', online);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', check);
+      window.removeEventListener('focus', check);
+      window.removeEventListener('online', online);
+    };
+  }, [enabled]);
+  return useMemo(() => {
+    if (!enabled || !current) return null;
+    // A kept picture has a library copy, and favorites and the rest work on that one.
+    const kept = uploads.find((u) => u.source === 'saved' && u.ref === current.wallpaper.id);
+    return entryOf(kept ?? current.wallpaper);
+  }, [enabled, current, uploads]);
+}
+
 /** Warms the browser (and Service Worker) cache for a picture shown later. */
 export function preload(entry: WallpaperEntry) {
   const u = entry.uploaded;
@@ -109,7 +200,7 @@ export interface CurrentWallpaper {
   entry: WallpaperEntry;
   /** A timed rotation or 每日一图 is choosing the picture. */
   rotating: boolean;
-  /** 换一张 / 上一张 work: always in the portal; read-only only while rotating (a local offset). */
+  /** 换一张 / 上一张 work: in the portal, or read-only while rotating (a local offset); 每日一图 is one picture a day. */
   canStep: boolean;
   next(): void;
   prev(): void;
@@ -127,9 +218,9 @@ export function useCurrentWallpaper(): CurrentWallpaper {
   const loadSources = useSourcesStore((s) => s.load);
   const [now, setNow] = useState(() => new Date());
   const [offsetState, setOffsetState] = useState(() => storage.get<{ key: string; offset: number }>(OFFSET_KEY));
-  const [daily, setDaily] = useState(() => storage.get<{ date: string; id: string }>(DAILY_KEY));
   const [lastId] = useState(() => storage.get<string>(LAST_KEY));
   const r = look.rotation;
+  const daily = useDailyEntry(r.mode === 'potd');
   const p = period(r, now);
   const offset = p && offsetState?.key === p.key ? offsetState.offset : 0;
 
@@ -148,27 +239,6 @@ export function useCurrentWallpaper(): CurrentWallpaper {
   useEffect(() => {
     if (r.mode !== 'off' && r.mode !== 'potd' && r.pool === 'gallery') void loadSources();
   }, [r.mode, r.pool, loadSources]);
-
-  // 每日一图: one request per local day; the server keeps the picture. Read-only clients only
-  // show what a portal client already fetched.
-  const today = localDay(now);
-  useEffect(() => {
-    if (host.readOnly || r.mode !== 'potd' || (daily?.date === today && list.some((w) => w.id === daily.id))) return;
-    let live = true;
-    wallpaperSources.daily(today).then(
-      (w) => {
-        if (!live) return;
-        const d = { date: today, id: w.id };
-        storage.set(DAILY_KEY, d);
-        setDaily(d);
-      },
-      () => undefined,
-    );
-    return () => {
-      live = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [r.mode, today, daily?.id, list.length]);
 
   const pool = useMemo(() => (p ? candidates(look, list, gallery) : []), [p?.key, look, list, gallery]);
   const chosen = p ? pick(pool, p.key, offset) : null;
@@ -194,7 +264,7 @@ export function useCurrentWallpaper(): CurrentWallpaper {
   const fixed = list.find((w) => w.id === look.wallpaper) ?? list[0]!;
   const byId = (id: string | null | undefined) => (id ? list.find((w) => w.id === id) : undefined);
   let entry: WallpaperEntry;
-  if (r.mode === 'potd') entry = (daily?.date === today && byId(daily.id)) || (host.readOnly && latestDaily(list, today)) || byId(lastId) || fixed;
+  if (r.mode === 'potd') entry = daily ?? byId(lastId) ?? fixed;
   else if (chosen?.kind === 'wallpaper') entry = chosen.entry;
   // While a gallery picture downloads, keep what was on screen last time instead of flashing.
   else entry = byId(lastId) ?? fixed;
@@ -205,17 +275,13 @@ export function useCurrentWallpaper(): CurrentWallpaper {
   }, [entry.id, entry.name]);
 
   const shift = (d: number) => {
+    if (r.mode === 'potd') return;
     if (!p) return void stepFixed(d);
     const next = { key: p.key, offset: offset + d };
     storage.set(OFFSET_KEY, next);
     setOffsetState(next);
   };
-  return { entry, rotating: !!p || r.mode === 'potd', canStep: !host.readOnly || !!p, next: () => shift(1), prev: () => shift(-1) };
-}
-
-/** The newest 每日一图 in the library up to `today` (library refs are local dates). */
-function latestDaily(list: readonly WallpaperEntry[], today: string): WallpaperEntry | undefined {
-  return list.filter((w) => w.uploaded?.source === 'daily' && w.uploaded.ref <= today).sort((a, b) => (a.uploaded!.ref < b.uploaded!.ref ? 1 : -1))[0];
+  return { entry, rotating: !!p || r.mode === 'potd', canStep: r.mode !== 'potd' && (!host.readOnly || !!p), next: () => shift(1), prev: () => shift(-1) };
 }
 
 /** 换一张 without rotation: steps `look.wallpaper` through the library (synced, undoable). */

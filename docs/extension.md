@@ -165,7 +165,7 @@
 | `GET /api/sync/config` | 设备令牌 | 导航配置，支持 `If-None-Match` / 304 |
 | `GET /api/sync/status` | 设备令牌 | 服务状态 |
 | `GET /api/sync/{icons,icon-cache,wallpapers}/…` | 设备令牌 | 图标与壁纸 |
-| `GET /api/sync/{suggest,bookmarks,wallpaper-sources}` | 设备令牌 | 搜索建议、Linkwarden 书签、精选图库目录（只读） |
+| `GET /api/sync/{suggest,bookmarks,wallpaper-sources,daily}` | 设备令牌 | 搜索建议、Linkwarden 书签、精选图库目录、当天的每日一图（只读） |
 | `POST /api/sync/revoke` | 设备令牌 | 扩展断开连接时撤销自己 |
 | `GET /api/devices`、`DELETE /api/devices/:id` | 登录会话 | 门户中列出、撤销设备 |
 | `GET/POST /api/devices/pairing/:code` | 登录会话 + CSRF | 门户中查看、确认或拒绝连接请求 |

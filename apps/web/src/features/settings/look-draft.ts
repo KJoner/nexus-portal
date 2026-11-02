@@ -24,5 +24,5 @@ export function lookDiff(draft: Look | null, applied: Look): number {
  * must not be overwritten by a stale copy when the draft is applied.
  */
 export function lookPatch(draft: Look, applied: Look): Partial<Look> {
-  return Object.fromEntries((Object.keys(draft) as (keyof Look)[]).filter((k) => !same(draft[k], applied[k])).map((k) => [k, draft[k]]));
+  return Object.fromEntries(([...KEYS, 'focal'] as (keyof Look)[]).filter((k) => !same(draft[k], applied[k])).map((k) => [k, draft[k]]));
 }

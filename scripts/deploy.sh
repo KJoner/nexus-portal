@@ -286,7 +286,7 @@ backup_now() { # backup_now <tool image> <label>
     set -e
     if [ -f /data/.deploy-snapshot.db ]; then mv /data/.deploy-snapshot.db /backup/nexus.db; fi
     tar czf /backup/data.tar.gz -C /data --exclude=./nexus.db --exclude=./nexus.db-wal --exclude=./nexus.db-shm \
-      --exclude=./.deploy-snapshot.db --exclude=./backups --exclude=./icon-cache --exclude=./gallery-previews .
+      --exclude=./.deploy-snapshot.db --exclude=./backups --exclude=./icon-cache --exclude=./gallery-previews --exclude=./daily-cache .
     chown -R '"$uid:$gid"' /backup
     chmod -R go-rwx /backup' >/dev/null
   rm -f "$BACKUP/db-check.err"

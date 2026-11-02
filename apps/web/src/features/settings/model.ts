@@ -66,7 +66,7 @@ export function summaries(c: Config, wp: WallpaperEntry, sync: string): Record<P
   const pins = pinnedSites(c).length;
   const cap = homeCapacity(c);
   return {
-    appearance: `${wp.name} · ${ROTATION[c.settings.look.rotation.mode]} · 动画${MOTION[c.settings.look.motion]}`,
+    appearance: `${c.settings.look.rotation.mode === 'potd' ? '' : `${wp.name} · `}${ROTATION[c.settings.look.rotation.mode]} · 动画${MOTION[c.settings.look.motion]}`,
     display: `${PRESET[c.settings.ui.preset]} · 搜索面板 ${c.settings.ui.desktop.searchWidth}px`,
     home: `桌面 ${Math.min(pins, cap.desktop)} 个网站 + ${shownServices(c).length} 个服务 · 手机 ${c.settings.home.mobileRows} 行`,
     apps: `${sites.length} 个网站、${services.length} 个自托管服务${hidden ? ` · ${hidden} 个已隐藏` : ''}`,
