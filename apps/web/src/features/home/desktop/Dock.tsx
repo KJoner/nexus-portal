@@ -4,7 +4,7 @@ import { CSS as DndCSS } from '@dnd-kit/utilities';
 import { hostOf, paginate } from '@nexus/shared';
 import type { AppEntry } from '@nexus/shared';
 import { ChevronDown, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
-import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type Ref } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type RefObject } from 'react';
 import type { ServiceView } from '../../../data/status';
 import { AppTile } from '../../../icons/AppTile';
 import { cn } from '../../../lib/cn';
@@ -36,7 +36,7 @@ interface Props {
   showPager: boolean;
   /** Edit mode with room left: an add tile closes the extension. */
   addToExtension: boolean;
-  allRef: Ref<HTMLButtonElement>;
+  allRef: RefObject<HTMLButtonElement | null>;
   onMenu(e: MouseEvent<HTMLElement>, app: AppEntry, from: MenuSource): void;
   onOpenDrawer(): void;
   onUnpin(id: string): void;
@@ -238,6 +238,7 @@ export function DockHandle({ state, count, hover, onToggle }: { state: DockHandl
   return (
     <button
       type="button"
+      data-dock-handle
       {...hover}
       onClick={onToggle}
       aria-expanded={state !== 'closed'}
@@ -287,7 +288,7 @@ function useWheelPaging(el: HTMLElement | null, pages: number, go: (dir: number)
 }
 
 export function Dock(props: Props) {
-  const { sites, extra, services, dockSize, edit, iconSize, labels, labelsOnHover, showBadges, expanded, rows, showPager, slabWidth = 760 } = props;
+  const { sites, extra, services, dockSize, edit, iconSize, labels, labelsOnHover, showBadges, expanded, rows, showPager, slabWidth = 760, allRef } = props;
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   const showAdd = edit && sites.length < dockSize;
   const cells = sites.length + (showAdd ? 1 : 0) + services.length + 1;
@@ -318,6 +319,18 @@ export function Dock(props: Props) {
   // Rendered from the first opening on, so a collapsed home never loads the extension's icons.
   const [opened, setOpened] = useState(expanded);
   if (expanded && !opened) setOpened(true);
+
+  // Folding must not leave the focus on a link nobody can see, so it moves first: to the button
+  // that brings the links back, or to 全部应用 where there is none. Only then does the extension go
+  // inert, which keeps it from the keyboard, the mouse and screen readers for the whole animation.
+  useLayoutEffect(() => {
+    if (!extEl) return;
+    if (!expanded && extEl.contains(document.activeElement)) {
+      document.querySelector<HTMLElement>('[data-dock-handle]')?.focus({ preventScroll: true });
+      if (extEl.contains(document.activeElement)) allRef.current?.focus({ preventScroll: true });
+    }
+    extEl.toggleAttribute('inert', !expanded);
+  }, [expanded, extEl, allRef]);
 
   // Collapsing returns to the first page, so the next opening starts from the beginning.
   useEffect(() => {
@@ -381,7 +394,7 @@ export function Dock(props: Props) {
           ))}
           <Separator />
           <button
-            ref={props.allRef}
+            ref={allRef}
             type="button"
             aria-label="全部应用"
             onClick={props.onOpenDrawer}
@@ -400,11 +413,9 @@ export function Dock(props: Props) {
             ref={setExtEl}
             role="group"
             aria-label={pages.length > 1 ? `更多快捷方式，第 ${current + 1} / ${pages.length} 页` : '更多快捷方式'}
-            aria-hidden={!expanded}
-            inert={!expanded}
             onKeyDown={onExtKey}
-            className="px-6 transition-opacity duration-200 ease-soft"
-            style={{ paddingTop: EXT_TOP, opacity: expanded ? 1 : 0 }}
+            className="px-6 transition-[opacity,visibility] duration-200 ease-soft"
+            style={{ paddingTop: EXT_TOP, opacity: expanded ? 1 : 0, visibility: expanded ? 'visible' : 'hidden' }}
           >
             <SortableContext items={shownExtra.map((a) => a.id)} strategy={rectSortingStrategy}>
               <div

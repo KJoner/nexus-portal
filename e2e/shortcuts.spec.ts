@@ -1,4 +1,4 @@
-import type { APIRequestContext } from '@playwright/test';
+import type { APIRequestContext, Page } from '@playwright/test';
 import { expect, ops, serverConfig, signIn, test } from './fixtures';
 
 type App = Record<string, unknown> & { id: string; name: string; categoryId: string };
@@ -12,6 +12,21 @@ async function addPinnedSites(api: APIRequestContext, n: number) {
   await ops(api, sites.map((app) => ({ type: 'app.upsert', app })));
   await ops(api, sites.map((s) => ({ type: 'pin.add', appId: s.id })));
   return (await serverConfig(api)).pins;
+}
+
+/**
+ * Collects Chrome's aria-hidden complaints. It only makes them while the accessibility tree is
+ * alive, as it is with a screen reader or DevTools open, so a plain run would never see one.
+ */
+async function blockedAria(page: Page) {
+  const seen: string[] = [];
+  page.on('console', (m) => {
+    if (m.text().includes('Blocked aria-hidden')) seen.push(m.text());
+  });
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Accessibility.enable');
+  await cdp.send('Accessibility.getFullAXTree');
+  return seen;
 }
 
 test.describe('desktop', () => {
@@ -156,6 +171,188 @@ test.describe('desktop', () => {
     await page.keyboard.press('Escape');
     await page.mouse.move(60, 600);
     await expect(ext).toBeHidden();
+  });
+
+  test('folding hands the focus to the button, by every path, and Chrome blocks nothing', async ({ home: page }) => {
+    const pins = await addPinnedSites(page.context().request, 20);
+    await page.reload();
+    const blocked = await blockedAria(page);
+    const ext = page.getByRole('group', { name: /更多快捷方式/ });
+    const handle = page.getByRole('button', { name: /更多快捷方式/ });
+    const firstRow = page.locator('[data-dock-row="first"]');
+    const tile = ext.locator(dock(pins[5]!));
+
+    // Peeking, focus on a tile, the mouse leaves.
+    await firstRow.hover();
+    await expect(ext).toBeVisible();
+    await tile.focus();
+    await page.mouse.move(60, 600);
+    await expect(handle).toHaveAttribute('aria-expanded', 'false');
+    await expect(handle).toBeFocused();
+    await expect(ext).toBeHidden();
+
+    // Fixed open, keyboard focus on a tile, Esc.
+    await handle.click();
+    await expect(ext).toBeVisible();
+    await tile.focus();
+    await page.keyboard.press('Escape');
+    await expect(handle).toHaveAttribute('aria-expanded', 'false');
+    await expect(handle).toBeFocused();
+
+    // A menu gives the focus back to its tile, then the extension folds under it.
+    await page.mouse.move(60, 600);
+    await expect(ext).toBeHidden();
+    await firstRow.hover();
+    await expect(handle).toHaveAttribute('aria-expanded', 'true');
+    await page.waitForTimeout(400); // the slab has grown: the tile is under the pointer's way
+    await tile.click({ button: 'right' });
+    await page.keyboard.press('Escape');
+    await expect(tile).toBeFocused();
+    await page.mouse.move(60, 600);
+    await expect(handle).toHaveAttribute('aria-expanded', 'false');
+    await expect(handle).toBeFocused();
+
+    await page.waitForTimeout(300);
+    expect(blocked).toEqual([]);
+  });
+
+  test('clicking a shortcut leaves the focus on it; the extension still folds', async ({ home: page }) => {
+    const context = page.context();
+    const api = context.request;
+    const pins = await addPinnedSites(api, 20);
+    const app = ((await serverConfig(api)) as unknown as { apps: App[] }).apps.find((a) => a.id === pins[5])!;
+    await ops(api, [{ type: 'app.upsert', app: { ...app, openIn: 'new' } }]);
+    await context.route('https://*.example.com/**', (r) => r.fulfill({ contentType: 'text/html', body: 'ok' }));
+    await page.reload();
+    const blocked = await blockedAria(page);
+    const ext = page.getByRole('group', { name: /更多快捷方式/ });
+    const handle = page.getByRole('button', { name: /更多快捷方式/ });
+
+    await page.locator('[data-dock-row="first"]').hover();
+    await expect(ext).toBeVisible();
+    await page.waitForTimeout(400); // the slab has grown: the tile is under the pointer's way
+    const opened = context.waitForEvent('page');
+    await ext.locator(dock(pins[5]!)).click();
+    await (await opened).close();
+    await page.bringToFront();
+    await expect(ext.locator(dock(pins[5]!))).toBeFocused();
+
+    await page.mouse.move(60, 600);
+    await expect(handle).toHaveAttribute('aria-expanded', 'false');
+    await expect(ext).toBeHidden();
+    await page.waitForTimeout(300);
+    expect(blocked).toEqual([]);
+  });
+
+  test('Tab skips a folded extension and walks through an open one, both ways', async ({ home: page }) => {
+    const pins = await addPinnedSites(page.context().request, 7);
+    await page.reload();
+    const all = page.locator('[data-dock-row="first"]').getByRole('button', { name: '全部应用' });
+    const handle = page.getByRole('button', { name: /更多快捷方式/ });
+    const first = page.locator(dock(pins[5]!));
+    const last = page.locator(dock(pins[pins.length - 1]!));
+
+    // Folded: the button comes straight after 全部应用, in both directions.
+    await all.focus();
+    await page.keyboard.press('Tab');
+    await expect(handle).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(all).toBeFocused();
+
+    // Open: every link is reachable again.
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Enter');
+    await expect(handle).toHaveAttribute('aria-expanded', 'true');
+    await page.keyboard.press('Shift+Tab');
+    await expect(last).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(handle).toBeFocused();
+    await all.focus();
+    await page.keyboard.press('Tab');
+    await expect(first).toBeFocused();
+
+    // Esc from inside lands on the button, where the keyboard carries on.
+    await page.keyboard.press('Escape');
+    await expect(handle).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(all).toBeFocused();
+  });
+
+  test('the fade plays out while nothing inside can be clicked or focused', async ({ home: page }) => {
+    const pins = await addPinnedSites(page.context().request, 20);
+    await page.reload();
+    await page.getByRole('button', { name: /展开更多快捷方式/ }).click();
+    const ext = page.getByRole('group', { name: /更多快捷方式/ });
+    await expect(ext).toHaveCSS('opacity', '1');
+    // Off the rows: a pointer left on them would open it again as soon as it folds.
+    await page.mouse.move(60, 600);
+    await page.waitForTimeout(400);
+
+    const seen = await ext.evaluate(async (el, id) => {
+      const tile = el.querySelector<HTMLElement>(`[data-dock="${id}"]`)!;
+      const box = tile.getBoundingClientRect();
+      const frame = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      await frame();
+      await frame();
+      const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+      tile.focus();
+      // By the clock, not by frames: the number of frames in the fade depends on the display.
+      const samples: { ms: number; opacity: number; visibility: string }[] = [];
+      const start = performance.now();
+      for (let ms = 0; ms < 800; ms = performance.now() - start) {
+        const s = getComputedStyle(el);
+        samples.push({ ms: Math.round(ms), opacity: Number(s.opacity), visibility: s.visibility });
+        await frame();
+      }
+      return { inert: el.hasAttribute('inert'), hitInside: !!hit && el.contains(hit), focused: document.activeElement === tile, samples };
+    }, pins[5]!);
+
+    expect(seen.inert).toBe(true);
+    expect(seen.hitInside).toBe(false);
+    expect(seen.focused).toBe(false);
+    // Still fading on the first frames: it did not vanish, and it only goes hidden once it is gone.
+    expect(seen.samples[0]!.opacity).toBeGreaterThan(0.1);
+    expect(seen.samples.filter((s) => s.visibility === 'hidden' && s.opacity > 0.02)).toEqual([]);
+    expect(seen.samples.at(-1)).toMatchObject({ opacity: 0, visibility: 'hidden' });
+  });
+
+  test('opening and closing in quick succession ends in step, with nothing blocked', async ({ home: page }) => {
+    const pins = await addPinnedSites(page.context().request, 20);
+    await page.reload();
+    const blocked = await blockedAria(page);
+    const ext = page.getByRole('group', { name: /更多快捷方式/ });
+    const handle = page.getByRole('button', { name: /更多快捷方式/ });
+    const box = (await page.locator('[data-dock-row="first"]').boundingBox())!;
+    // The role finds it only while it is shown; this one finds it folded too.
+    const element = page.locator('[role="group"][aria-label^="更多快捷方式"]');
+
+    // The mouse in and out, faster and slower than the open and close delays.
+    for (const pause of [0, 80, 200, 320, 0, 200]) {
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.waitForTimeout(pause);
+      await page.mouse.move(60, 600);
+      await page.waitForTimeout(pause);
+    }
+    await page.waitForTimeout(500);
+    await expect(handle).toHaveAttribute('aria-expanded', 'false');
+    await expect(ext).toBeHidden();
+    await expect(element).toHaveAttribute('inert');
+
+    // The button, with the focus thrown into the extension on the way.
+    for (let i = 0; i < 6; i++) {
+      await handle.click();
+      if (i % 2 === 0) await ext.locator(dock(pins[5]!)).focus();
+    }
+    await expect(handle).toHaveAttribute('aria-expanded', 'false');
+    await expect(element).toHaveAttribute('inert');
+    await expect(ext).toBeHidden();
+
+    await handle.click();
+    await expect(ext).toBeVisible();
+    await expect(element).not.toHaveAttribute('inert');
+    await page.waitForTimeout(300);
+    expect(blocked).toEqual([]);
   });
 
   test('the button stays clear of the search panel and of the window edge', async ({ home: page }) => {

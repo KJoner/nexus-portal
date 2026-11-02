@@ -1,7 +1,7 @@
 import { defaultConfig, type AppEntry } from '@nexus/shared';
 import { act, fireEvent, render, renderHook, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createRef, useState, type PointerEvent } from 'react';
+import { useRef, useState, type PointerEvent } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetSync } from '../../../data/config-store';
 import { MemoryTransport } from '../../../data/transport';
@@ -10,10 +10,13 @@ import { Dock, DockHandle, useDockPeek } from './Dock';
 const gh = defaultConfig().apps.find((a) => a.id === 'github')!;
 const sites = (n: number): AppEntry[] => Array.from({ length: n }, (_, i) => ({ ...gh, id: `s${i}`, name: `站点${i}`, url: `https://s${i}.example.com` }));
 
-function Harness({ extra, mode = 'expand' }: { extra: AppEntry[]; mode?: 'expand' | 'double' }) {
+/** `bare`: the extension can fold, but there is no expand button to hand the focus to. */
+function Harness({ extra, mode = 'expand', bare }: { extra: AppEntry[]; mode?: 'expand' | 'double'; bare?: boolean }) {
   const [expanded, setExpanded] = useState(mode === 'double');
+  const allRef = useRef<HTMLButtonElement>(null);
   return (
     <>
+      <input aria-label="别处" />
       <Dock
         sites={sites(5)}
         extra={extra}
@@ -27,14 +30,19 @@ function Harness({ extra, mode = 'expand' }: { extra: AppEntry[]; mode?: 'expand
         rows={1}
         showPager
         addToExtension={false}
-        allRef={createRef()}
+        allRef={allRef}
         onMenu={vi.fn()}
         onOpenDrawer={vi.fn()}
         onUnpin={vi.fn()}
         onMove={vi.fn()}
         onMoveTo={vi.fn()}
       />
-      {mode === 'expand' && extra.length > 0 && <DockHandle state={expanded ? 'pinned' : 'closed'} count={extra.length} onToggle={() => setExpanded((v) => !v)} />}
+      {mode === 'expand' && extra.length > 0 && !bare && <DockHandle state={expanded ? 'pinned' : 'closed'} count={extra.length} onToggle={() => setExpanded((v) => !v)} />}
+      {bare && (
+        <button type="button" onClick={() => setExpanded((v) => !v)}>
+          切换
+        </button>
+      )}
     </>
   );
 }
@@ -86,8 +94,70 @@ describe('Dock extension (v0.2)', () => {
     await user.click(toggle);
     await user.click(screen.getByRole('button', { name: '收起更多快捷方式' }));
     const ext = document.querySelector('[aria-label^="更多快捷方式"]')!;
-    expect(ext).toHaveAttribute('aria-hidden', 'true');
     expect(ext).toHaveAttribute('inert');
+    expect(ext).toHaveStyle({ visibility: 'hidden', opacity: '0' });
+    // Chrome refuses aria-hidden around the focus, and inert already covers screen readers.
+    expect(ext).not.toHaveAttribute('aria-hidden');
+  });
+
+  it('opening again gives the keyboard its links back', async () => {
+    const user = userEvent.setup();
+    render(<Harness extra={sites(8).slice(5)} />);
+    const toggle = screen.getByRole('button', { name: /展开更多快捷方式/ });
+    await user.click(toggle);
+    await user.click(toggle);
+    await user.click(toggle);
+    const ext = screen.getByRole('group', { name: '更多快捷方式' });
+    expect(ext).not.toHaveAttribute('inert');
+    expect(ext).toHaveStyle({ visibility: 'visible', opacity: '1' });
+    within(ext).getAllByRole('link')[0]!.focus();
+    expect(ext).toContainElement(document.activeElement as HTMLElement);
+  });
+
+  it('folding moves the focus out first, to the button that brings the links back', async () => {
+    const user = userEvent.setup();
+    render(<Harness extra={sites(8).slice(5)} />);
+    await user.click(screen.getByRole('button', { name: /展开更多快捷方式/ }));
+    const ext = screen.getByRole('group', { name: '更多快捷方式' });
+    const handle = screen.getByRole('button', { name: '收起更多快捷方式' });
+    within(ext).getAllByRole('link')[1]!.focus();
+    let inertWhenMoved: boolean | null = null;
+    handle.addEventListener('focus', () => (inertWhenMoved = ext.hasAttribute('inert')));
+    fireEvent.click(handle); // like a key or a timer: nothing but the code moves the focus
+    expect(handle).toHaveFocus();
+    expect(inertWhenMoved).toBe(false);
+    expect(ext).toHaveAttribute('inert');
+  });
+
+  it('without that button the focus goes to 全部应用', async () => {
+    const user = userEvent.setup();
+    render(<Harness extra={sites(8).slice(5)} bare />);
+    const toggle = screen.getByRole('button', { name: '切换' });
+    await user.click(toggle);
+    within(screen.getByRole('group', { name: '更多快捷方式' })).getAllByRole('link')[0]!.focus();
+    fireEvent.click(toggle);
+    expect(screen.getByRole('button', { name: '全部应用' })).toHaveFocus();
+  });
+
+  it('a focus that is elsewhere stays where it is', async () => {
+    const user = userEvent.setup();
+    render(<Harness extra={sites(8).slice(5)} />);
+    const toggle = screen.getByRole('button', { name: /展开更多快捷方式/ });
+    await user.click(toggle);
+    screen.getByRole('textbox', { name: '别处' }).focus();
+    fireEvent.click(toggle);
+    expect(screen.getByRole('textbox', { name: '别处' })).toHaveFocus();
+  });
+
+  it('opening and closing in quick succession always ends in step', () => {
+    render(<Harness extra={sites(8).slice(5)} />);
+    const toggle = screen.getByRole('button', { name: /展开更多快捷方式/ });
+    for (let i = 1; i <= 7; i++) {
+      fireEvent.click(toggle);
+      const ext = document.querySelector('[aria-label^="更多快捷方式"]')!;
+      expect(ext.hasAttribute('inert')).toBe(i % 2 === 0);
+      expect(toggle).toHaveAttribute('aria-expanded', String(i % 2 === 1));
+    }
   });
 
   it('“固定展开” has no toggle and is open from the start', () => {
