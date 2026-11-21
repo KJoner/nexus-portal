@@ -253,18 +253,35 @@ apps/chrome-extension
 9. 窄窗口（宽度小于 900 px）下，新标签页切换为手机布局，长按菜单只有打开、在设置中编辑等只读操作。
 10. 把更高版本的 ZIP 拖到 `chrome://extensions`：仍然只有一张 Nexus 卡片，版本号已更新，没有打开欢迎页，新标签页照常显示导航。
 
+## 发布包实装测试（NEX-05）
+
+`e2e/extension-release.spec.ts` 把 `npm run package` 产出的 zip **原样解压**装进真实浏览器——不是测试构建：没有测试钩子，也没有预先授予的站点访问。浏览器自己的界面（站点访问提示、原生右键菜单、工具栏按钮与弹窗）经 Windows UI Automation 操作（`e2e/release/uia.ps1`，只操作这次启动、使用临时配置目录的浏览器窗口，不碰日常使用的浏览器）。服务端、身份服务（`e2e/release/idp.mts`，仓库里的测试身份服务）、两个合成账号和要收藏的网页都在本机 127.0.0.1 上，数据目录是临时的。
+
+```powershell
+npm run test:e2e:release                                              # 构建、打包，再跑 chromium、chrome、msedge 三个项目
+npx playwright test -c playwright.release.config.ts --project msedge  # 已打包时只跑其中一个
+```
+
+- 端口：`E2E_REL_BASE_PORT`（默认 39540）之后的 4 个；临时文件在 `E2E_REL_WORK`（默认系统临时目录）。运行时会弹出浏览器窗口，期间不要操作它们。
+- 三个项目：Playwright 自带的 Chromium（命令行加载解压目录）；本机安装的 Google Chrome（品牌版已不支持命令行加载，用 CDP `Extensions.loadUnpacked` 安装，即「开发者模式 › 加载已解压的扩展程序」）；本机安装的 Microsoft Edge（用 Edge 专用 zip，不含 manifest key）。
+- 覆盖：首次连接时在浏览器的提示里「允许」站点访问；右键「收藏此链接」（查询参数与锚点原样）、「收藏当前页面」、同一网址不同路径；点工具栏按钮打开真实弹窗保存（只有服务端确认后才显示「已同步到收藏库」）；两次快速收藏；经 CDP 停止后台 service worker 后由右键菜单唤醒；请求已到服务端、回答回来前后台被停止，重启后用原 opId 重发、服务端只创建一次；离线保存后换成另一个账号，原账号的收藏不会用新账号的令牌发出；门户撤销设备后再收藏，后台遇到 401 立即标记失效并提示，未发送的收藏成为属于原账号的草稿，重新连接后要确认才发送；两个独立浏览器配置各连一个账号。
+- 只在 Windows 上运行（UI Automation）。Firefox 没有对应项目：本机未安装 Firefox，Playwright 的 Firefox 不能安装附加组件，见下文「Firefox」一节。
+- 工具栏按钮：Chrome 在扩展详情页打开「固定到工具栏」，Edge 在「扩展」菜单里点「将 … 固定到工具栏」，然后真实点击按钮（`chrome.action.openPopup()` 打开的弹窗不授予 activeTab，扩展会如实说「这个页面不能收藏」，所以必须点按钮）。
+- 2026-11-21 在 Windows 11 上的结果（发布包 0.2.0，Playwright 1.64.1）：Playwright Chromium（Chrome for Testing 156.0.8078.4）9/9 通过；Google Chrome 157.0.8103.79 9/9 通过；Microsoft Edge 154.0.4258.37 9/9 通过。Firefox 未执行（本机没有安装 Firefox）。
+
 ## 已验证与未验证
 
 - **自动化已覆盖**：
   - 服务端：配对、批准与拒绝、限流、只读令牌、304、撤销、改密码失效、Origin 检查范围
-  - 扩展单元测试：同步引擎的各种失败情况、配对、地址校验、缓存淘汰
+  - 扩展单元测试：同步引擎的各种失败情况、配对、地址校验、缓存淘汰、保存队列（IndexedDB 每条一个 opId、并发保存、重发、撤销与账号归属；用存储替身运行）
   - Chromium 端到端：上面列出的流程
+  - 发布包实装（真实浏览器，上节）：Chromium、品牌版 Chrome、Edge 中的站点访问提示、右键菜单、工具栏弹窗、后台停止与唤醒、离线换账号、撤销、双配置
   - 门户原有的全部单元测试和端到端测试，以及 Docker 镜像构建和冒烟测试
 - **更新流程**：CI 从一个新文件夹加载更高版本来模拟更新，这也是 Chrome 解压 ZIP 之后的步骤。系统级的 ZIP 拖放不在 CI 中运行，只在 Windows 的 Chrome 156 上用真实的连接和同步验证过一次。
 - **尚未自动验证，需要按上节手动检查**：
-  - 品牌版 Chrome 中的 `Ctrl + T` 行为、权限弹窗、「保留更改」提示（自动化只能用 Chromium 打开 `chrome://newtab`）
+  - 品牌版 Chrome 中的 `Ctrl + T` 行为、「保留更改」提示（自动化只能用 Chromium 打开 `chrome://newtab`；站点访问的权限提示已由发布包实装测试在品牌版 Chrome 与 Edge 中覆盖）
   - 开发者模式扩展在 Chrome 启动时可能出现的提示
-  - Edge 中的安装与使用
+  - Edge 中从 ZIP 手动安装（实装测试用命令行加载解压目录；装好之后的连接与收藏已覆盖）
   - 真实 Cloudflare 链路下的 304（服务端已兼容弱 ETag）
 
 ## 上架 Chrome Web Store 还需要
