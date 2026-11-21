@@ -99,11 +99,21 @@ docker buildx imagetools inspect kjoner/nexus-portal:0.3.3                 # 包
 apps/web         前端（React + TypeScript + Vite + Tailwind）
 apps/server      服务端（Hono + SQLite）：配置同步、登录、健康检查、Linkwarden、图标缓存
 apps/chrome-extension  Chrome 新标签页扩展（Manifest V3），复用 apps/web 的首页组件，单独发版
-packages/shared  前后端共用：配置模式、操作归约、搜索模型、状态汇总
+packages/shared  前后端共用：配置模式、操作归约、搜索模型、状态汇总、应用目录（src/catalog）
 e2e              Playwright 端到端测试
 scripts          镜像冒烟测试（CI 与本地共用）
 .github          CI、发布工作流与 Dependabot
 ```
+
+## 应用目录
+
+`packages/shared/src/catalog/catalog.json` 是运营者维护的公共网站模板（v0.4 起，约 140 个常用站点，覆盖搜索、邮箱、AI、办公文档、网盘、开发、学习、设计、视频、音乐、资讯、社区、购物与工具）。
+
+- 用户在「应用目录」中搜索（中文名、英文名、别名、拼音、域名）、按分类筛选、多选后加入自己的收藏库；**默认不固定到首页**，可勾选「同时固定到首页」。
+- 加入的是用户自己的副本（记录模板 id 与版本）。目录以后更新不会改动用户已添加的名称、网址、图标或分组。
+- 运营者自己的私有服务（例如自托管的 LiteBox、Linkwarden）不进入公共目录、新用户模板或任何接口响应；LiteSync 的地址由 `NEXUS_LITESYNC_URL` 提供，未设置时不显示。
+- 修改目录后运行 `npm run catalog:check`（构建与 CI 会自动执行，任何问题都会让构建失败）。`npm run catalog:verify` 联网核对图标是否存在、网址能否打开，并把结果写回 `verification` 字段；被反爬策略拦截的站点会如实记为未通过并注明原因。
+- 站点名称与图标仅用于识别，商标归各自所有者；`icon_source` 记录图标来源（dashboard-icons、simple-icons、站点 favicon），发布前请按各图标集的许可核对。
 
 ## Chrome 新标签页扩展
 
@@ -295,6 +305,7 @@ docker compose up -d
 | `NEXUS_HEALTH_ALLOW_PRIVATE` | 健康检查与集成是否可访问局域网 / Tailscale 地址，默认 `true` |
 | `NEXUS_HEALTH_ALLOW_LOOPBACK` | 是否允许访问回环地址，默认 `false` |
 | `NEXUS_UNSPLASH_ACCESS_KEY` | 可选。填写后，外观设置中出现 Unsplash 壁纸来源；Key 只在服务器使用，每个部署需自行申请 |
+| `NEXUS_LITESYNC_URL` | 可选（v0.4）。本部署的 LiteSync 地址（https）。设置后应用目录里才出现 LiteSync，用户自己选择是否添加，任何人都不会被自动固定 |
 
 Compose 额外读取 `NEXUS_VERSION`（镜像标签）、`NEXUS_IMAGE`、`NEXUS_BIND`、`NEXUS_PORT` 和 `NEXUS_PUBLIC_URL`（会传给 `NEXUS_ALLOWED_ORIGINS`），说明见 [`.env.example`](.env.example)。
 

@@ -1,4 +1,4 @@
-import { hostOf, LOCKED_CATEGORY, MAX_PINS, newAppId, slug, TONES, validateApp, type AppEntry, type Op } from '@nexus/shared';
+import { hostOf, isHttpUrl, LOCKED_CATEGORY, MAX_PINS, newAppId, slug, TONES, validateApp, type AppEntry, type Op } from '@nexus/shared';
 import { ChevronDown, Upload, X } from 'lucide-react';
 import { Dialog as RDialog } from 'radix-ui';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -9,13 +9,14 @@ import { cn } from '../../../lib/cn';
 import { apply } from '../model';
 import { Button, NotYet, Row, Segmented, Spinner, Switch, useCompact } from '../ui';
 
-export function blankApp(name = ''): AppEntry {
+export function blankApp(name = '', url = ''): AppEntry {
   return {
     id: '',
     kind: 'site',
     name,
     description: '',
-    url: '',
+    // Prefill from a link (应用目录 · 自定义添加) only when it is a plain http(s) address.
+    url: isHttpUrl(url) ? url.trim() : '',
     lanUrl: '',
     prefer: 'ext',
     categoryId: LOCKED_CATEGORY.none,
@@ -32,6 +33,7 @@ interface Props {
   /** Existing app id, or null for a new one. */
   appId: string | null;
   initialName?: string;
+  initialUrl?: string;
   onClose(): void;
   onDelete(id: string): void;
 }
@@ -93,14 +95,14 @@ function AliasEditor({ aliases, onChange }: { aliases: string[]; onChange(next: 
  * R2 · 表单手动保存: nothing is written until 保存; errors appear after blur or a save attempt;
  * closing with changes asks to discard first.
  */
-export function AppEditor({ appId, initialName, onClose, onDelete }: Props) {
+export function AppEditor({ appId, initialName, initialUrl, onClose, onDelete }: Props) {
   const config = useConfig();
   const compact = useCompact();
   const existing = appId ? config.apps.find((a) => a.id === appId) : undefined;
   const wasPinned = !!existing && config.pins.includes(existing.id);
-  const [draft, setDraft] = useState<AppEntry>(() => existing ?? blankApp(initialName));
+  const [draft, setDraft] = useState<AppEntry>(() => existing ?? blankApp(initialName, initialUrl));
   const [pin, setPin] = useState(wasPinned);
-  const orig = useRef(JSON.stringify({ d: existing ?? blankApp(initialName), p: wasPinned }));
+  const orig = useRef(JSON.stringify({ d: existing ?? blankApp(initialName, initialUrl), p: wasPinned }));
   const [touched, setTouched] = useState<Set<FieldKey>>(new Set());
   const [tried, setTried] = useState(false);
   const [confirm, setConfirm] = useState(false);
@@ -207,14 +209,14 @@ export function AppEditor({ appId, initialName, onClose, onDelete }: Props) {
   const pinHint = svc
     ? draft.showInServices
       ? 'Dock 与手机首页的服务区会显示它和状态角标'
-      : '只在「全部应用」和搜索中出现'
+      : '只在「收藏库」和搜索中出现'
     : pinsFull
       ? `首页已固定 ${MAX_PINS} 个网站，先在「首页与快捷方式」中移除一个`
       : pin
         ? pos <= config.settings.home.dockSize
           ? `首页第 ${pos} 位 · 桌面 Dock 与手机首页都显示`
           : `首页第 ${pos} 位 · 桌面 Dock 只显示前 ${config.settings.home.dockSize} 个，此项仅在手机显示`
-        : '不固定时仍可在「全部应用」和搜索中找到';
+        : '不固定时仍可在「收藏库」和搜索中找到';
 
   const input = (props: { label: string; required?: boolean; optional?: boolean; value: string; onChange(v: string): void; onBlur?(): void; error?: string; warn?: string; placeholder?: string; mono?: boolean; inputMode?: 'url' }) =>
     compact ? (
@@ -615,7 +617,7 @@ export function AppEditor({ appId, initialName, onClose, onDelete }: Props) {
   }
 
   return (
-    <DrawerShell title={isNew ? '新增应用' : `编辑 ${existing!.name}`} subtitle={isNew ? '保存后出现在全部应用与搜索中' : dirty ? '有未保存的更改' : '尚未修改'} onRequestClose={requestClose} footer={footer} confirming={confirm}>
+    <DrawerShell title={isNew ? '新增应用' : `编辑 ${existing!.name}`} subtitle={isNew ? '保存后出现在收藏库与搜索中' : dirty ? '有未保存的更改' : '尚未修改'} onRequestClose={requestClose} footer={footer} confirming={confirm}>
       {body}
     </DrawerShell>
   );

@@ -1,5 +1,5 @@
 import { appHref, displayUrl, LOCKED_CATEGORY, matchApps, type AppEntry, type Category } from '@nexus/shared';
-import { ArrowDownUp, ChevronDown, ChevronUp, Copy, Ellipsis, Eye, EyeOff, Pencil, Pin, PinOff, Plus, Search, Trash2 } from 'lucide-react';
+import { ArrowDownUp, ChevronDown, ChevronUp, Copy, Ellipsis, Eye, EyeOff, LayoutGrid, Pencil, Pin, PinOff, Plus, Search, Trash2 } from 'lucide-react';
 import { DropdownMenu } from 'radix-ui';
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
@@ -84,7 +84,7 @@ export function AppsPage() {
         open={!!delApp}
         onOpenChange={(o) => !o && setDel(null)}
         title={delApp ? `删除「${delApp.name}」？` : ''}
-        description={delApp && `${pinned(delApp) && delApp.kind === 'site' ? '它会从首页、' : '它会从'}全部应用和搜索结果中移除${delApp.kind === 'service' ? '，健康检查也会停止' : ''}。删除后 6 秒内可撤销。`}
+        description={delApp && `${pinned(delApp) && delApp.kind === 'site' ? '它会从首页、' : '它会从'}收藏库和搜索结果中移除${delApp.kind === 'service' ? '，健康检查也会停止' : ''}。删除后 6 秒内可撤销。`}
         footer={
           <>
             <Button className="h-10 px-[18px]" onClick={() => setDel(null)}>
@@ -104,7 +104,7 @@ export function AppsPage() {
   if (compact && editorOpen) {
     return (
       <>
-        <AppEditor key={editId ?? 'new'} appId={editId} initialName={newName ?? ''} onClose={closeEditor} onDelete={setDel} />
+        <AppEditor key={editId ?? 'new'} appId={editId} initialName={newName ?? ''} initialUrl={params.get('url') ?? ''} onClose={closeEditor} onDelete={setDel} />
         {dialogs}
       </>
     );
@@ -215,6 +215,10 @@ export function AppsPage() {
           <Plus className="size-[18px]" />
           新增应用
         </Button>
+        <Button size="lg" className="w-full rounded-2xl" onClick={() => navigate('/catalog')}>
+          <LayoutGrid className="size-[18px]" />
+          从应用目录添加
+        </Button>
         <div className="flex gap-2.5">
           <Button size="lg" className="flex-1 rounded-2xl" onClick={() => setSorting(true)}>
             调整顺序
@@ -241,6 +245,10 @@ export function AppsPage() {
             </Button>
             <Button className="h-10 rounded-xl px-4 text-[13.5px]" onClick={() => setCats(config.categories.map((c) => ({ ...c })))}>
               管理分类
+            </Button>
+            <Button className="h-10 rounded-xl px-4 text-[13.5px]" onClick={() => navigate('/catalog')}>
+              <LayoutGrid className="size-[15px]" />
+              从应用目录添加
             </Button>
             <Button variant="primary" className="h-10 rounded-xl pr-[18px] pl-3.5 text-[13.5px]" onClick={() => navigate('/settings/apps?new=')}>
               <Plus className="size-4" />
@@ -364,7 +372,7 @@ export function AppsPage() {
         })}
         {!list.length && empty}
       </div>
-      {editorOpen && <AppEditor key={editId ?? 'new'} appId={editId} initialName={newName ?? ''} onClose={closeEditor} onDelete={setDel} />}
+      {editorOpen && <AppEditor key={editId ?? 'new'} appId={editId} initialName={newName ?? ''} initialUrl={params.get('url') ?? ''} onClose={closeEditor} onDelete={setDel} />}
       {dialogs}
     </div>
   );
@@ -390,7 +398,7 @@ function CategoriesDialog({ cats, setCats }: { cats: Category[]; setCats(c: Cate
       onOpenChange={(o) => !o && setCats(null)}
       width={520}
       title="管理分类"
-      description="分类决定「全部应用」与本页的分组顺序。「我的服务」与「未分类」为固定分类。"
+      description="分类决定「收藏库」与本页的分组顺序。「我的服务」与「未分类」为固定分类。"
       footer={
         <>
           <Button className="h-10 px-[18px]" onClick={() => setCats(null)}>

@@ -53,6 +53,16 @@ export const AppSchema = z.object({
   icon: IconSchema,
   openIn: z.enum(['same', 'new']).default('same'),
   health: HealthSchema.default({ enabled: false, target: '/', intervalSec: 60 }),
+  /**
+   * 应用目录 provenance (v0.4): the template this entry was copied from, and its version then.
+   * Only used to show 已添加 and to offer updates; a newer template never overwrites the entry.
+   * Optional, so documents written before v0.4 (and by older clients) stay valid.
+   */
+  catalogId: z
+    .string()
+    .regex(/^[a-z0-9][a-z0-9-]{0,47}$/)
+    .optional(),
+  catalogVersion: z.number().int().min(1).max(1_000_000).optional(),
 });
 
 export const CategorySchema = z.object({

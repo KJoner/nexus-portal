@@ -29,6 +29,11 @@ export interface Env {
   secret: string | null;
   /** Optional Unsplash access key (each deployment registers its own); stays on the server. */
   unsplashKey: string | null;
+  /**
+   * Public address of this deployment's LiteSync (v0.4). The 应用目录 offers LiteSync only when it
+   * is set; it is never pinned for anyone.
+   */
+  litesyncUrl?: string | null;
 }
 
 export class EnvError extends Error {}
@@ -45,6 +50,9 @@ export function readEnv(source: NodeJS.ProcessEnv = process.env): Env {
   }
   if (password && password.length < 8) throw new EnvError('NEXUS_PASSWORD 至少需要 8 个字符');
   if (source.NEXUS_SECRET && source.NEXUS_SECRET.trim().length < 16) throw new EnvError('NEXUS_SECRET 至少需要 16 个字符');
+
+  const litesyncUrl = source.NEXUS_LITESYNC_URL?.trim() || null;
+  if (litesyncUrl && !/^https:\/\/[^\s/?#]+/i.test(litesyncUrl)) throw new EnvError('NEXUS_LITESYNC_URL 必须是 https:// 开头的完整地址');
 
   const dist = source.NEXUS_WEB_DIST ?? resolve(import.meta.dirname, '../../web/dist');
   const cookie = source.NEXUS_COOKIE_SECURE ?? 'auto';
@@ -70,5 +78,6 @@ export function readEnv(source: NodeJS.ProcessEnv = process.env): Env {
     allowLoopback: ['1', 'true'].includes(source.NEXUS_HEALTH_ALLOW_LOOPBACK ?? ''),
     secret: source.NEXUS_SECRET?.trim() || null,
     unsplashKey: source.NEXUS_UNSPLASH_ACCESS_KEY?.trim() || null,
+    litesyncUrl,
   };
 }

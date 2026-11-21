@@ -5,6 +5,17 @@ import type { Env } from '../env';
 
 export const apiError = (c: Context, status: 400 | 401 | 403 | 404 | 413 | 415 | 422 | 429 | 500 | 502, code: string, message: string) => c.json({ error: { code, message } }, status);
 
+export type V2Status = 400 | 401 | 403 | 404 | 409 | 410 | 412 | 413 | 422 | 426 | 429 | 500 | 502 | 503;
+
+/**
+ * Error body of the `/api/v2` interfaces (《A-接口与状态约定》§0.1): clients branch on `code` only;
+ * `message` is for people and may be translated. The v1 interfaces keep `{error:{code,message}}`.
+ */
+export function v2Error(c: Context, status: V2Status, code: string, message: string, opts: { retryable?: boolean; details?: Record<string, unknown> } = {}) {
+  const requestId = `req_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
+  return c.json({ code, message, retryable: opts.retryable ?? status >= 500, requestId, ...(opts.details ? { details: opts.details } : {}) }, status);
+}
+
 export function isHttps(c: Context, env: Env): boolean {
   if (env.trustProxy) {
     const proto = c.req.header('x-forwarded-proto')?.split(',')[0]?.trim();

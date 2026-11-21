@@ -84,6 +84,8 @@ export function NewTab() {
       createMemoryRouter([
         { path: '/', element: <HomePage /> },
         { path: '/settings/*', element: <LeaveForSettings /> },
+        // 应用目录 lives in the portal: the new tab hands over to it, like the settings pages.
+        { path: '/catalog', element: <LeaveForSettings /> },
         { path: '*', element: <HomePage /> },
       ]),
     [],

@@ -2,12 +2,12 @@ import '@fontsource/jetbrains-mono/400.css';
 import { ArrowLeft, Check, ChevronLeft, ChevronRight, Plus, Search, SlidersHorizontal } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
+import { PageBackdrop as Backdrop } from '../../components/PageBackdrop';
 import { ToastHost } from '../../components/ToastHost';
 import { useConfig, useConfigStore, useSaveState } from '../../data/config-store';
 import { cn } from '../../lib/cn';
 import { useViewport } from '../../lib/hooks';
 import { formatHm } from '../../lib/time';
-import { useDailyEntry } from '../home/rotation';
 import { useWallpaper } from '../home/Wallpaper';
 import { lookDiff, useLookDraft } from './look-draft';
 import { attention, isPage, PAGES, searchIndex, summaries, type PageId } from './model';
@@ -34,22 +34,6 @@ function useSyncSummary(): string {
   if (save.kind === 'offline') return `离线 · ${save.pending ? `${save.pending} 项更改待同步` : '恢复连接后自动同步'}`;
   if (save.kind === 'saving') return '正在同步…';
   return `已同步到 Nexus 服务端 · 修订 ${revision}`;
-}
-
-/** The home wallpaper pushed back to atmosphere: blur 48, brightness 42 %, 62 % warm black (R2). */
-function Backdrop() {
-  const look = useConfig().settings.look;
-  const fixed = useWallpaper(look);
-  const wp = useDailyEntry(look.rotation.mode === 'potd') ?? fixed;
-  return (
-    <>
-      <div aria-hidden className="absolute -inset-[60px] isolate" style={{ background: wp.kind === 'photo' ? '#a69e8e' : '#1b1a17', filter: 'blur(48px) brightness(.42)' }}>
-        {wp.kind === 'photo' ? <img src={wp.uploaded?.placeholder ?? wp.src} alt="" loading="lazy" className="absolute inset-0 size-full object-cover grayscale" style={{ mixBlendMode: 'multiply' }} /> : <div className="absolute inset-0" style={{ background: wp.src }} />}
-        {wp.kind === 'photo' && <div className="absolute inset-0" style={{ background: '#221f1b', mixBlendMode: 'lighten' }} />}
-      </div>
-      <div aria-hidden className="absolute inset-0" style={{ background: 'rgba(22,21,18,0.62)' }} />
-    </>
-  );
 }
 
 function SaveIndicator() {

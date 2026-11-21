@@ -11,6 +11,7 @@ import { preloadPinyin } from '../lib/pinyin';
 import { storage } from '../lib/storage';
 
 const SettingsPage = lazy(() => import('../features/settings/SettingsPage'));
+const CatalogPage = lazy(() => import('../features/catalog/CatalogPage'));
 
 const router = createBrowserRouter([
   { path: '/', element: <HomePage /> },
@@ -19,6 +20,14 @@ const router = createBrowserRouter([
     element: (
       <Suspense fallback={<div className="fixed inset-0 bg-base" />}>
         <SettingsPage />
+      </Suspense>
+    ),
+  },
+  {
+    path: '/catalog',
+    element: (
+      <Suspense fallback={<div className="fixed inset-0 bg-base" />}>
+        <CatalogPage />
       </Suspense>
     ),
   },

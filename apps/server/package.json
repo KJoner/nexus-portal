@@ -7,7 +7,8 @@
     "dev": "tsx watch --clear-screen=false src/index.ts",
     "build": "node build.mjs",
     "start": "node dist/index.mjs",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "catalog:check": "tsx src/catalog/check.ts"
   },
   "devDependencies": {
     "@types/better-sqlite3": "9.6.0",

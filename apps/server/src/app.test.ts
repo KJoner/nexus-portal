@@ -520,3 +520,52 @@ describe('paired devices (Chrome extension)', () => {
     expect((await sync(c.token)).status).toBe(401);
   });
 });
+
+describe('应用目录 API (v0.4, /api/v2/catalog)', () => {
+  type Page = { catalogVersion: string; categories: { id: string; count: number }[]; items: { id: string; url: string; category: string }[]; nextCursor: string | null };
+  const get = async (q = '', headers: Record<string, string> = {}) => app.request(`/api/v2/catalog${q}`, { headers });
+
+  it('is public, cacheable and carries nothing of the operator’s private setup', async () => {
+    const res = await get();
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toBe('public, max-age=300');
+    const body = (await res.json()) as Page;
+    expect(body.items.length).toBeGreaterThanOrEqual(80);
+    expect(JSON.stringify(body).toLowerCase()).not.toMatch(/litebox|linkwarden|\.home\b/);
+    // LiteSync is offered only once the deployment says where it lives.
+    expect(body.items.some((i) => i.id === 'litesync')).toBe(false);
+    expect(body.categories.reduce((n, c) => n + c.count, 0)).toBe(body.items.length);
+    const again = await get('', { 'if-none-match': res.headers.get('etag')! });
+    expect(again.status).toBe(304);
+  });
+
+  it('offers LiteSync at the configured address, never pinned anywhere', async () => {
+    const withLs = createApp({ ...deps, env: { ...env, litesyncUrl: 'https://sync.example.net' } });
+    const body = (await (await withLs.request('/api/v2/catalog?q=litesync')).json()) as Page;
+    expect(body.items[0]).toMatchObject({ id: 'litesync', url: 'https://sync.example.net' });
+    const cfg = (await (await app.request('/api/config', { headers: { cookie: await login() } })).json()) as ConfigResponse;
+    expect(cfg.config.pins).not.toContain('litesync');
+  });
+
+  it('searches and filters', async () => {
+    expect(((await (await get('?q=github')).json()) as Page).items[0]!.id).toBe('github');
+    const mail = (await (await get('?category=mail')).json()) as Page;
+    expect(mail.items.length).toBeGreaterThan(3);
+    expect(new Set(mail.items.map((i) => i.category))).toEqual(new Set(['mail']));
+  });
+
+  it('pages with an opaque cursor that covers everything exactly once', async () => {
+    const all = ((await (await get()).json()) as Page).items.map((i) => i.id);
+    const seen: string[] = [];
+    let cursor: string | null = '';
+    while (cursor !== null) {
+      const page: Page = (await (await get(`?limit=50${cursor ? `&cursor=${cursor}` : ''}`)).json()) as Page;
+      seen.push(...page.items.map((i) => i.id));
+      cursor = page.nextCursor;
+    }
+    expect(seen).toEqual(all);
+    const bad = await get('?cursor=bm9wZTox');
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toMatchObject({ code: 'INVALID_CURSOR', retryable: false, requestId: expect.stringMatching(/^req_/) });
+  });
+});

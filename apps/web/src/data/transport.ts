@@ -6,6 +6,7 @@ import {
   type ApiErrorBody,
   type AppEntry,
   type Bookmark,
+  type CatalogResponse,
   type ConfigResponse,
   type DeviceInfo,
   type HealthTestResult,
@@ -69,6 +70,8 @@ export interface Transport {
   revokeDevice(id: string): Promise<DeviceInfo[]>;
   pairingRequest(code: string): Promise<PairingRequest>;
   decidePairing(code: string, approve: boolean): Promise<void>;
+  /** v0.4 应用目录: public templates, all pages merged (the catalog is small). */
+  catalog(): Promise<CatalogResponse>;
   /** Server pushes: config revisions and health results. Returns an unsubscribe function. */
   subscribe(h: { onOpen(): void; onRevision(revision: number): void; onStatus(s: ServiceStatus | { appId: string; removed: true }): void; onClosed(): void }): () => void;
 }
@@ -92,8 +95,11 @@ async function request<T>(path: string, init: RequestInit = {}, timeoutMs = 8000
   if (res.status === 502 || res.status === 503 || res.status === 504) throw new NetworkError();
   const body = (await res.json().catch(() => null)) as T | ApiErrorBody | null;
   if (!res.ok) {
-    const err = (body as ApiErrorBody | null)?.error;
-    throw new HttpError(res.status, err?.code ?? 'http_error', err?.message ?? `请求失败（${res.status}）`);
+    // v1 answers {error:{code,message}}; the /api/v2 interfaces answer {code,message,retryable,…}.
+    const v1 = (body as ApiErrorBody | null)?.error;
+    const v2 = body as { code?: unknown; message?: unknown } | null;
+    const err = v1 ?? (typeof v2?.code === 'string' ? { code: v2.code, message: typeof v2.message === 'string' ? v2.message : '' } : null);
+    throw new HttpError(res.status, err?.code ?? 'http_error', err?.message || `请求失败（${res.status}）`);
   }
   return body as T;
 }
@@ -141,6 +147,16 @@ export const httpTransport: Transport = {
   decidePairing: async (code, approve) => {
     await request(`/api/devices/pairing/${encodeURIComponent(code)}`, { method: 'POST', body: JSON.stringify({ approve }) });
   },
+  async catalog() {
+    const first = await request<CatalogResponse>('/api/v2/catalog?limit=200');
+    const items = [...first.items];
+    for (let cursor = first.nextCursor; cursor; ) {
+      const page: CatalogResponse = await request(`/api/v2/catalog?limit=200&cursor=${encodeURIComponent(cursor)}`);
+      items.push(...page.items);
+      cursor = page.nextCursor;
+    }
+    return { ...first, items, nextCursor: null };
+  },
   subscribe({ onOpen, onRevision, onStatus, onClosed }) {
     if (typeof EventSource === 'undefined') return () => {};
     const es = new EventSource('/api/events');
@@ -165,6 +181,9 @@ export class MemoryTransport implements Transport {
   authenticated = true;
   seen = new Set<string>();
   calls: OpBatch[] = [];
+  /** 应用目录 served by this fake server (tests fill it in; the real file is not bundled here). */
+  catalogData: CatalogResponse = { catalogVersion: 'test', categories: [], items: [], nextCursor: null };
+  catalogCalls = 0;
   private listeners = new Set<(r: number) => void>();
 
   private guard() {
@@ -272,6 +291,11 @@ export class MemoryTransport implements Transport {
   }
   async decidePairing(): Promise<void> {
     throw new HttpError(404, 'not_found', '连接请求不存在或已过期');
+  }
+  async catalog(): Promise<CatalogResponse> {
+    if (!this.online) throw new NetworkError();
+    this.catalogCalls++;
+    return this.catalogData;
   }
   subscribe({ onRevision }: { onRevision(r: number): void }) {
     this.listeners.add(onRevision);

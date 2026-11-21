@@ -1,0 +1,3437 @@
+{
+  "schemaVersion": 1,
+  "catalogVersion": "2026.11.21-1",
+  "note": "公共应用目录：运营者维护。新增或修改条目后运行 npm run catalog:check（构建与 CI 会自动执行）；npm run catalog:verify 联网核验网址与图标并写回 verification。站点名称与图标仅用于识别，商标归各自所有者。",
+  "categories": [
+    {
+      "id": "search",
+      "label": "搜索",
+      "order": 1
+    },
+    {
+      "id": "mail",
+      "label": "邮箱",
+      "order": 2
+    },
+    {
+      "id": "ai",
+      "label": "AI 工具",
+      "order": 3
+    },
+    {
+      "id": "office",
+      "label": "办公文档",
+      "order": 4
+    },
+    {
+      "id": "cloud",
+      "label": "网盘与存储",
+      "order": 5
+    },
+    {
+      "id": "dev",
+      "label": "开发",
+      "order": 6
+    },
+    {
+      "id": "learn",
+      "label": "学习",
+      "order": 7
+    },
+    {
+      "id": "design",
+      "label": "设计",
+      "order": 8
+    },
+    {
+      "id": "video",
+      "label": "视频",
+      "order": 9
+    },
+    {
+      "id": "music",
+      "label": "音乐",
+      "order": 10
+    },
+    {
+      "id": "news",
+      "label": "资讯",
+      "order": 11
+    },
+    {
+      "id": "social",
+      "label": "社区",
+      "order": 12
+    },
+    {
+      "id": "shopping",
+      "label": "购物",
+      "order": 13
+    },
+    {
+      "id": "tools",
+      "label": "工具",
+      "order": 14
+    }
+  ],
+  "entries": [
+    {
+      "stable_id": "google",
+      "version": 1,
+      "name": "Google",
+      "name_en": "Google",
+      "aliases": [
+        "谷歌",
+        "谷歌搜索"
+      ],
+      "url": "https://www.google.com",
+      "category": "search",
+      "description": "全球使用最广的搜索引擎",
+      "icon_ref": "di:google",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "bing",
+      "version": 1,
+      "name": "必应",
+      "name_en": "Bing",
+      "aliases": [
+        "bing",
+        "必应搜索",
+        "microsoft bing"
+      ],
+      "url": "https://www.bing.com",
+      "category": "search",
+      "description": "微软搜索引擎",
+      "icon_ref": "di:bing",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "baidu",
+      "version": 1,
+      "name": "百度",
+      "name_en": "Baidu",
+      "aliases": [
+        "百度一下",
+        "baidu search"
+      ],
+      "url": "https://www.baidu.com",
+      "category": "search",
+      "description": "中文搜索引擎",
+      "icon_ref": "di:baidu",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "duckduckgo",
+      "version": 1,
+      "name": "DuckDuckGo",
+      "name_en": "DuckDuckGo",
+      "aliases": [
+        "ddg",
+        "鸭鸭搜索"
+      ],
+      "url": "https://duckduckgo.com",
+      "category": "search",
+      "description": "不追踪搜索记录的搜索引擎",
+      "icon_ref": "di:duckduckgo",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "sogou",
+      "version": 1,
+      "name": "搜狗",
+      "name_en": "Sogou",
+      "aliases": [
+        "搜狗搜索",
+        "sogou search"
+      ],
+      "url": "https://www.sogou.com",
+      "category": "search",
+      "description": "中文搜索与微信文章搜索",
+      "icon_ref": "si:sogou",
+      "icon_source": "simple-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "brave-search",
+      "version": 1,
+      "name": "Brave Search",
+      "name_en": "Brave Search",
+      "aliases": [
+        "brave",
+        "勇敢搜索"
+      ],
+      "url": "https://search.brave.com",
+      "category": "search",
+      "description": "独立索引的隐私搜索引擎",
+      "icon_ref": "di:brave",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "ecosia",
+      "version": 1,
+      "name": "Ecosia",
+      "name_en": "Ecosia",
+      "aliases": [
+        "种树搜索"
+      ],
+      "url": "https://www.ecosia.org",
+      "category": "search",
+      "description": "用广告收入植树的搜索引擎",
+      "icon_ref": "di:ecosia",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "unreachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 403,
+        "note": "可能被反爬策略拦截，浏览器中可正常打开时请人工确认"
+      }
+    },
+    {
+      "stable_id": "gmail",
+      "version": 1,
+      "name": "Gmail",
+      "name_en": "Gmail",
+      "aliases": [
+        "谷歌邮箱",
+        "google mail"
+      ],
+      "url": "https://mail.google.com",
+      "category": "mail",
+      "description": "Google 邮箱",
+      "icon_ref": "di:gmail",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "outlook",
+      "version": 1,
+      "name": "Outlook",
+      "name_en": "Outlook",
+      "aliases": [
+        "hotmail",
+        "微软邮箱",
+        "outlook.com"
+      ],
+      "url": "https://outlook.live.com",
+      "category": "mail",
+      "description": "微软邮箱与日历",
+      "icon_ref": "di:microsoft-outlook",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "qq-mail",
+      "version": 1,
+      "name": "QQ邮箱",
+      "name_en": "QQ Mail",
+      "aliases": [
+        "qq mail",
+        "qqmail",
+        "foxmail"
+      ],
+      "url": "https://mail.qq.com",
+      "category": "mail",
+      "description": "腾讯邮箱",
+      "icon_ref": "di:qq",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "netease-163-mail",
+      "version": 1,
+      "name": "网易163邮箱",
+      "name_en": "NetEase 163 Mail",
+      "aliases": [
+        "163邮箱",
+        "网易邮箱",
+        "163 mail"
+      ],
+      "url": "https://mail.163.com",
+      "category": "mail",
+      "description": "网易免费邮箱",
+      "icon_ref": "fav",
+      "icon_source": "favicon",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "netease-126-mail",
+      "version": 1,
+      "name": "网易126邮箱",
+      "name_en": "NetEase 126 Mail",
+      "aliases": [
+        "126邮箱",
+        "126 mail"
+      ],
+      "url": "https://mail.126.com",
+      "category": "mail",
+      "description": "网易免费邮箱",
+      "icon_ref": "fav",
+      "icon_source": "favicon",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "icloud-mail",
+      "version": 1,
+      "name": "iCloud 邮件",
+      "name_en": "iCloud Mail",
+      "aliases": [
+        "icloud mail",
+        "苹果邮箱"
+      ],
+      "url": "https://www.icloud.com/mail",
+      "category": "mail",
+      "description": "Apple 账户邮箱",
+      "icon_ref": "di:icloud",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "proton-mail",
+      "version": 1,
+      "name": "Proton Mail",
+      "name_en": "Proton Mail",
+      "aliases": [
+        "protonmail"
+      ],
+      "url": "https://mail.proton.me",
+      "category": "mail",
+      "description": "端到端加密邮箱",
+      "icon_ref": "di:proton-mail",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "yahoo-mail",
+      "version": 1,
+      "name": "Yahoo 邮箱",
+      "name_en": "Yahoo Mail",
+      "aliases": [
+        "yahoo mail",
+        "雅虎邮箱"
+      ],
+      "url": "https://mail.yahoo.com",
+      "category": "mail",
+      "description": "雅虎邮箱",
+      "icon_ref": "di:yahoo",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "fastmail",
+      "version": 1,
+      "name": "Fastmail",
+      "name_en": "Fastmail",
+      "aliases": [],
+      "url": "https://www.fastmail.com",
+      "category": "mail",
+      "description": "付费邮箱服务",
+      "icon_ref": "di:fastmail",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "tuta",
+      "version": 1,
+      "name": "Tuta Mail",
+      "name_en": "Tuta Mail",
+      "aliases": [
+        "tutanota"
+      ],
+      "url": "https://app.tuta.com",
+      "category": "mail",
+      "description": "加密邮箱与日历",
+      "icon_ref": "di:tuta",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "chatgpt",
+      "version": 1,
+      "name": "ChatGPT",
+      "name_en": "ChatGPT",
+      "aliases": [
+        "openai",
+        "gpt"
+      ],
+      "url": "https://chatgpt.com",
+      "category": "ai",
+      "description": "OpenAI 对话助手",
+      "icon_ref": "di:chatgpt",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "claude",
+      "version": 1,
+      "name": "Claude",
+      "name_en": "Claude",
+      "aliases": [
+        "anthropic"
+      ],
+      "url": "https://claude.ai",
+      "category": "ai",
+      "description": "Anthropic 对话助手",
+      "icon_ref": "di:claude-ai",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "unreachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 403,
+        "note": "可能被反爬策略拦截，浏览器中可正常打开时请人工确认"
+      }
+    },
+    {
+      "stable_id": "gemini",
+      "version": 1,
+      "name": "Gemini",
+      "name_en": "Gemini",
+      "aliases": [
+        "google gemini",
+        "谷歌 ai",
+        "bard"
+      ],
+      "url": "https://gemini.google.com",
+      "category": "ai",
+      "description": "Google 对话助手",
+      "icon_ref": "di:google-gemini",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "unreachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "note": "网络请求失败：UND_ERR_HEADERS_OVERFLOW"
+      }
+    },
+    {
+      "stable_id": "microsoft-copilot",
+      "version": 1,
+      "name": "Copilot",
+      "name_en": "Microsoft Copilot",
+      "aliases": [
+        "microsoft copilot",
+        "bing chat"
+      ],
+      "url": "https://copilot.microsoft.com",
+      "category": "ai",
+      "description": "微软对话助手",
+      "icon_ref": "di:microsoft-copilot",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "perplexity",
+      "version": 1,
+      "name": "Perplexity",
+      "name_en": "Perplexity",
+      "aliases": [
+        "perplexity ai"
+      ],
+      "url": "https://www.perplexity.ai",
+      "category": "ai",
+      "description": "带来源引用的 AI 搜索",
+      "icon_ref": "di:perplexity",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "unreachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 403,
+        "note": "可能被反爬策略拦截，浏览器中可正常打开时请人工确认"
+      }
+    },
+    {
+      "stable_id": "deepseek",
+      "version": 1,
+      "name": "DeepSeek",
+      "name_en": "DeepSeek",
+      "aliases": [
+        "深度求索"
+      ],
+      "url": "https://chat.deepseek.com",
+      "category": "ai",
+      "description": "深度求索对话助手",
+      "icon_ref": "di:deepseek",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "tongyi",
+      "version": 1,
+      "name": "通义",
+      "name_en": "Tongyi Qwen",
+      "aliases": [
+        "通义千问",
+        "qwen",
+        "tongyi"
+      ],
+      "url": "https://www.tongyi.com",
+      "category": "ai",
+      "description": "阿里通义千问对话助手",
+      "icon_ref": "di:qwen",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "doubao",
+      "version": 1,
+      "name": "豆包",
+      "name_en": "Doubao",
+      "aliases": [
+        "doubao"
+      ],
+      "url": "https://www.doubao.com",
+      "category": "ai",
+      "description": "字节跳动对话助手",
+      "icon_ref": "fav",
+      "icon_source": "favicon",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "kimi",
+      "version": 1,
+      "name": "Kimi",
+      "name_en": "Kimi",
+      "aliases": [
+        "月之暗面",
+        "moonshot",
+        "kimi chat"
+      ],
+      "url": "https://www.kimi.com",
+      "category": "ai",
+      "description": "月之暗面对话助手",
+      "icon_ref": "di:kimi-ai",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "yiyan",
+      "version": 1,
+      "name": "文心一言",
+      "name_en": "ERNIE Bot",
+      "aliases": [
+        "文心",
+        "ernie",
+        "yiyan"
+      ],
+      "url": "https://yiyan.baidu.com",
+      "category": "ai",
+      "description": "百度对话助手",
+      "icon_ref": "fav",
+      "icon_source": "favicon",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "le-chat",
+      "version": 1,
+      "name": "Le Chat",
+      "name_en": "Mistral Le Chat",
+      "aliases": [
+        "mistral"
+      ],
+      "url": "https://chat.mistral.ai",
+      "category": "ai",
+      "description": "Mistral 对话助手",
+      "icon_ref": "di:mistral-ai",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "unreachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 403,
+        "note": "可能被反爬策略拦截，浏览器中可正常打开时请人工确认"
+      }
+    },
+    {
+      "stable_id": "poe",
+      "version": 1,
+      "name": "Poe",
+      "name_en": "Poe",
+      "aliases": [],
+      "url": "https://poe.com",
+      "category": "ai",
+      "description": "多模型对话平台",
+      "icon_ref": "si:poe",
+      "icon_source": "simple-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "unreachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 403,
+        "note": "可能被反爬策略拦截，浏览器中可正常打开时请人工确认"
+      }
+    },
+    {
+      "stable_id": "notebooklm",
+      "version": 1,
+      "name": "NotebookLM",
+      "name_en": "NotebookLM",
+      "aliases": [
+        "notebook lm"
+      ],
+      "url": "https://notebooklm.google.com",
+      "category": "ai",
+      "description": "基于资料的 AI 笔记",
+      "icon_ref": "si:notebooklm",
+      "icon_source": "simple-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "hugging-face",
+      "version": 1,
+      "name": "Hugging Face",
+      "name_en": "Hugging Face",
+      "aliases": [
+        "huggingface",
+        "抱抱脸"
+      ],
+      "url": "https://huggingface.co",
+      "category": "ai",
+      "description": "开源模型与数据集社区",
+      "icon_ref": "di:hugging-face",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "notion",
+      "version": 1,
+      "name": "Notion",
+      "name_en": "Notion",
+      "aliases": [],
+      "url": "https://www.notion.so",
+      "category": "office",
+      "description": "文档、知识库与项目管理",
+      "icon_ref": "di:notion",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "tencent-docs",
+      "version": 1,
+      "name": "腾讯文档",
+      "name_en": "Tencent Docs",
+      "aliases": [
+        "tencent docs",
+        "qq文档"
+      ],
+      "url": "https://docs.qq.com",
+      "category": "office",
+      "description": "在线协作文档与表格",
+      "icon_ref": "fav",
+      "icon_source": "favicon",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "feishu",
+      "version": 1,
+      "name": "飞书",
+      "name_en": "Feishu",
+      "aliases": [
+        "lark",
+        "feishu"
+      ],
+      "url": "https://www.feishu.cn",
+      "category": "office",
+      "description": "协作办公套件",
+      "icon_ref": "di:lark",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "shimo",
+      "version": 1,
+      "name": "石墨文档",
+      "name_en": "Shimo Docs",
+      "aliases": [
+        "shimo"
+      ],
+      "url": "https://shimo.im",
+      "category": "office",
+      "description": "在线协作文档",
+      "icon_ref": "fav",
+      "icon_source": "favicon",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "yuque",
+      "version": 1,
+      "name": "语雀",
+      "name_en": "Yuque",
+      "aliases": [
+        "yuque"
+      ],
+      "url": "https://www.yuque.com",
+      "category": "office",
+      "description": "在线知识库与文档",
+      "icon_ref": "fav",
+      "icon_source": "favicon",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "kdocs",
+      "version": 1,
+      "name": "金山文档",
+      "name_en": "Kingsoft Docs",
+      "aliases": [
+        "wps",
+        "wps 云文档",
+        "kdocs"
+      ],
+      "url": "https://www.kdocs.cn",
+      "category": "office",
+      "description": "WPS 在线文档",
+      "icon_ref": "fav",
+      "icon_source": "favicon",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "google-docs",
+      "version": 1,
+      "name": "Google 文档",
+      "name_en": "Google Docs",
+      "aliases": [
+        "google docs",
+        "谷歌文档"
+      ],
+      "url": "https://docs.google.com",
+      "category": "office",
+      "description": "在线文档、表格与幻灯片",
+      "icon_ref": "di:google-docs",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "microsoft-365",
+      "version": 1,
+      "name": "Microsoft 365",
+      "name_en": "Microsoft 365",
+      "aliases": [
+        "office",
+        "office 365",
+        "word",
+        "excel",
+        "powerpoint"
+      ],
+      "url": "https://www.office.com",
+      "category": "office",
+      "description": "微软 Office 在线版",
+      "icon_ref": "di:microsoft-365",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "google-calendar",
+      "version": 1,
+      "name": "Google 日历",
+      "name_en": "Google Calendar",
+      "aliases": [
+        "google calendar",
+        "谷歌日历"
+      ],
+      "url": "https://calendar.google.com",
+      "category": "office",
+      "description": "在线日历",
+      "icon_ref": "di:google-calendar",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "trello",
+      "version": 1,
+      "name": "Trello",
+      "name_en": "Trello",
+      "aliases": [
+        "看板"
+      ],
+      "url": "https://trello.com",
+      "category": "office",
+      "description": "看板式任务管理",
+      "icon_ref": "di:atlassian-trello",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "slack",
+      "version": 1,
+      "name": "Slack",
+      "name_en": "Slack",
+      "aliases": [],
+      "url": "https://app.slack.com",
+      "category": "office",
+      "description": "团队即时通讯",
+      "icon_ref": "di:slack",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "zoom",
+      "version": 1,
+      "name": "Zoom",
+      "name_en": "Zoom",
+      "aliases": [
+        "zoom 会议"
+      ],
+      "url": "https://zoom.us",
+      "category": "office",
+      "description": "视频会议",
+      "icon_ref": "di:zoom",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "microsoft-teams",
+      "version": 1,
+      "name": "Microsoft Teams",
+      "name_en": "Microsoft Teams",
+      "aliases": [
+        "teams"
+      ],
+      "url": "https://teams.microsoft.com",
+      "category": "office",
+      "description": "团队会议与协作",
+      "icon_ref": "di:microsoft-teams",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "dingtalk",
+      "version": 1,
+      "name": "钉钉",
+      "name_en": "DingTalk",
+      "aliases": [
+        "dingtalk",
+        "钉钉办公"
+      ],
+      "url": "https://www.dingtalk.com",
+      "category": "office",
+      "description": "协作办公平台",
+      "icon_ref": "fav",
+      "icon_source": "favicon",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "tencent-meeting",
+      "version": 1,
+      "name": "腾讯会议",
+      "name_en": "Tencent Meeting",
+      "aliases": [
+        "voov",
+        "tencent meeting"
+      ],
+      "url": "https://meeting.tencent.com",
+      "category": "office",
+      "description": "视频会议",
+      "icon_ref": "fav",
+      "icon_source": "favicon",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "evernote",
+      "version": 1,
+      "name": "Evernote",
+      "name_en": "Evernote",
+      "aliases": [
+        "印象笔记"
+      ],
+      "url": "https://evernote.com",
+      "category": "office",
+      "description": "笔记应用",
+      "icon_ref": "di:evernote",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "todoist",
+      "version": 1,
+      "name": "Todoist",
+      "name_en": "Todoist",
+      "aliases": [
+        "待办"
+      ],
+      "url": "https://app.todoist.com",
+      "category": "office",
+      "description": "待办清单",
+      "icon_ref": "di:todoist",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "ticktick",
+      "version": 1,
+      "name": "滴答清单",
+      "name_en": "TickTick",
+      "aliases": [
+        "ticktick",
+        "dida"
+      ],
+      "url": "https://ticktick.com",
+      "category": "office",
+      "description": "待办与日程清单",
+      "icon_ref": "si:ticktick",
+      "icon_source": "simple-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "litesync",
+      "version": 1,
+      "name": "LiteSync",
+      "name_en": "LiteSync",
+      "aliases": [
+        "笔记同步",
+        "obsidian 同步"
+      ],
+      "url": "https://sync.example.com",
+      "category": "office",
+      "description": "端到端加密的 Obsidian 笔记同步",
+      "icon_ref": "builtin:obsync",
+      "icon_source": "nexus-builtin",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "unverified"
+      },
+      "url_from_env": "NEXUS_LITESYNC_URL"
+    },
+    {
+      "stable_id": "google-drive",
+      "version": 1,
+      "name": "Google 云端硬盘",
+      "name_en": "Google Drive",
+      "aliases": [
+        "google drive",
+        "谷歌云盘"
+      ],
+      "url": "https://drive.google.com",
+      "category": "cloud",
+      "description": "Google 网盘",
+      "icon_ref": "di:google-drive",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "onedrive",
+      "version": 1,
+      "name": "OneDrive",
+      "name_en": "OneDrive",
+      "aliases": [
+        "微软网盘"
+      ],
+      "url": "https://onedrive.live.com",
+      "category": "cloud",
+      "description": "微软网盘",
+      "icon_ref": "di:microsoft-onedrive",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "dropbox",
+      "version": 1,
+      "name": "Dropbox",
+      "name_en": "Dropbox",
+      "aliases": [],
+      "url": "https://www.dropbox.com",
+      "category": "cloud",
+      "description": "文件同步网盘",
+      "icon_ref": "di:dropbox",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "icloud",
+      "version": 1,
+      "name": "iCloud",
+      "name_en": "iCloud",
+      "aliases": [
+        "苹果云"
+      ],
+      "url": "https://www.icloud.com",
+      "category": "cloud",
+      "description": "Apple 云服务",
+      "icon_ref": "di:icloud",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "baidu-netdisk",
+      "version": 1,
+      "name": "百度网盘",
+      "name_en": "Baidu Netdisk",
+      "aliases": [
+        "百度云",
+        "baidu pan"
+      ],
+      "url": "https://pan.baidu.com",
+      "category": "cloud",
+      "description": "网盘",
+      "icon_ref": "fav",
+      "icon_source": "favicon",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "alipan",
+      "version": 1,
+      "name": "阿里云盘",
+      "name_en": "Alipan",
+      "aliases": [
+        "aliyundrive",
+        "alipan"
+      ],
+      "url": "https://www.alipan.com",
+      "category": "cloud",
+      "description": "网盘",
+      "icon_ref": "fav",
+      "icon_source": "favicon",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "jianguoyun",
+      "version": 1,
+      "name": "坚果云",
+      "name_en": "Nutstore",
+      "aliases": [
+        "nutstore",
+        "jianguoyun"
+      ],
+      "url": "https://www.jianguoyun.com",
+      "category": "cloud",
+      "description": "文件同步网盘",
+      "icon_ref": "fav",
+      "icon_source": "favicon",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "github",
+      "version": 1,
+      "name": "GitHub",
+      "name_en": "GitHub",
+      "aliases": [
+        "gh"
+      ],
+      "url": "https://github.com",
+      "category": "dev",
+      "description": "代码托管与协作",
+      "icon_ref": "di:github",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "gitlab",
+      "version": 1,
+      "name": "GitLab",
+      "name_en": "GitLab",
+      "aliases": [],
+      "url": "https://gitlab.com",
+      "category": "dev",
+      "description": "代码托管与 CI",
+      "icon_ref": "di:gitlab",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "gitee",
+      "version": 1,
+      "name": "Gitee",
+      "name_en": "Gitee",
+      "aliases": [
+        "码云"
+      ],
+      "url": "https://gitee.com",
+      "category": "dev",
+      "description": "国内代码托管平台",
+      "icon_ref": "di:gitee",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "stack-overflow",
+      "version": 1,
+      "name": "Stack Overflow",
+      "name_en": "Stack Overflow",
+      "aliases": [
+        "stackoverflow",
+        "so"
+      ],
+      "url": "https://stackoverflow.com",
+      "category": "dev",
+      "description": "编程问答社区",
+      "icon_ref": "si:stackoverflow",
+      "icon_source": "simple-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "unreachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 403,
+        "note": "可能被反爬策略拦截，浏览器中可正常打开时请人工确认"
+      }
+    },
+    {
+      "stable_id": "mdn",
+      "version": 1,
+      "name": "MDN Web Docs",
+      "name_en": "MDN Web Docs",
+      "aliases": [
+        "mdn",
+        "mozilla developer"
+      ],
+      "url": "https://developer.mozilla.org",
+      "category": "dev",
+      "description": "Web 技术文档",
+      "icon_ref": "si:mdnwebdocs",
+      "icon_source": "simple-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "npm",
+      "version": 1,
+      "name": "npm",
+      "name_en": "npm",
+      "aliases": [
+        "npmjs"
+      ],
+      "url": "https://www.npmjs.com",
+      "category": "dev",
+      "description": "JavaScript 包仓库",
+      "icon_ref": "di:npm",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "unreachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 403,
+        "note": "可能被反爬策略拦截，浏览器中可正常打开时请人工确认"
+      }
+    },
+    {
+      "stable_id": "docker-hub",
+      "version": 1,
+      "name": "Docker Hub",
+      "name_en": "Docker Hub",
+      "aliases": [
+        "docker"
+      ],
+      "url": "https://hub.docker.com",
+      "category": "dev",
+      "description": "容器镜像仓库",
+      "icon_ref": "di:docker",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "vercel",
+      "version": 1,
+      "name": "Vercel",
+      "name_en": "Vercel",
+      "aliases": [],
+      "url": "https://vercel.com",
+      "category": "dev",
+      "description": "前端部署平台",
+      "icon_ref": "di:vercel",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "cloudflare",
+      "version": 1,
+      "name": "Cloudflare",
+      "name_en": "Cloudflare",
+      "aliases": [
+        "cf"
+      ],
+      "url": "https://dash.cloudflare.com",
+      "category": "dev",
+      "description": "CDN、DNS 与边缘计算控制台",
+      "icon_ref": "di:cloudflare",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "unreachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 403,
+        "note": "可能被反爬策略拦截，浏览器中可正常打开时请人工确认"
+      }
+    },
+    {
+      "stable_id": "netlify",
+      "version": 1,
+      "name": "Netlify",
+      "name_en": "Netlify",
+      "aliases": [],
+      "url": "https://app.netlify.com",
+      "category": "dev",
+      "description": "静态站点部署",
+      "icon_ref": "di:netlify",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "codepen",
+      "version": 1,
+      "name": "CodePen",
+      "name_en": "CodePen",
+      "aliases": [],
+      "url": "https://codepen.io",
+      "category": "dev",
+      "description": "前端代码在线演示",
+      "icon_ref": "fav",
+      "icon_source": "favicon",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "unreachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 403,
+        "note": "可能被反爬策略拦截，浏览器中可正常打开时请人工确认"
+      }
+    },
+    {
+      "stable_id": "leetcode",
+      "version": 1,
+      "name": "LeetCode",
+      "name_en": "LeetCode",
+      "aliases": [],
+      "url": "https://leetcode.com",
+      "category": "dev",
+      "description": "算法练习",
+      "icon_ref": "di:leetcode",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "unreachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 403,
+        "note": "可能被反爬策略拦截，浏览器中可正常打开时请人工确认"
+      }
+    },
+    {
+      "stable_id": "leetcode-cn",
+      "version": 1,
+      "name": "力扣",
+      "name_en": "LeetCode China",
+      "aliases": [
+        "leetcode cn",
+        "lc"
+      ],
+      "url": "https://leetcode.cn",
+      "category": "dev",
+      "description": "算法练习（中国站）",
+      "icon_ref": "di:leetcode",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "bitbucket",
+      "version": 1,
+      "name": "Bitbucket",
+      "name_en": "Bitbucket",
+      "aliases": [],
+      "url": "https://bitbucket.org",
+      "category": "dev",
+      "description": "代码托管",
+      "icon_ref": "di:bitbucket",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "replit",
+      "version": 1,
+      "name": "Replit",
+      "name_en": "Replit",
+      "aliases": [],
+      "url": "https://replit.com",
+      "category": "dev",
+      "description": "在线编程环境",
+      "icon_ref": "si:replit",
+      "icon_source": "simple-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "aws-console",
+      "version": 1,
+      "name": "AWS 控制台",
+      "name_en": "AWS Console",
+      "aliases": [
+        "aws",
+        "amazon web services"
+      ],
+      "url": "https://console.aws.amazon.com",
+      "category": "dev",
+      "description": "亚马逊云控制台",
+      "icon_ref": "di:amazon-web-services",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "aliyun",
+      "version": 1,
+      "name": "阿里云",
+      "name_en": "Alibaba Cloud",
+      "aliases": [
+        "aliyun",
+        "alibaba cloud"
+      ],
+      "url": "https://www.aliyun.com",
+      "category": "dev",
+      "description": "云服务器与云服务",
+      "icon_ref": "di:aliyun",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "wikipedia",
+      "version": 1,
+      "name": "维基百科",
+      "name_en": "Wikipedia",
+      "aliases": [
+        "wikipedia",
+        "wiki"
+      ],
+      "url": "https://zh.wikipedia.org",
+      "category": "learn",
+      "description": "自由的百科全书（中文）",
+      "icon_ref": "di:wikipedia",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "wikipedia-en",
+      "version": 1,
+      "name": "Wikipedia",
+      "name_en": "Wikipedia (English)",
+      "aliases": [
+        "英文维基"
+      ],
+      "url": "https://en.wikipedia.org",
+      "category": "learn",
+      "description": "自由的百科全书（英文）",
+      "icon_ref": "di:wikipedia",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "coursera",
+      "version": 1,
+      "name": "Coursera",
+      "name_en": "Coursera",
+      "aliases": [],
+      "url": "https://www.coursera.org",
+      "category": "learn",
+      "description": "大学在线课程",
+      "icon_ref": "si:coursera",
+      "icon_source": "simple-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "khan-academy",
+      "version": 1,
+      "name": "可汗学院",
+      "name_en": "Khan Academy",
+      "aliases": [
+        "khan academy"
+      ],
+      "url": "https://www.khanacademy.org",
+      "category": "learn",
+      "description": "免费在线课程",
+      "icon_ref": "si:khanacademy",
+      "icon_source": "simple-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "duolingo",
+      "version": 1,
+      "name": "多邻国",
+      "name_en": "Duolingo",
+      "aliases": [
+        "duolingo"
+      ],
+      "url": "https://www.duolingo.com",
+      "category": "learn",
+      "description": "语言学习",
+      "icon_ref": "di:duolingo",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "icourse163",
+      "version": 1,
+      "name": "中国大学MOOC",
+      "name_en": "iCourse163",
+      "aliases": [
+        "慕课",
+        "mooc"
+      ],
+      "url": "https://www.icourse163.org",
+      "category": "learn",
+      "description": "国内高校在线课程",
+      "icon_ref": "fav",
+      "icon_source": "favicon",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "arxiv",
+      "version": 1,
+      "name": "arXiv",
+      "name_en": "arXiv",
+      "aliases": [
+        "论文预印本"
+      ],
+      "url": "https://arxiv.org",
+      "category": "learn",
+      "description": "学术论文预印本",
+      "icon_ref": "si:arxiv",
+      "icon_source": "simple-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "google-scholar",
+      "version": 1,
+      "name": "谷歌学术",
+      "name_en": "Google Scholar",
+      "aliases": [
+        "google scholar"
+      ],
+      "url": "https://scholar.google.com",
+      "category": "learn",
+      "description": "学术文献搜索",
+      "icon_ref": "di:google-scholar",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "edx",
+      "version": 1,
+      "name": "edX",
+      "name_en": "edX",
+      "aliases": [],
+      "url": "https://www.edx.org",
+      "category": "learn",
+      "description": "大学在线课程",
+      "icon_ref": "si:edx",
+      "icon_source": "simple-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "cnki",
+      "version": 1,
+      "name": "中国知网",
+      "name_en": "CNKI",
+      "aliases": [
+        "知网",
+        "cnki"
+      ],
+      "url": "https://www.cnki.net",
+      "category": "learn",
+      "description": "中文学术文献",
+      "icon_ref": "fav",
+      "icon_source": "favicon",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "figma",
+      "version": 1,
+      "name": "Figma",
+      "name_en": "Figma",
+      "aliases": [],
+      "url": "https://www.figma.com",
+      "category": "design",
+      "description": "协作式界面设计",
+      "icon_ref": "di:figma",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "canva",
+      "version": 1,
+      "name": "Canva 可画",
+      "name_en": "Canva",
+      "aliases": [
+        "可画",
+        "canva"
+      ],
+      "url": "https://www.canva.com",
+      "category": "design",
+      "description": "在线平面设计",
+      "icon_ref": "fav",
+      "icon_source": "favicon",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "dribbble",
+      "version": 1,
+      "name": "Dribbble",
+      "name_en": "Dribbble",
+      "aliases": [],
+      "url": "https://dribbble.com",
+      "category": "design",
+      "description": "设计作品社区",
+      "icon_ref": "si:dribbble",
+      "icon_source": "simple-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 202
+      }
+    },
+    {
+      "stable_id": "behance",
+      "version": 1,
+      "name": "Behance",
+      "name_en": "Behance",
+      "aliases": [],
+      "url": "https://www.behance.net",
+      "category": "design",
+      "description": "创意作品集",
+      "icon_ref": "di:behance",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "unreachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 403,
+        "note": "可能被反爬策略拦截，浏览器中可正常打开时请人工确认"
+      }
+    },
+    {
+      "stable_id": "unsplash",
+      "version": 1,
+      "name": "Unsplash",
+      "name_en": "Unsplash",
+      "aliases": [
+        "免费图片"
+      ],
+      "url": "https://unsplash.com",
+      "category": "design",
+      "description": "免费高清图片",
+      "icon_ref": "si:unsplash",
+      "icon_source": "simple-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "unreachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 401,
+        "note": "网址返回错误状态"
+      }
+    },
+    {
+      "stable_id": "pinterest",
+      "version": 1,
+      "name": "Pinterest",
+      "name_en": "Pinterest",
+      "aliases": [
+        "拼趣"
+      ],
+      "url": "https://www.pinterest.com",
+      "category": "design",
+      "description": "灵感图片收集",
+      "icon_ref": "di:pinterest",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "zcool",
+      "version": 1,
+      "name": "站酷",
+      "name_en": "ZCOOL",
+      "aliases": [
+        "zcool"
+      ],
+      "url": "https://www.zcool.com.cn",
+      "category": "design",
+      "description": "国内设计师社区",
+      "icon_ref": "si:zcool",
+      "icon_source": "simple-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "iconfont",
+      "version": 1,
+      "name": "iconfont",
+      "name_en": "Iconfont",
+      "aliases": [
+        "阿里巴巴矢量图标库",
+        "图标库"
+      ],
+      "url": "https://www.iconfont.cn",
+      "category": "design",
+      "description": "矢量图标库",
+      "icon_ref": "fav",
+      "icon_source": "favicon",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "excalidraw",
+      "version": 1,
+      "name": "Excalidraw",
+      "name_en": "Excalidraw",
+      "aliases": [
+        "白板",
+        "手绘"
+      ],
+      "url": "https://excalidraw.com",
+      "category": "design",
+      "description": "手绘风格白板",
+      "icon_ref": "di:excalidraw",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "youtube",
+      "version": 1,
+      "name": "YouTube",
+      "name_en": "YouTube",
+      "aliases": [
+        "油管"
+      ],
+      "url": "https://www.youtube.com",
+      "category": "video",
+      "description": "视频平台",
+      "icon_ref": "di:youtube",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "bilibili",
+      "version": 1,
+      "name": "哔哩哔哩",
+      "name_en": "bilibili",
+      "aliases": [
+        "b站",
+        "bilibili"
+      ],
+      "url": "https://www.bilibili.com",
+      "category": "video",
+      "description": "视频弹幕网站",
+      "icon_ref": "si:bilibili",
+      "icon_source": "simple-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "netflix",
+      "version": 1,
+      "name": "Netflix",
+      "name_en": "Netflix",
+      "aliases": [
+        "网飞",
+        "奈飞"
+      ],
+      "url": "https://www.netflix.com",
+      "category": "video",
+      "description": "流媒体影视",
+      "icon_ref": "di:netflix",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "douyin",
+      "version": 1,
+      "name": "抖音",
+      "name_en": "Douyin",
+      "aliases": [
+        "douyin"
+      ],
+      "url": "https://www.douyin.com",
+      "category": "video",
+      "description": "短视频",
+      "icon_ref": "fav",
+      "icon_source": "favicon",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "tiktok",
+      "version": 1,
+      "name": "TikTok",
+      "name_en": "TikTok",
+      "aliases": [],
+      "url": "https://www.tiktok.com",
+      "category": "video",
+      "description": "短视频",
+      "icon_ref": "di:tiktok",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "iqiyi",
+      "version": 1,
+      "name": "爱奇艺",
+      "name_en": "iQIYI",
+      "aliases": [
+        "iqiyi"
+      ],
+      "url": "https://www.iqiyi.com",
+      "category": "video",
+      "description": "影视剧与综艺",
+      "icon_ref": "fav",
+      "icon_source": "favicon",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "tencent-video",
+      "version": 1,
+      "name": "腾讯视频",
+      "name_en": "Tencent Video",
+      "aliases": [
+        "tencent video",
+        "wetv"
+      ],
+      "url": "https://v.qq.com",
+      "category": "video",
+      "description": "影视剧与综艺",
+      "icon_ref": "fav",
+      "icon_source": "favicon",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "youku",
+      "version": 1,
+      "name": "优酷",
+      "name_en": "Youku",
+      "aliases": [
+        "youku"
+      ],
+      "url": "https://www.youku.com",
+      "category": "video",
+      "description": "影视剧与综艺",
+      "icon_ref": "fav",
+      "icon_source": "favicon",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "twitch",
+      "version": 1,
+      "name": "Twitch",
+      "name_en": "Twitch",
+      "aliases": [],
+      "url": "https://www.twitch.tv",
+      "category": "video",
+      "description": "游戏直播",
+      "icon_ref": "di:twitch",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "vimeo",
+      "version": 1,
+      "name": "Vimeo",
+      "name_en": "Vimeo",
+      "aliases": [],
+      "url": "https://vimeo.com",
+      "category": "video",
+      "description": "高清视频平台",
+      "icon_ref": "si:vimeo",
+      "icon_source": "simple-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "disney-plus",
+      "version": 1,
+      "name": "Disney+",
+      "name_en": "Disney+",
+      "aliases": [
+        "迪士尼"
+      ],
+      "url": "https://www.disneyplus.com",
+      "category": "video",
+      "description": "迪士尼流媒体",
+      "icon_ref": "di:disney-plus",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "kuaishou",
+      "version": 1,
+      "name": "快手",
+      "name_en": "Kuaishou",
+      "aliases": [
+        "kuaishou"
+      ],
+      "url": "https://www.kuaishou.com",
+      "category": "video",
+      "description": "短视频",
+      "icon_ref": "si:kuaishou",
+      "icon_source": "simple-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "spotify",
+      "version": 1,
+      "name": "Spotify",
+      "name_en": "Spotify",
+      "aliases": [
+        "声破天"
+      ],
+      "url": "https://open.spotify.com",
+      "category": "music",
+      "description": "音乐流媒体",
+      "icon_ref": "di:spotify",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "netease-music",
+      "version": 1,
+      "name": "网易云音乐",
+      "name_en": "NetEase Cloud Music",
+      "aliases": [
+        "网易云",
+        "netease music"
+      ],
+      "url": "https://music.163.com",
+      "category": "music",
+      "description": "音乐与歌单",
+      "icon_ref": "si:neteasecloudmusic",
+      "icon_source": "simple-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "qq-music",
+      "version": 1,
+      "name": "QQ音乐",
+      "name_en": "QQ Music",
+      "aliases": [
+        "qq music"
+      ],
+      "url": "https://y.qq.com",
+      "category": "music",
+      "description": "音乐流媒体",
+      "icon_ref": "fav",
+      "icon_source": "favicon",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "apple-music",
+      "version": 1,
+      "name": "Apple Music",
+      "name_en": "Apple Music",
+      "aliases": [
+        "苹果音乐"
+      ],
+      "url": "https://music.apple.com",
+      "category": "music",
+      "description": "苹果音乐",
+      "icon_ref": "di:apple-music",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "youtube-music",
+      "version": 1,
+      "name": "YouTube Music",
+      "name_en": "YouTube Music",
+      "aliases": [
+        "油管音乐"
+      ],
+      "url": "https://music.youtube.com",
+      "category": "music",
+      "description": "音乐流媒体",
+      "icon_ref": "si:youtubemusic",
+      "icon_source": "simple-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "hacker-news",
+      "version": 1,
+      "name": "Hacker News",
+      "name_en": "Hacker News",
+      "aliases": [
+        "hn",
+        "ycombinator"
+      ],
+      "url": "https://news.ycombinator.com",
+      "category": "news",
+      "description": "科技与创业资讯",
+      "icon_ref": "di:hacker-news",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "google-news",
+      "version": 1,
+      "name": "Google 新闻",
+      "name_en": "Google News",
+      "aliases": [
+        "google news",
+        "谷歌新闻"
+      ],
+      "url": "https://news.google.com",
+      "category": "news",
+      "description": "新闻聚合",
+      "icon_ref": "di:google-news",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "bbc-news",
+      "version": 1,
+      "name": "BBC News",
+      "name_en": "BBC News",
+      "aliases": [
+        "bbc",
+        "bbc 新闻"
+      ],
+      "url": "https://www.bbc.com/news",
+      "category": "news",
+      "description": "英国广播公司新闻",
+      "icon_ref": "fav",
+      "icon_source": "favicon",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "reuters",
+      "version": 1,
+      "name": "路透社",
+      "name_en": "Reuters",
+      "aliases": [
+        "reuters"
+      ],
+      "url": "https://www.reuters.com",
+      "category": "news",
+      "description": "国际新闻通讯社",
+      "icon_ref": "fav",
+      "icon_source": "favicon",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "unreachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 401,
+        "note": "网址返回错误状态"
+      }
+    },
+    {
+      "stable_id": "thepaper",
+      "version": 1,
+      "name": "澎湃新闻",
+      "name_en": "The Paper",
+      "aliases": [
+        "澎湃",
+        "the paper"
+      ],
+      "url": "https://www.thepaper.cn",
+      "category": "news",
+      "description": "时政与思想新闻",
+      "icon_ref": "fav",
+      "icon_source": "favicon",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "36kr",
+      "version": 1,
+      "name": "36氪",
+      "name_en": "36Kr",
+      "aliases": [
+        "36kr"
+      ],
+      "url": "https://36kr.com",
+      "category": "news",
+      "description": "科技与商业资讯",
+      "icon_ref": "fav",
+      "icon_source": "favicon",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "sspai",
+      "version": 1,
+      "name": "少数派",
+      "name_en": "SSPAI",
+      "aliases": [
+        "sspai"
+      ],
+      "url": "https://sspai.com",
+      "category": "news",
+      "description": "数字生活与效率",
+      "icon_ref": "fav",
+      "icon_source": "favicon",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "the-verge",
+      "version": 1,
+      "name": "The Verge",
+      "name_en": "The Verge",
+      "aliases": [
+        "verge"
+      ],
+      "url": "https://www.theverge.com",
+      "category": "news",
+      "description": "科技媒体",
+      "icon_ref": "fav",
+      "icon_source": "favicon",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "medium",
+      "version": 1,
+      "name": "Medium",
+      "name_en": "Medium",
+      "aliases": [],
+      "url": "https://medium.com",
+      "category": "news",
+      "description": "长文写作平台",
+      "icon_ref": "di:medium",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "unreachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 403,
+        "note": "可能被反爬策略拦截，浏览器中可正常打开时请人工确认"
+      }
+    },
+    {
+      "stable_id": "feedly",
+      "version": 1,
+      "name": "Feedly",
+      "name_en": "Feedly",
+      "aliases": [
+        "rss"
+      ],
+      "url": "https://feedly.com",
+      "category": "news",
+      "description": "RSS 阅读器",
+      "icon_ref": "di:feedly",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "inoreader",
+      "version": 1,
+      "name": "Inoreader",
+      "name_en": "Inoreader",
+      "aliases": [
+        "rss"
+      ],
+      "url": "https://www.inoreader.com",
+      "category": "news",
+      "description": "RSS 阅读器",
+      "icon_ref": "di:inoreader",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "zhihu",
+      "version": 1,
+      "name": "知乎",
+      "name_en": "Zhihu",
+      "aliases": [
+        "zhihu"
+      ],
+      "url": "https://www.zhihu.com",
+      "category": "social",
+      "description": "问答社区",
+      "icon_ref": "si:zhihu",
+      "icon_source": "simple-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "weibo",
+      "version": 1,
+      "name": "微博",
+      "name_en": "Weibo",
+      "aliases": [
+        "新浪微博",
+        "weibo"
+      ],
+      "url": "https://weibo.com",
+      "category": "social",
+      "description": "社交媒体",
+      "icon_ref": "di:weibo",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "xiaohongshu",
+      "version": 1,
+      "name": "小红书",
+      "name_en": "Xiaohongshu",
+      "aliases": [
+        "rednote",
+        "xhs"
+      ],
+      "url": "https://www.xiaohongshu.com",
+      "category": "social",
+      "description": "生活方式分享",
+      "icon_ref": "si:xiaohongshu",
+      "icon_source": "simple-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "douban",
+      "version": 1,
+      "name": "豆瓣",
+      "name_en": "Douban",
+      "aliases": [
+        "douban"
+      ],
+      "url": "https://www.douban.com",
+      "category": "social",
+      "description": "书影音评分与小组",
+      "icon_ref": "si:douban",
+      "icon_source": "simple-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "x",
+      "version": 1,
+      "name": "X",
+      "name_en": "X",
+      "aliases": [
+        "twitter",
+        "推特"
+      ],
+      "url": "https://x.com",
+      "category": "social",
+      "description": "社交媒体（原 Twitter）",
+      "icon_ref": "di:x",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "reddit",
+      "version": 1,
+      "name": "Reddit",
+      "name_en": "Reddit",
+      "aliases": [],
+      "url": "https://www.reddit.com",
+      "category": "social",
+      "description": "兴趣社区",
+      "icon_ref": "di:reddit",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "v2ex",
+      "version": 1,
+      "name": "V2EX",
+      "name_en": "V2EX",
+      "aliases": [],
+      "url": "https://www.v2ex.com",
+      "category": "social",
+      "description": "创意工作者社区",
+      "icon_ref": "si:v2ex",
+      "icon_source": "simple-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "telegram",
+      "version": 1,
+      "name": "Telegram",
+      "name_en": "Telegram",
+      "aliases": [
+        "电报",
+        "tg"
+      ],
+      "url": "https://web.telegram.org",
+      "category": "social",
+      "description": "即时通讯网页版",
+      "icon_ref": "di:telegram",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "discord",
+      "version": 1,
+      "name": "Discord",
+      "name_en": "Discord",
+      "aliases": [],
+      "url": "https://discord.com/app",
+      "category": "social",
+      "description": "社群语音与文字聊天",
+      "icon_ref": "di:discord",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "linkedin",
+      "version": 1,
+      "name": "领英",
+      "name_en": "LinkedIn",
+      "aliases": [
+        "linkedin"
+      ],
+      "url": "https://www.linkedin.com",
+      "category": "social",
+      "description": "职业社交",
+      "icon_ref": "di:linkedin",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "facebook",
+      "version": 1,
+      "name": "Facebook",
+      "name_en": "Facebook",
+      "aliases": [
+        "脸书"
+      ],
+      "url": "https://www.facebook.com",
+      "category": "social",
+      "description": "社交网络",
+      "icon_ref": "di:facebook",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "instagram",
+      "version": 1,
+      "name": "Instagram",
+      "name_en": "Instagram",
+      "aliases": [
+        "ins"
+      ],
+      "url": "https://www.instagram.com",
+      "category": "social",
+      "description": "图片与短视频社交",
+      "icon_ref": "di:instagram",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "taobao",
+      "version": 1,
+      "name": "淘宝",
+      "name_en": "Taobao",
+      "aliases": [
+        "taobao",
+        "天猫"
+      ],
+      "url": "https://www.taobao.com",
+      "category": "shopping",
+      "description": "网上购物",
+      "icon_ref": "si:taobao",
+      "icon_source": "simple-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "jd",
+      "version": 1,
+      "name": "京东",
+      "name_en": "JD.com",
+      "aliases": [
+        "jd",
+        "jingdong"
+      ],
+      "url": "https://www.jd.com",
+      "category": "shopping",
+      "description": "网上购物",
+      "icon_ref": "fav",
+      "icon_source": "favicon",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "amazon",
+      "version": 1,
+      "name": "Amazon",
+      "name_en": "Amazon",
+      "aliases": [
+        "亚马逊"
+      ],
+      "url": "https://www.amazon.com",
+      "category": "shopping",
+      "description": "网上购物",
+      "icon_ref": "di:amazon",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 202
+      }
+    },
+    {
+      "stable_id": "deepl",
+      "version": 1,
+      "name": "DeepL 翻译",
+      "name_en": "DeepL Translator",
+      "aliases": [
+        "deepl",
+        "翻译"
+      ],
+      "url": "https://www.deepl.com/translator",
+      "category": "tools",
+      "description": "机器翻译",
+      "icon_ref": "di:deepl",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "google-translate",
+      "version": 1,
+      "name": "Google 翻译",
+      "name_en": "Google Translate",
+      "aliases": [
+        "google translate",
+        "谷歌翻译",
+        "翻译"
+      ],
+      "url": "https://translate.google.com",
+      "category": "tools",
+      "description": "机器翻译",
+      "icon_ref": "di:google-translate",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "youdao-translate",
+      "version": 1,
+      "name": "有道翻译",
+      "name_en": "Youdao Translate",
+      "aliases": [
+        "有道",
+        "youdao",
+        "翻译"
+      ],
+      "url": "https://fanyi.youdao.com",
+      "category": "tools",
+      "description": "机器翻译",
+      "icon_ref": "fav",
+      "icon_source": "favicon",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "google-maps",
+      "version": 1,
+      "name": "Google 地图",
+      "name_en": "Google Maps",
+      "aliases": [
+        "google maps",
+        "谷歌地图"
+      ],
+      "url": "https://www.google.com/maps",
+      "category": "tools",
+      "description": "地图与导航",
+      "icon_ref": "di:google-maps",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "amap",
+      "version": 1,
+      "name": "高德地图",
+      "name_en": "Amap",
+      "aliases": [
+        "高德",
+        "amap",
+        "gaode"
+      ],
+      "url": "https://www.amap.com",
+      "category": "tools",
+      "description": "地图与导航",
+      "icon_ref": "fav",
+      "icon_source": "favicon",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "baidu-map",
+      "version": 1,
+      "name": "百度地图",
+      "name_en": "Baidu Maps",
+      "aliases": [
+        "baidu map"
+      ],
+      "url": "https://map.baidu.com",
+      "category": "tools",
+      "description": "地图与导航",
+      "icon_ref": "fav",
+      "icon_source": "favicon",
+      "visibility": "public",
+      "status": "active",
+      "region": "cn",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    },
+    {
+      "stable_id": "speedtest",
+      "version": 1,
+      "name": "Speedtest",
+      "name_en": "Speedtest by Ookla",
+      "aliases": [
+        "测速",
+        "网速测试"
+      ],
+      "url": "https://www.speedtest.net",
+      "category": "tools",
+      "description": "网速测试",
+      "icon_ref": "si:speedtest",
+      "icon_source": "simple-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "unreachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 403,
+        "note": "可能被反爬策略拦截，浏览器中可正常打开时请人工确认"
+      }
+    },
+    {
+      "stable_id": "bitwarden",
+      "version": 1,
+      "name": "Bitwarden",
+      "name_en": "Bitwarden",
+      "aliases": [
+        "密码管理"
+      ],
+      "url": "https://vault.bitwarden.com",
+      "category": "tools",
+      "description": "开源密码管理器",
+      "icon_ref": "di:bitwarden",
+      "icon_source": "dashboard-icons",
+      "visibility": "public",
+      "status": "active",
+      "region": "global",
+      "updated_at": "2026-11-21",
+      "verification": {
+        "status": "reachable",
+        "checked_at": "2026-11-20T17:33:00.022Z",
+        "http_status": 200
+      }
+    }
+  ]
+}

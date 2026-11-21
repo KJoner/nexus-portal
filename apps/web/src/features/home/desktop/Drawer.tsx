@@ -1,5 +1,5 @@
 import { engineSearchUrl, hostOf, matchApps, type AppEntry } from '@nexus/shared';
-import { Search, X } from 'lucide-react';
+import { LayoutGrid, Search, X } from 'lucide-react';
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { Link } from 'react-router';
 import { useConfig } from '../../../data/config-store';
@@ -146,9 +146,11 @@ export const Drawer = forwardRef<DrawerHandle, Props>(function Drawer({ open, wi
   const ring = (i: number) => (i === sel ? 'inset 0 0 0 2px rgba(230,192,138,0.75)' : 'none');
   const tab = open ? 0 : -1;
   const empty = !!filter.trim() && flat.length === 0;
+  // A new account starts with an empty collection: point at 应用目录 instead of a blank panel.
+  const blank = !filter.trim() && config.apps.length === 0;
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="全部应用" aria-hidden={!open} inert={!open} className="absolute inset-0 z-10 transition-opacity duration-280 ease-soft" style={{ opacity: open ? 1 : 0, pointerEvents: open ? 'auto' : 'none' }}>
+    <div role="dialog" aria-modal="true" aria-label="收藏库" aria-hidden={!open} inert={!open} className="absolute inset-0 z-10 transition-opacity duration-280 ease-soft" style={{ opacity: open ? 1 : 0, pointerEvents: open ? 'auto' : 'none' }}>
       <div className="absolute inset-0" style={{ background: 'rgba(17,16,14,0.38)' }} onClick={() => onClose(true)} />
       <div
         className="absolute left-1/2 flex flex-col overflow-hidden rounded-[30px] backdrop-blur-[44px] backdrop-saturate-[1.15] transition-transform duration-420 ease-emph"
@@ -162,7 +164,7 @@ export const Drawer = forwardRef<DrawerHandle, Props>(function Drawer({ open, wi
         }}
       >
         <div className="flex items-center gap-4 pt-[26px] pr-[30px] pb-5 pl-[34px]">
-          <h2 className="m-0 text-[22px] font-medium tracking-[-0.01em]">全部应用</h2>
+          <h2 className="m-0 text-[22px] font-medium tracking-[-0.01em]">收藏库</h2>
           <span className="text-[13px] text-ink/46">{config.apps.filter((a) => !a.hidden).length} 个</span>
           <span className="flex-1" />
           <div className="box-border flex h-10 w-[300px] items-center gap-2.5 rounded-xl pr-2 pl-3.5" style={{ background: 'rgba(239,234,225,0.07)', boxShadow: focused ? 'inset 0 0 0 1px rgba(230,192,138,0.4)' : 'none' }}>
@@ -188,6 +190,10 @@ export const Drawer = forwardRef<DrawerHandle, Props>(function Drawer({ open, wi
             />
             <span className="flex-none text-[11.5px] text-ink/40">{filter ? `${flat.length} 项` : '/'}</span>
           </div>
+          <Link to="/catalog" tabIndex={tab} className="flex h-10 flex-none items-center gap-2 rounded-xl px-3.5 text-[13.5px] text-ink/85 no-underline transition-colors duration-140 hover:bg-ink/12" style={{ background: 'rgba(239,234,225,0.07)' }}>
+            <LayoutGrid className="size-[15px]" />
+            应用目录
+          </Link>
           <button type="button" tabIndex={tab} onClick={() => onClose(true)} title="关闭（esc）" aria-label="关闭" className="grid size-10 place-items-center rounded-full border-0 bg-ink/7 text-ink/80 transition-colors duration-140 hover:bg-ink/14">
             <X className="size-4" />
           </button>
@@ -259,6 +265,23 @@ export const Drawer = forwardRef<DrawerHandle, Props>(function Drawer({ open, wi
               </div>
             </section>
           ))}
+          {blank && (
+            <div className="flex flex-1 flex-col items-center justify-center gap-2.5 py-10 text-center">
+              <span className="grid size-[52px] place-items-center rounded-2xl bg-ink/6">
+                <LayoutGrid className="size-[22px] text-ink/50" />
+              </span>
+              <span className="mt-1.5 text-[17px] font-medium">收藏库还是空的</span>
+              <span className="text-[13px] text-ink/50">从应用目录挑几个常用网站，或者自己添加。新加的网站不会自动固定到首页。</span>
+              <div className="mt-3 flex gap-2.5">
+                <Link to="/catalog" tabIndex={tab} className="flex h-10 items-center gap-2 rounded-xl bg-amber px-4 text-[13.5px] font-semibold text-on-amber no-underline">
+                  浏览应用目录
+                </Link>
+                <Link to="/settings/apps?new=" tabIndex={tab} className="flex h-10 items-center rounded-xl bg-ink/10 px-4 text-[13.5px] text-ink no-underline">
+                  自定义添加
+                </Link>
+              </div>
+            </div>
+          )}
           {empty && (
             <div className="flex flex-1 flex-col items-center justify-center gap-2.5 py-10 text-center">
               <span className="grid size-[52px] place-items-center rounded-2xl bg-ink/6">
@@ -282,6 +305,9 @@ export const Drawer = forwardRef<DrawerHandle, Props>(function Drawer({ open, wi
                     在 {webEngine.name} 中搜索「{filter}」
                   </button>
                 )}
+                <Link to={`/catalog?q=${encodeURIComponent(filter)}`} tabIndex={tab} className="flex h-10 items-center rounded-xl bg-ink/10 px-4 text-[13.5px] text-ink no-underline hover:bg-ink/16">
+                  在应用目录中查找
+                </Link>
                 <Link to={`/settings/apps?new=${encodeURIComponent(filter)}`} tabIndex={tab} className="flex h-10 items-center gap-2 rounded-xl px-4 text-[13.5px] text-amber-hi no-underline" style={{ background: 'rgba(230,192,138,0.14)' }}>
                   添加为新应用 →
                 </Link>

@@ -42,7 +42,7 @@ test('search keyboard model (R1.5 · 01)', async ({ home: page }) => {
 });
 
 test('drawer: filter, 2-D arrows, Esc clears then closes and returns focus', async ({ home: page }) => {
-  const all = page.getByRole('button', { name: '全部应用' });
+  const all = page.getByRole('button', { name: '收藏库' });
   await all.click();
   const filter = page.getByLabel('筛选应用');
   await expect(filter).toBeFocused();
@@ -51,7 +51,7 @@ test('drawer: filter, 2-D arrows, Esc clears then closes and returns focus', asy
   await page.keyboard.press('Escape');
   await expect(filter).toHaveValue('');
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('dialog', { name: '全部应用' })).toBeHidden();
+  await expect(page.getByRole('dialog', { name: '收藏库' })).toBeHidden();
   await expect(all).toBeFocused();
 });
 

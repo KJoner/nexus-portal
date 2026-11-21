@@ -62,7 +62,7 @@ describe('app editor (R2 · 表单手动保存)', () => {
     await screen.findByRole('dialog', { name: '编辑 GitHub' });
     await user.click(screen.getByRole('button', { name: '删除' }));
     const confirm = await screen.findByRole('dialog', { name: '删除「GitHub」？' });
-    expect(confirm).toHaveTextContent('它会从首页、全部应用和搜索结果中移除');
+    expect(confirm).toHaveTextContent('它会从首页、收藏库和搜索结果中移除');
     await user.click(screen.getAllByRole('button', { name: '删除' }).at(-1)!);
     await flush();
     expect(server.config.apps.some((a) => a.id === 'github')).toBe(false);

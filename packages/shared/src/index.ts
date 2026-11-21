@@ -9,3 +9,4 @@ export * from './layout';
 export * from './api';
 export * from './validate';
 export * from './device';
+export * from './catalog/catalog';

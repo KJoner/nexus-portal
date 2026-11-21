@@ -57,8 +57,13 @@ export const TopBar = forwardRef<HTMLButtonElement, Props>(function TopBar({ sum
                     onOpenDrawer();
                   }}
                 >
-                  应用
+                  收藏库
                 </a>
+              )}
+              {ui.navApps && (
+                <Link to="/catalog" className={navLink}>
+                  应用目录
+                </Link>
               )}
               {ui.navOverview && showStatus && (
                 <a

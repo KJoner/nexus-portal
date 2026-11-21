@@ -218,7 +218,7 @@ export function MobileHome() {
         }}
       >
         <Grabber
-          label={!isHome ? '收起' : hasExtra ? (expanded ? '收起快捷方式' : '展开更多快捷方式') : '展开全部应用'}
+          label={!isHome ? '收起' : hasExtra ? (expanded ? '收起快捷方式' : '展开更多快捷方式') : '展开收藏库'}
           expanded={isHome && hasExtra ? expanded : undefined}
           onTap={() => (!isHome ? goHome() : hasExtra && home.shortcuts.mode === 'expand' ? setExpanded(!expanded) : openApps())}
           onSwipe={(dir) => {
@@ -232,7 +232,7 @@ export function MobileHome() {
         <div className="absolute top-[26px] right-3.5 left-3.5 flex flex-col transition-[opacity,transform] duration-200 ease-soft" style={{ bottom: contentB, ...layer(isHome, false) }} inert={!isHome}>
           {statusPill && (
             <div className="flex items-center px-0.5">
-              <button type="button" onClick={openApps} aria-label={`服务状态：${summary.text}，查看全部应用`} className="-my-1.5 flex h-11 items-center border-0 bg-transparent p-0">
+              <button type="button" onClick={openApps} aria-label={`服务状态：${summary.text}，查看收藏库`} className="-my-1.5 flex h-11 items-center border-0 bg-transparent p-0">
                 <span className="flex h-8 items-center gap-2 rounded-full pr-3 pl-[11px] text-[12.5px]" style={pillStyle(summary.level)}>
                   <span
                     className={cn('size-1.5 flex-none rounded-full', summary.level === 'error' && motion === 'full' && 'animate-breathe')}
@@ -322,7 +322,7 @@ export function MobileHome() {
           <button
             type="button"
             onClick={() => (isHome ? openApps() : goHome())}
-            aria-label={isHome ? '全部应用' : mode === 'search' ? '取消' : '完成'}
+            aria-label={isHome ? '收藏库' : mode === 'search' ? '取消' : '完成'}
             className="grid h-[52px] min-w-[52px] flex-none place-items-center rounded-[18px] border-0 text-[15px] text-ink transition-colors duration-200 active:scale-[.96]"
             style={isHome ? { ...GLASS, padding: 0 } : { background: 'transparent', padding: '0 16px' }}
           >
@@ -448,11 +448,28 @@ function MobileApps({ open, q, contentB, layer, all, showStatus, bind, pressed, 
   return (
     <div className="absolute top-[26px] right-0 left-0 flex flex-col transition-[opacity,transform] duration-200 ease-soft" style={{ bottom: contentB, ...layer(open) }} inert={!open}>
       <div className="flex flex-none items-baseline gap-2.5 px-6 pt-2 pb-1">
-        <span className="text-[22px] font-medium tracking-[-0.01em]">全部应用</span>
+        <span className="text-[22px] font-medium tracking-[-0.01em]">收藏库</span>
         <span className="text-[12.5px] text-ink/46">{count} 个</span>
         <span className="flex-1" />
-        <span className="text-[12px] text-ink/46">长按管理</span>
+        {count > 0 && <span className="text-[12px] text-ink/46">长按管理</span>}
+        <Link to="/catalog" className="-my-2 flex h-11 items-center rounded-xl px-3 text-[13px] text-amber-hi no-underline">
+          应用目录
+        </Link>
       </div>
+      {count === 0 && !fl && (
+        <div className="mx-6 mt-4 flex flex-col gap-2.5 rounded-2xl bg-ink/6 p-4">
+          <span className="text-[15px] font-medium">收藏库还是空的</span>
+          <span className="text-[13px] leading-[1.6] text-ink/56">从应用目录挑几个常用网站，或者粘贴网址自己添加。新加的网站不会自动固定到首页。</span>
+          <div className="flex gap-2.5">
+            <Link to="/catalog" className="flex h-11 items-center rounded-xl bg-amber px-4 text-[14px] font-semibold text-on-amber no-underline">
+              浏览应用目录
+            </Link>
+            <Link to="/settings/apps?new=" className="flex h-11 items-center rounded-xl bg-ink/10 px-4 text-[14px] text-ink no-underline">
+              自定义添加
+            </Link>
+          </div>
+        </div>
+      )}
       <div className="nx-scroll-hidden min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-3.5 pb-2">
         {services.length > 0 && <div className="px-2.5 pt-4 pb-1.5 text-[11.5px] text-ink/50">我的服务</div>}
         {services.map((s) => {

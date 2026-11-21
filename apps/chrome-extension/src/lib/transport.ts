@@ -67,6 +67,8 @@ export function extensionTransport(area: Area, fetchImpl: Fetch): Transport {
     revokeDevice: readOnly,
     pairingRequest: readOnly,
     decidePairing: readOnly,
+    /** The new tab never opens 应用目录 itself: the link leaves for the portal (see NewTab). */
+    catalog: readOnly,
     subscribe: () => () => {},
   };
 }

@@ -17,6 +17,17 @@
   --color-danger-ink: #f0a594;
   --color-menu: rgb(36 34 30 / 0.95);
 
+  /*
+   * 公开化共享设计 Token（UI 规格 §6，v0.4）：圆角 8 / 12 / 16、间距 4 的倍数、动效 120–180 ms、
+   * 移动端触控目标 ≥ 44 px、可见焦点环——与 LiteSync 一致。强调色在 Nexus 里映射到 R1.5 冻结的琥珀色
+   * （首页视觉保持不变），不改成规格示例中的紫色；状态色同样沿用暖色版本，并且一律配文字。
+   */
+  --radius-control: 8px;
+  --radius-panel: 12px;
+  --radius-dialog: 16px;
+  --color-accent: var(--color-amber);
+  --color-on-accent: var(--color-on-amber);
+
   --ease-soft: cubic-bezier(0.2, 0.7, 0.2, 1);
   --ease-emph: cubic-bezier(0.32, 0.72, 0, 1);
   --ease-exit: cubic-bezier(0.4, 0, 1, 1);
@@ -41,6 +52,21 @@
 @keyframes nx-nudge {
   0%, 100% { transform: none; }
   50% { transform: translateY(2.5px); }
+}
+
+:root {
+  --nx-duration-quick: 120ms;
+  --nx-duration-base: 150ms;
+  --nx-duration-slow: 180ms;
+  --nx-touch-target: 44px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --nx-duration-quick: 0.01ms;
+    --nx-duration-base: 0.01ms;
+    --nx-duration-slow: 0.01ms;
+  }
 }
 
 @layer base {

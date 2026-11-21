@@ -329,6 +329,9 @@ export const wallpaperSources = {
   useUnsplash: async (id: string) => adopt(await transport.unsplashWallpaper(id)),
 };
 
+/** v0.4 应用目录 (public templates; whether one is already added is decided against this account's data). */
+export const catalogApi = { load: () => transport.catalog() };
+
 /** Browser extensions paired with this portal (数据、同步与安全 · 浏览器扩展). */
 export const devicesApi = {
   list: () => transport.devices(),

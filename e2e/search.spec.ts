@@ -77,9 +77,9 @@ test.describe('desktop', () => {
     await expect(page.getByRole('status').filter({ hasText: '没有匹配的应用或收藏' })).toBeVisible();
     await page.keyboard.press('Escape');
     await page.keyboard.press('Escape');
-    await page.getByRole('button', { name: '全部应用' }).click();
+    await page.getByRole('button', { name: '收藏库' }).click();
     await page.getByLabel('筛选应用').fill('tx');
-    await expect(page.getByRole('dialog', { name: '全部应用' }).getByRole('link', { name: '腾讯文档' })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: '收藏库' }).getByRole('link', { name: '腾讯文档' })).toBeVisible();
   });
 });
 

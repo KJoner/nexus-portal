@@ -22,11 +22,11 @@ function whereOf(n: number, desktop: number, mobile: number, mobilePage: number,
   if (pc && mob) return { label: n <= desktop && n <= mobile ? '桌面 · 手机' : `桌面${pc} · 手机${mob}`, tone: 'both' };
   if (pc) return { label: '仅桌面', tone: 'one' };
   if (mob) return { label: '仅手机', tone: 'one' };
-  return { label: '仅在全部应用中', tone: 'none' };
+  return { label: '仅在收藏库中', tone: 'none' };
 }
 
 const MODE_SUB: Record<Shortcuts['mode'], string> = {
-  single: '首页只显示第一排，其余固定的网站在「全部应用」中',
+  single: '首页只显示第一排，其余固定的网站在「收藏库」中',
   expand: '其余固定的网站收在面板底部，桌面上鼠标移到首排时临时展开，点击底部箭头固定展开',
   double: '扩展区始终展开显示',
 };
@@ -189,7 +189,7 @@ function Preview({ device }: { device: 'pc' | 'mobile' }) {
           <span className="mx-[3px] mt-1 h-[22px] w-px bg-ink/16" />
           <span className="flex w-9 flex-col items-center gap-[5px]">
             <AppTile target={{ kind: 'all' }} size={30} />
-            {home.labels.desktop && <span className="text-[8.5px] text-ink/70">全部应用</span>}
+            {home.labels.desktop && <span className="text-[8.5px] text-ink/70">收藏库</span>}
           </span>
         </div>
         {rest.length > 0 &&
@@ -398,7 +398,7 @@ export function HomeLayoutPage() {
         </div>
         <span className="text-[12px] leading-[1.6] text-ink/46">
           {device === 'pc'
-            ? `首排：前 ${home.dockSize} 个网站${home.showServices ? ` + ${services.length} 个服务` : ''} + 全部应用${rest.length ? ` · 扩展区 ${rest.length} 个` : ''}`
+            ? `首排：前 ${home.dockSize} 个网站${home.showServices ? ` + ${services.length} 个服务` : ''} + 收藏库${rest.length ? ` · 扩展区 ${rest.length} 个` : ''}`
             : `手机首页：${home.mobileRows} 行 × 4 列${pins.length > mobileCap && home.shortcuts.mode !== 'single' ? `，其余 ${pins.length - mobileCap} 个左右滑动或上拉查看` : '；不足时显示空位，点按可添加'}`}
         </span>
       </aside>

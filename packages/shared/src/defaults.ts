@@ -84,6 +84,37 @@ export function uiPreset(preset: 'daily' | 'minimal', current: UiSettings): UiSe
   };
 }
 
+/** Search engines a new account starts with: public web engines only (no operator integrations). */
+export const PUBLIC_ENGINE_IDS = ['google', 'bing', 'duckduckgo'] as const;
+
+/**
+ * Template for a newly registered account (公开化 · 新用户默认模板). An empty collection — the
+ * first visit offers a skippable pick from 应用目录 instead — and none of the operator's private
+ * services, addresses, health checks or integrations. Nothing is pinned, LiteSync included.
+ * `defaultConfig()` below stays the seed of a self-hosted single-user install (and of the legacy
+ * administrator account), so existing deployments see no change.
+ */
+export function newUserConfig(): Config {
+  const base = defaultConfig();
+  return {
+    apps: [],
+    categories: [
+      { id: 'hosted', label: '我的服务', locked: true },
+      { id: 'common', label: '常用', locked: false },
+      { id: 'work', label: '工作', locked: false },
+      { id: 'life', label: '生活', locked: false },
+      { id: 'none', label: '未分类', locked: true },
+    ],
+    pins: [],
+    engines: DEFAULT_ENGINES.filter((e) => (PUBLIC_ENGINE_IDS as readonly string[]).includes(e.id)).map((e) => ({ ...e })),
+    settings: {
+      ...base.settings,
+      search: { ...base.settings.search, defaultEngine: 'google', linkwarden: false },
+      home: { ...base.settings.home, showServices: false },
+    },
+  };
+}
+
 /** Apps are listed category by category (see `groupByCategory`). */
 export function defaultConfig(): Config {
   const apps: AppEntry[] = [

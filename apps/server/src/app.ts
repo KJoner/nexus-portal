@@ -1,6 +1,6 @@
 import { getConnInfo } from '@hono/node-server/conninfo';
 import { serveStatic } from '@hono/node-server/serve-static';
-import { AppSchema, DEVICE_TOKEN, OpBatchSchema, OpError, PAIR_CODE, validateApp, type ConfigResponse, type DeviceInfo, type WallpaperSourcesResponse } from '@nexus/shared';
+import { AppSchema, DEVICE_TOKEN, OpBatchSchema, OpError, PAIR_CODE, validateApp, type CatalogResponse, type ConfigResponse, type DeviceInfo, type WallpaperSourcesResponse } from '@nexus/shared';
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
@@ -13,10 +13,11 @@ import { z } from 'zod';
 import { PairingError, type Devices, type Pairings } from './auth/devices';
 import type { LoginLimiter } from './auth/rate-limit';
 import type { Auth } from './auth/sessions';
+import { CatalogCursorError, CatalogService } from './catalog/service';
 import type { ConfigRepo } from './config/repo';
 import type { Env } from './env';
 import type { HealthChecker } from './health/checker';
-import { apiError, csrf, headers, isHttps } from './http/security';
+import { apiError, csrf, headers, isHttps, v2Error } from './http/security';
 import { isValidIconKey, type IconProxy, type IconSource } from './icons/proxy';
 import { LinkwardenError, type Linkwarden } from './integrations/linkwarden';
 import { fetchSuggestions } from './integrations/suggest';
@@ -40,6 +41,8 @@ export interface Deps {
   linkwarden: Linkwarden;
   suggestFetch?: typeof fetch;
   sources: WallpaperSources;
+  /** Public 应用目录; built from the bundled catalog and the deployment's LiteSync address when omitted. */
+  catalog?: CatalogService;
 }
 
 /** v0.2 wallpaper sources. Remote imports use their own, stricter network policy (public only). */
@@ -63,7 +66,7 @@ function etagMatches(header: string | undefined, etag: string): boolean {
   return header.split(',').some((t) => t.trim() === '*' || bare(t) === bare(etag));
 }
 
-export function createApp({ env, repo, auth, limiter, devices, pairings, wallpapers, icons, health, iconProxy, linkwarden, suggestFetch, sources }: Deps) {
+export function createApp({ env, repo, auth, limiter, devices, pairings, wallpapers, icons, health, iconProxy, linkwarden, suggestFetch, sources, catalog = new CatalogService({ litesyncUrl: env.litesyncUrl ?? null }) }: Deps) {
   const app = new Hono<{ Variables: { device: DeviceInfo } }>();
 
   const clientKey = (c: Context) => {
@@ -180,6 +183,23 @@ export function createApp({ env, repo, auth, limiter, devices, pairings, wallpap
   app.use('/api/*', csrf(env));
 
   app.get('/api/healthz', (c) => c.json({ ok: true }));
+
+  // ── 应用目录 (v0.4): public templates, the same for every visitor ─────────
+  // Deliberately before the session gate: the catalog holds no private data and the
+  // registration page and new accounts browse it too. Filtering of private templates happens
+  // when the catalog is built (see servedCatalog), not per request.
+  app.get('/api/v2/catalog', (c) => {
+    c.header('Cache-Control', 'public, max-age=300');
+    c.header('ETag', catalog.etag);
+    if (etagMatches(c.req.header('if-none-match'), catalog.etag)) return c.body(null, 304);
+    const limit = c.req.query('limit');
+    try {
+      return c.json(catalog.query({ q: c.req.query('q'), category: c.req.query('category'), cursor: c.req.query('cursor') || undefined, limit: limit ? Number(limit) : undefined }) satisfies CatalogResponse);
+    } catch (e) {
+      if (e instanceof CatalogCursorError) return v2Error(c, 400, 'INVALID_CURSOR', e.message);
+      throw e;
+    }
+  });
 
   // ── Auth ────────────────────────────────────────────────────────────────
   app.get('/api/auth/session', (c) => c.json({ authenticated: auth.validate(getCookie(c, COOKIE)).valid }));

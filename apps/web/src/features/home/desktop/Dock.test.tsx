@@ -129,14 +129,14 @@ describe('Dock extension (v0.2)', () => {
     expect(ext).toHaveAttribute('inert');
   });
 
-  it('without that button the focus goes to 全部应用', async () => {
+  it('without that button the focus goes to 收藏库', async () => {
     const user = userEvent.setup();
     render(<Harness extra={sites(8).slice(5)} bare />);
     const toggle = screen.getByRole('button', { name: '切换' });
     await user.click(toggle);
     within(screen.getByRole('group', { name: '更多快捷方式' })).getAllByRole('link')[0]!.focus();
     fireEvent.click(toggle);
-    expect(screen.getByRole('button', { name: '全部应用' })).toHaveFocus();
+    expect(screen.getByRole('button', { name: '收藏库' })).toHaveFocus();
   });
 
   it('a focus that is elsewhere stays where it is', async () => {

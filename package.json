@@ -14,7 +14,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test:e2e": "npm run build && playwright test"
+    "test:e2e": "npm run build && playwright test",
+    "catalog:check": "npm run catalog:check -w @nexus/server",
+    "catalog:verify": "node scripts/catalog-verify.mjs"
   },
   "engines": {
     "node": ">=22.12"

@@ -321,7 +321,7 @@ export function Dock(props: Props) {
   if (expanded && !opened) setOpened(true);
 
   // Folding must not leave the focus on a link nobody can see, so it moves first: to the button
-  // that brings the links back, or to 全部应用 where there is none. Only then does the extension go
+  // that brings the links back, or to 收藏库 where there is none. Only then does the extension go
   // inert, which keeps it from the keyboard, the mouse and screen readers for the whole animation.
   useLayoutEffect(() => {
     if (!extEl) return;
@@ -396,14 +396,14 @@ export function Dock(props: Props) {
           <button
             ref={allRef}
             type="button"
-            aria-label="全部应用"
+            aria-label="收藏库"
             onClick={props.onOpenDrawer}
             tabIndex={edit ? -1 : undefined}
             className={cn(itemClass, 'flex-none border-0 bg-transparent p-0', !edit && liftClass, edit && 'pointer-events-none opacity-40')}
             style={{ width: cell }}
           >
             <AppTile target={{ kind: 'all' }} size={iconSize} />
-            <Label name="全部应用" labels={labels} onHover={labelsOnHover} cell={cell} />
+            <Label name="收藏库" labels={labels} onHover={labelsOnHover} cell={cell} />
           </button>
         </div>
 
