@@ -101,7 +101,7 @@ export function NewTab() {
     );
   if (phase === 'revoked')
     return (
-      <Panel title="此设备的授权已失效" sub="授权可能已在 Nexus Portal 中被撤销，或访问密码已更改。本地缓存的导航已清除，请重新连接。">
+      <Panel title="此设备的授权已失效" sub="授权已被撤销，请重新连接。可能是在 Nexus Portal 或 LiteSync 中退出了全部设备、账号被停用，或访问密码已更改。本地缓存的导航已清除；还没发送的收藏仍保存在扩展里，重新连接并确认账号后再发送。">
         <ConnectForm initial={server?.origin ?? ''} />
       </Panel>
     );

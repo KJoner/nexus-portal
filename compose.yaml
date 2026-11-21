@@ -47,6 +47,12 @@ services:
       NEXUS_QUOTA_WALLPAPERS: ${NEXUS_QUOTA_WALLPAPERS:-}
       NEXUS_QUOTA_ICONS: ${NEXUS_QUOTA_ICONS:-}
       NEXUS_QUOTA_STORAGE_MB: ${NEXUS_QUOTA_STORAGE_MB:-}
+      # 账号撤销（ADR-019）：与 LiteSync 互发「退出所有产品与设备」的撤销事件（两边同一个密钥），
+      # 以及按账号查询账号中心里的停用 / 删除状态（只读服务账号）。见 infra/identity/README.md。
+      NEXUS_PEER_REVOCATION_URL: ${NEXUS_PEER_REVOCATION_URL:-}
+      NEXUS_PEER_REVOCATION_SECRET: ${NEXUS_PEER_REVOCATION_SECRET:-}
+      NEXUS_IDENTITY_STATUS_CHECK: ${NEXUS_IDENTITY_STATUS_CHECK:-off}
+      NEXUS_IDENTITY_ADMIN_URL: ${NEXUS_IDENTITY_ADMIN_URL:-}
     volumes:
       - nexus-data:/data
     # Everything the app writes lives in /data.

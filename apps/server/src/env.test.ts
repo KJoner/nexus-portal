@@ -30,6 +30,26 @@ describe('readEnv (v0.4)', () => {
     for (const bad of ['0', '-3', '1.5', 'lots']) expect(() => readEnv({ ...base, NEXUS_QUOTA_ICONS: bad })).toThrow(/NEXUS_QUOTA_ICONS/);
   });
 
+  it('ADR-019: cross-product revocation needs both the address and a 32-byte secret, and unified sign-in', () => {
+    const secret = 'a'.repeat(32);
+    expect(readEnv({ ...base, ...oidc }).peerRevocation).toBeNull();
+    expect(readEnv({ ...base, ...oidc, NEXUS_PEER_REVOCATION_URL: 'http://litesync:8080/', NEXUS_PEER_REVOCATION_SECRET: secret }).peerRevocation).toEqual({ url: 'http://litesync:8080', secret });
+    expect(() => readEnv({ ...base, ...oidc, NEXUS_PEER_REVOCATION_URL: 'http://litesync:8080' })).toThrow(/同时设置/);
+    expect(() => readEnv({ ...base, ...oidc, NEXUS_PEER_REVOCATION_SECRET: secret })).toThrow(/同时设置/);
+    expect(() => readEnv({ ...base, ...oidc, NEXUS_PEER_REVOCATION_URL: 'http://litesync:8080', NEXUS_PEER_REVOCATION_SECRET: 'short' })).toThrow(/32 字节/);
+    expect(() => readEnv({ ...base, ...oidc, NEXUS_PEER_REVOCATION_URL: 'litesync:8080', NEXUS_PEER_REVOCATION_SECRET: secret })).toThrow(/http/);
+    expect(() => readEnv({ ...base, NEXUS_PEER_REVOCATION_URL: 'http://litesync:8080', NEXUS_PEER_REVOCATION_SECRET: secret })).toThrow(/NEXUS_OIDC_ISSUER/);
+  });
+
+  it('ADR-019: the central status check derives the admin API from the issuer, may be overridden, and needs OIDC', () => {
+    expect(readEnv({ ...base, ...oidc }).identityStatus).toBeNull();
+    expect(readEnv({ ...base, ...oidc, NEXUS_IDENTITY_STATUS_CHECK: 'on' }).identityStatus).toEqual({ adminUrl: 'https://id.example.org/admin/realms/accounts' });
+    expect(readEnv({ ...base, ...oidc, NEXUS_IDENTITY_STATUS_CHECK: 'on', NEXUS_IDENTITY_ADMIN_URL: 'https://kc.internal.example/admin/realms/accounts/' }).identityStatus).toEqual({ adminUrl: 'https://kc.internal.example/admin/realms/accounts' });
+    expect(() => readEnv({ ...base, ...oidc, NEXUS_OIDC_ISSUER: 'https://id.example.org/oauth', NEXUS_IDENTITY_STATUS_CHECK: 'on' })).toThrow(/NEXUS_IDENTITY_ADMIN_URL/);
+    expect(() => readEnv({ ...base, NEXUS_IDENTITY_STATUS_CHECK: 'on' })).toThrow(/统一身份/);
+    expect(() => readEnv({ ...base, ...oidc, NEXUS_IDENTITY_STATUS_CHECK: 'yes' })).toThrow(/on \/ off/);
+  });
+
   it('rejects unknown modes and malformed connection strings instead of guessing', () => {
     expect(() => readEnv({ ...base, NEXUS_REGISTRATION_MODE: 'everyone' })).toThrow(/REGISTRATION_MODE/);
     expect(() => readEnv({ ...base, NEXUS_LEGACY_PASSWORD_LOGIN: 'maybe' })).toThrow(/LEGACY_PASSWORD_LOGIN/);

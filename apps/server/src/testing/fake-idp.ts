@@ -32,6 +32,20 @@ export interface FakeIdp {
   onSessionsEnded: ((sub: string, sids: string[]) => Promise<void>) | null;
   /** Session ids of the subject's live sessions (one per sign-in). */
   sessionsOf(sub: string): string[];
+  /**
+   * ADR-019 §2.5, modelled on Keycloak 26.8 as measured: the admin API of the realm
+   * (`{adminUrl}/users/{sub}` → `{enabled}`; 404 once deleted), read with the client's service account
+   * (client credentials). `view-users`: the role is granted and mapped; `none`: the token carries no
+   * role (403 — a configuration problem, not a disabled account); `refused`: service accounts off.
+   * Writes with that token are always 403, as for a view-users-only account.
+   */
+  adminUrl: string;
+  serviceAccount: 'view-users' | 'none' | 'refused';
+  adminApi: 'ok' | 'down';
+  /** Every admin API request, as `METHOD path`. */
+  adminRequests: string[];
+  /** The account's state at the identity service (signing in registers it as enabled). */
+  setUser(sub: string, state: 'enabled' | 'disabled' | 'deleted'): void;
   logoutToken(claims: { sub?: string; sid?: string; events?: unknown; nonce?: string }): Promise<string>;
   tokenRequests: URLSearchParams[];
 }
@@ -49,6 +63,9 @@ export async function fakeIdp(opts: { issuer?: string; clientId?: string; client
   /** refresh token → its session; access token → whose (user tokens carry manage-account). */
   const sessionOf = new Map<string, { sub: string; sid: string }>();
   const accessTokens = new Map<string, { sub: string }>();
+  const serviceTokens = new Set<string>();
+  const accounts = new Map<string, 'enabled' | 'disabled' | 'deleted'>();
+  const adminBase = new URL(issuer.replace('/realms/', '/admin/realms/')).pathname;
   const userAccess = (sub: string) => {
     const at = randomBytes(12).toString('hex');
     accessTokens.set(at, { sub });
@@ -80,6 +97,7 @@ export async function fakeIdp(opts: { issuer?: string; clientId?: string; client
       if (p.get('client_id') !== clientId || p.get('response_type') !== 'code' || p.get('code_challenge_method') !== 'S256') throw new Error('bad authorization request');
       const code = randomBytes(16).toString('hex');
       codes.set(code, { nonce: p.get('nonce') ?? '', challenge: p.get('code_challenge') ?? '', redirectUri: p.get('redirect_uri') ?? '', user });
+      if (!accounts.has(user.sub)) accounts.set(user.sub, 'enabled');
       return code;
     },
     revokeRefresh(sub) {
@@ -87,6 +105,13 @@ export async function fakeIdp(opts: { issuer?: string; clientId?: string; client
     },
     accountApi: 'ok',
     accountLogouts: [],
+    adminUrl: issuer.replace('/realms/', '/admin/realms/'),
+    serviceAccount: 'view-users',
+    adminApi: 'ok',
+    adminRequests: [],
+    setUser(sub, state) {
+      accounts.set(sub, state);
+    },
     onSessionsEnded: null,
     sessionsOf(sub) {
       return [...new Set([...sessionOf.entries()].filter(([rt, v]) => v.sub === sub && refresh.has(rt)).map(([, v]) => v.sid))];
@@ -118,6 +143,19 @@ export async function fakeIdp(opts: { issuer?: string; clientId?: string; client
         });
       }
       if (path === `${base}/protocol/openid-connect/certs`) return Response.json({ keys: [jwk] });
+      if (path.startsWith(`${adminBase}/`)) {
+        const method = (input instanceof Request ? input.method : init?.method) ?? 'GET';
+        const headers = new Headers(input instanceof Request ? input.headers : init?.headers);
+        idp.adminRequests.push(`${method} ${path}`);
+        if (idp.adminApi === 'down') return new Response('unavailable', { status: 503 });
+        const bearer = /^Bearer (.+)$/.exec(headers.get('authorization') ?? '')?.[1] ?? '';
+        if (!serviceTokens.has(bearer)) return Response.json({ error: 'HTTP 401 Unauthorized' }, { status: accessTokens.has(bearer) ? 403 : 401 });
+        if (idp.serviceAccount !== 'view-users' || method !== 'GET') return Response.json({ error: 'HTTP 403 Forbidden' }, { status: 403 });
+        const m = new RegExp(`^${adminBase}/users/([^/]+)$`).exec(path);
+        const state = m ? accounts.get(decodeURIComponent(m[1]!)) : undefined;
+        if (!m || !state || state === 'deleted') return Response.json({ error: 'User not found' }, { status: 404 });
+        return Response.json({ id: decodeURIComponent(m[1]!), username: `${m[1]}@example.test`, enabled: state === 'enabled' });
+      }
       if (path === `${base}/account/sessions`) {
         const method = (input instanceof Request ? input.method : init?.method) ?? 'GET';
         const headers = new Headers(input instanceof Request ? input.headers : init?.headers);
@@ -142,9 +180,15 @@ export async function fakeIdp(opts: { issuer?: string; clientId?: string; client
         const [id, secret] = basic ? Buffer.from(basic, 'base64').toString('utf8').split(':').map((v) => decodeURIComponent(v.replace(/\+/g, ' '))) : [];
         if (id !== clientId || secret !== clientSecret) return Response.json({ error: 'invalid_client' }, { status: 401 });
         const now = Math.floor(Date.now() / 1000);
+        if (form.get('grant_type') === 'client_credentials') {
+          if (idp.serviceAccount === 'refused') return Response.json({ error: 'unauthorized_client', error_description: 'Client not enabled to retrieve service account' }, { status: 400 });
+          const at = randomBytes(12).toString('hex');
+          serviceTokens.add(at);
+          return Response.json({ access_token: at, token_type: 'Bearer', expires_in: 300 });
+        }
         if (form.get('grant_type') === 'refresh_token') {
           const sub = refresh.get(form.get('refresh_token') ?? '');
-          if (!sub || revoked.has(sub)) return Response.json({ error: 'invalid_grant', error_description: 'Session not active' }, { status: 400 });
+          if (!sub || revoked.has(sub) || accounts.get(sub) !== 'enabled') return Response.json({ error: 'invalid_grant', error_description: 'Session not active' }, { status: 400 });
           return Response.json({ access_token: userAccess(sub), token_type: 'Bearer', expires_in: 300 });
         }
         const grant = codes.get(form.get('code') ?? '');

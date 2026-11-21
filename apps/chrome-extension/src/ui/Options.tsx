@@ -17,7 +17,7 @@ const SYNC_MESSAGE: Record<SyncOutcome, { msg: string; tone: 'ok' | 'info' | 'wa
   skipped: { msg: '已是最新', tone: 'info' },
   busy: { msg: '另一个标签页正在同步', tone: 'info' },
   failed: { msg: '同步失败，继续使用本地缓存', tone: 'warn' },
-  revoked: { msg: '此设备的授权已失效，请重新连接', tone: 'error' },
+  revoked: { msg: '授权已被撤销，请重新连接（还没发送的收藏仍保存在扩展里）', tone: 'error' },
 };
 
 const mb = (n: number) => (n < 1024 * 1024 ? `${n ? Math.max(1, Math.round(n / 1024)) : 0} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
@@ -184,7 +184,7 @@ export function Options() {
         ) : (
           <Group title={server?.revoked ? '重新连接' : '连接 Nexus Portal'}>
             {server?.revoked && (
-              <Row label={<span className="flex items-center gap-2.5"><ShieldAlert className="size-[18px] text-warn" />此设备的授权已失效</span>} sub="授权可能已在 Nexus Portal 中被撤销，或访问密码已更改；本地缓存的导航已清除。" />
+              <Row label={<span className="flex items-center gap-2.5"><ShieldAlert className="size-[18px] text-warn" />此设备的授权已失效</span>} sub="授权已被撤销，请重新连接：可能是在 Nexus Portal 或 LiteSync 中退出了全部设备、账号被停用，或访问密码已更改；本地缓存的导航已清除，还没发送的收藏仍保存在扩展里。" />
             )}
             <div className="px-[22px] py-5">
               <ConnectForm initial={server?.origin ?? ''} onDone={(r) => toast(r === 'updated' ? { msg: '已连接并完成同步，打开新标签页即可使用', tone: 'ok' } : SYNC_MESSAGE[r])} />

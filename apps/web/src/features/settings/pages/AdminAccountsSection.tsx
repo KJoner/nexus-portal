@@ -1,4 +1,4 @@
-import type { AdminUser, AuthOptions, InviteResponse } from '@nexus/shared';
+import type { AdminRevocationStatus, AdminUser, AuthOptions, InviteResponse } from '@nexus/shared';
 import { Copy, TicketPlus } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from '../../../components/toast-store';
@@ -24,12 +24,14 @@ export function AdminAccountsSection() {
   const [invite, setInvite] = useState<InviteResponse | null>(null);
   const [disabling, setDisabling] = useState<AdminUser | null>(null);
   const [busy, setBusy] = useState(false);
+  const [revocation, setRevocation] = useState<AdminRevocationStatus | null>(null);
   const admin = me?.role === 'admin';
 
   useEffect(() => {
     if (!admin) return;
     authOptions().then(setOptions, () => setOptions(null));
     adminApi.users().then(setUsers, () => setUsers([]));
+    adminApi.revocationStatus().then(setRevocation, () => setRevocation(null));
   }, [admin]);
 
   if (!admin || !options?.oidc) return null;
@@ -72,6 +74,7 @@ export function AdminAccountsSection() {
     <>
       <Group title="账号与邀请">
         <Row label="注册方式" sub={MODE[options.registration]} />
+        {revocation && <RevocationConfig status={revocation} />}
         {options.registration === 'invite' && (
           <Row label="邀请码" sub="一次性，7 天内有效；只在生成时显示一次，服务端只保存它的哈希">
             <Button disabled={busy} onClick={() => void newInvite()}>
@@ -149,6 +152,54 @@ export function AdminAccountsSection() {
               停用
             </Button>
           </>
+        }
+      />
+    </>
+  );
+}
+
+/** Why a delivery to the other product failed, for the administrator (ADR-019 §6). */
+const DELIVERY: Record<string, string> = {
+  signature_rejected: '对方拒绝了签名：两边的撤销密钥不一致，请核对 NEXUS_PEER_REVOCATION_SECRET 与 LiteSync 的 OBSYNC_PEER_REVOCATION_SECRET',
+  rejected: '对方拒绝了事件（版本或格式不符，或对方还没有这个接口）',
+  expired: '7 天内一直没有送达',
+  network: '连不上对方（地址或网络）',
+  timeout: '对方没有及时回答',
+  server_error: '对方的服务端出错',
+  rate_limited: '对方限流',
+};
+const CHECK: Record<string, string> = {
+  forbidden: '服务账号没有权限：realm 里需要给 nexus-web 的服务账号授予 realm-management 的 view-users，并加进它的作用域映射（./configure.sh revocation）',
+  token: '拿不到服务账号令牌：nexus-web 没有开启服务账号（./configure.sh revocation）',
+  unauthorized: '服务账号令牌被拒绝',
+  network: '连不上身份服务',
+  timeout: '身份服务没有及时回答',
+  server_error: '身份服务出错',
+  bad_response: '身份服务的回答无法识别（管理接口地址可能不对：NEXUS_IDENTITY_ADMIN_URL）',
+};
+
+/**
+ * ADR-019：跨产品撤销与中心停用检查的配置状态。没有配置时如实写出后果——开放公众注册前必须配置。
+ */
+function RevocationConfig({ status }: { status: AdminRevocationStatus }) {
+  const p = status.peer;
+  const c = status.centralCheck;
+  return (
+    <>
+      <Row
+        label={<span className={p.configured && !p.failed ? '' : 'text-warn'}>跨产品撤销{p.configured ? '：已配置' : '：未配置'}</span>}
+        sub={
+          p.configured
+            ? `用户在 Nexus 选择「退出所有产品与设备」时通知 LiteSync，LiteSync 发来的撤销也会执行。最近 7 天：等待送达 ${p.pending} 条，失败 ${p.failed} 条${p.lastError ? `；最近的问题：${DELIVERY[p.lastError] ?? p.lastError}` : ''}`
+            : '「退出所有产品与设备」只能退出 Nexus 和账号中心，不会通知 LiteSync；LiteSync 发来的撤销也会被拒绝。配置 NEXUS_PEER_REVOCATION_URL 与 NEXUS_PEER_REVOCATION_SECRET（与 LiteSync 相同的 32 字节以上随机值）'
+        }
+      />
+      <Row
+        label={<span className={c.configured && !c.lastError ? '' : 'text-warn'}>中心停用检查{c.configured ? '：已开启' : '：未开启'}</span>}
+        sub={
+          c.configured
+            ? `在账号中心停用或删除的账号，Nexus 的登录与扩展最迟 60 秒内失效。${c.lastError ? `最近一次检查失败：${CHECK[c.lastError] ?? c.lastError}（身份服务不可用超过 15 分钟时，扩展请求会暂停并保留待发内容）` : '最近的检查正常'}`
+            : '在账号中心停用或删除账号后，Nexus 的网页登录最迟 5 分钟内经复核结束，但已连接的扩展仍然有效，需要在这里停用账号才会撤销。开放公众注册前必须开启：NEXUS_IDENTITY_STATUS_CHECK=on'
         }
       />
     </>

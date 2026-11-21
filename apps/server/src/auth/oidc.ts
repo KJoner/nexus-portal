@@ -143,6 +143,26 @@ export class Oidc {
     return { ok: false, reason: 'unavailable' };
   }
 
+  /**
+   * ADR-019 §2.5: an access token of this client's own service account (client credentials). The
+   * realm grants it realm-management `view-users` only: it can read whether an account is enabled,
+   * and change nothing. Throws OidcError('unavailable') when the provider refuses or is down.
+   */
+  async serviceToken(): Promise<{ accessToken: string; expiresAt: number }> {
+    const config = await this.cfg();
+    try {
+      const t = await client.clientCredentialsGrant(config);
+      return { accessToken: t.access_token, expiresAt: Date.now() + Math.max(10, t.expires_in ?? 60) * 1000 };
+    } catch (e) {
+      throw new OidcError('unavailable', e instanceof client.ResponseBodyError ? `服务账号被拒绝：${e.error}` : '无法取得服务账号令牌');
+    }
+  }
+
+  /** The fetch this client uses (tests inject the fake provider's). */
+  get fetchImpl(): typeof fetch {
+    return this.settings.fetch ?? fetch;
+  }
+
   async endSessionUrl(idTokenHint: string | null): Promise<URL | null> {
     try {
       const config = await this.cfg();

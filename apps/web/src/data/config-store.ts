@@ -551,8 +551,14 @@ export const useAccount = () => useConfigStore((s) => s.account);
  */
 export const useIsAdmin = () => useConfigStore((s) => (s.account ? s.account.role === 'admin' : cachedRole !== 'user'));
 export const authOptions = () => transport.authOptions();
+/** ADR-019: cross-product revocation events of this account, and resending one. */
+export const revocationApi = {
+  status: () => transport.revocationStatus(),
+  retry: (eventId: string) => transport.retryRevocation(eventId),
+};
 /** v0.4 administration (administrators only). */
 export const adminApi = {
+  revocationStatus: () => transport.adminRevocationStatus(),
   users: () => transport.adminUsers(),
   setDisabled: (id: string, disabled: boolean) => transport.setUserDisabled(id, disabled),
   invite: (ttlDays: number) => transport.createInvite(ttlDays),

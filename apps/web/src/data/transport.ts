@@ -17,6 +17,9 @@ import {
   type LogoutAllResponse,
   type MeResponse,
   type RevokeEverywhereResponse,
+  type RevocationStatusResponse,
+  type RevocationEventInfo,
+  type AdminRevocationStatus,
   type OpBatch,
   type PairingRequest,
   type ServiceStatus,
@@ -94,6 +97,12 @@ export interface Transport {
   logoutAll(): Promise<LogoutAllResponse>;
   /** ADR-019 动作 C · 退出所有产品与设备: what happened to each part. */
   revokeEverywhere(): Promise<RevokeEverywhereResponse>;
+  /** ADR-019: this account's cross-product revocation events, and what the deployment has configured. */
+  revocationStatus(): Promise<RevocationStatusResponse>;
+  /** Resend a pending or failed event now. */
+  retryRevocation(eventId: string): Promise<RevocationEventInfo>;
+  /** Administrators: cross-product revocation and the central status check. */
+  adminRevocationStatus(): Promise<AdminRevocationStatus>;
   /** v0.4 administration (administrators only; the server answers 403 otherwise). */
   adminUsers(): Promise<AdminUser[]>;
   setUserDisabled(id: string, disabled: boolean): Promise<void>;
@@ -200,6 +209,9 @@ export const httpTransport: Transport = {
   logoutAll: () => request('/api/v2/account/logout-all', { method: 'POST' }),
   // The identity service and the other product are asked too: allow time for both.
   revokeEverywhere: () => request('/api/v2/account/revoke-everywhere', { method: 'POST' }, 30_000),
+  revocationStatus: () => request('/api/v2/account/revocations'),
+  retryRevocation: (eventId) => request(`/api/v2/account/revocations/${encodeURIComponent(eventId)}/retry`, { method: 'POST' }, 15_000),
+  adminRevocationStatus: () => request('/api/v2/admin/revocation-status'),
   items: {
     snapshot: (page) => request(`/api/v2/snapshot${page ? `?page=${encodeURIComponent(page)}` : ''}`, {}, 20_000),
     changes: (cursor) => request(`/api/v2/changes?cursor=${encodeURIComponent(cursor)}`),
@@ -390,6 +402,26 @@ export class MemoryTransport implements Transport {
     this.revokedEverywhere++;
     this.authenticated = false;
     return this.everywhere;
+  }
+  revocations: RevocationStatusResponse = { peer: { product: 'litesync', configured: true }, identityCenter: { configured: true, accountUrl: null }, centralCheck: { configured: true }, events: [] };
+  retried: string[] = [];
+  async revocationStatus(): Promise<RevocationStatusResponse> {
+    this.guard();
+    return this.revocations;
+  }
+  async retryRevocation(eventId: string): Promise<RevocationEventInfo> {
+    this.guard();
+    this.retried.push(eventId);
+    const e = this.revocations.events.find((x) => x.eventId === eventId);
+    if (!e) throw new HttpError(404, 'NOT_FOUND', '没有可以重新发送的撤销事件');
+    const done = { ...e, state: 'delivered' as const, result: 'applied', error: null, nextAttemptAt: null, deliveredAt: new Date().toISOString() };
+    this.revocations = { ...this.revocations, events: this.revocations.events.map((x) => (x.eventId === eventId ? done : x)) };
+    return done;
+  }
+  adminStatus: AdminRevocationStatus = { oidc: true, peer: { configured: true, product: 'litesync', pending: 0, failed: 0, lastError: null, lastDeliveredAt: null }, centralCheck: { configured: true, lastError: null, lastErrorAt: null, lastSuccessAt: null } };
+  async adminRevocationStatus(): Promise<AdminRevocationStatus> {
+    this.guard();
+    return this.adminStatus;
   }
   items: ItemsTransport = new Proxy({} as ItemsTransport, { get: () => async () => { throw new HttpError(501, 'not_in_tests', '收藏库接口在单元测试中不可用'); } });
   users: AdminUser[] = [];

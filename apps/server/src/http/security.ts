@@ -78,6 +78,11 @@ export const headers = () =>
  * token), so a forged cross-site request has nothing to ride on.
  */
 const DEVICE_API = /^\/api\/(pair|sync)\//;
+/**
+ * Server-to-server (ADR-019 §2.4, the other product's revocation events): authenticated by an
+ * HMAC signature over the raw body, never by a cookie — nothing for a cross-site request to ride on.
+ */
+const INTERNAL_API = /^\/api\/internal\//;
 
 /**
  * CSRF guard for API writes: a custom header (cannot be set cross-site without a CORS preflight,
@@ -86,7 +91,7 @@ const DEVICE_API = /^\/api\/(pair|sync)\//;
  */
 export function csrf(env: Env): MiddlewareHandler {
   return async (c, next) => {
-    if (c.req.method === 'GET' || c.req.method === 'HEAD') return next();
+    if (c.req.method === 'GET' || c.req.method === 'HEAD' || INTERNAL_API.test(c.req.path)) return next();
     if (c.req.header(CLIENT_HEADER) !== '1') return apiError(c, 403, 'csrf', '请求缺少 Nexus 客户端标识');
     const origin = c.req.header('origin');
     // A paired device authenticates with its bearer token, never with cookies: cross-site forgery

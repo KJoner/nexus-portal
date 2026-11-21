@@ -308,6 +308,7 @@ docker compose up -d
 2. 已有数据先迁到 PostgreSQL（[`docs/deploy.md`](docs/deploy.md#8-迁移到-postgresql公开部署)：演练 → 正式 → 核对报告；SQLite 文件不会被改动，可随时回退）。
 3. 设置 `NEXUS_PUBLIC_URL`、`NEXUS_OIDC_*`、`NEXUS_DATABASE_URL`，注册方式先用 `invite`。
 4. 管理员用访问密码登录，在「设置 › 数据、同步与安全」点「绑定统一账号」（旧管理员认领）；之后用统一账号登录，口令登录自动关闭。邀请码、停用账号也在这一页。
+5. 开放注册之前，配置跨产品撤销（`NEXUS_PEER_REVOCATION_*`）与中心停用检查（`NEXUS_IDENTITY_STATUS_CHECK=on`），管理员页面会显示它们是否生效。退出分三种：「退出此设备」「退出 Nexus 的全部设备」「退出所有产品与设备」，范围见 [`infra/identity/README.md`](infra/identity/README.md#会话与退出)。
 
 账号之间完全隔离：收藏、图标、壁纸、设备、事件流和本机缓存都按账号分开。服务状态、健康检查和 Linkwarden 只属于管理员；公开部署默认不让服务器访问内网地址。浏览器扩展按连接时批准的范围（默认只读）访问，旧扩展的权限不会被自动扩大。
 
@@ -335,6 +336,8 @@ docker compose up -d
 | `NEXUS_LEGACY_PASSWORD_LOGIN` | `auto`（默认：管理员绑定统一账号后关闭访问密码登录）/ `on` / `off`；未配置统一身份时始终可用 |
 | `NEXUS_QUOTA_ITEMS` / `NEXUS_QUOTA_WALLPAPERS` / `NEXUS_QUOTA_ICONS` / `NEXUS_QUOTA_STORAGE_MB` | v0.4：管理员以外每个账号的上限，默认 5000 条收藏、50 张壁纸、200 个图标、200 MB。超出返回 `QUOTA_EXCEEDED`（不重试）；请求过快返回 `429 RATE_LIMITED` + `Retry-After`。配置本身的上限固定：500 个应用、50 个分类、30 个搜索引擎、36 个固定 |
 | `NEXUS_MAIL_PROVIDER` | 产品通知邮件：`log`（默认，只写日志）/ `smtp`（`NEXUS_SMTP_URL`）/ `resend`（`NEXUS_RESEND_API_KEY`）；发件人 `NEXUS_MAIL_FROM`，回复地址 `NEXUS_MAIL_REPLY_TO` |
+| `NEXUS_PEER_REVOCATION_URL` / `NEXUS_PEER_REVOCATION_SECRET` | 可选（ADR-019 跨产品撤销）：LiteSync 的内部地址（如 `http://litesync:8080`）与两边相同的签名密钥（至少 32 字节，`openssl rand -hex 32`）。用户在任一产品选择「退出所有产品与设备」时，另一个产品随之撤销它的网页登录、设备与待领取授权；事件经 HMAC 签名，送不到时在后台重试 7 天，状态在账户页可见、可重新发送。两个变量要同时设置；未配置时启动日志与账户页都会说明 LiteSync 不会收到通知 |
+| `NEXUS_IDENTITY_STATUS_CHECK` / `NEXUS_IDENTITY_ADMIN_URL` | 可选（ADR-019 中心停用检查）：`on` 时用 `nexus-web` 自己的只读服务账号（realm-management 的 `view-users`）每个账号最多每 60 秒确认一次它在账号中心是否仍启用；停用或删除后 Nexus 的登录与扩展最迟 60 秒内失效。账号中心不可达时宽限 15 分钟，之后扩展请求返回 `503 IDENTITY_UNAVAILABLE`（扩展保留待发内容）。管理接口地址默认由 `NEXUS_OIDC_ISSUER` 推导，需要时用后者覆盖。**开放公众注册前必须开启**；realm 需要先按 `infra/identity` 更新（`./configure.sh revocation`） |
 
 Compose 额外读取 `NEXUS_VERSION`（镜像标签）、`NEXUS_IMAGE`、`NEXUS_BIND`、`NEXUS_PORT`；`NEXUS_PUBLIC_URL` 同时传给 `NEXUS_ALLOWED_ORIGINS`。说明见 [`.env.example`](.env.example)。
 

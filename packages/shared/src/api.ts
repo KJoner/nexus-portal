@@ -182,6 +182,39 @@ export interface RevokeEverywhereResponse {
   peers: PeerRevocationState[];
 }
 
+/** One cross-product revocation event of the account (only times, products, states, error categories). */
+export interface RevocationEventInfo {
+  eventId: string;
+  /** outgoing: this account ran 退出所有产品与设备 here; incoming: it was run in the other product. */
+  direction: 'outgoing' | 'incoming';
+  product: string;
+  reason: string;
+  state: 'pending' | 'delivered' | 'failed' | 'applied' | 'unknown-identity';
+  attempts: number | null;
+  nextAttemptAt: string | null;
+  error: string | null;
+  result: string | null;
+  createdAt: string;
+  deliveredAt: string | null;
+}
+
+/** GET /api/v2/account/revocations (ADR-019 §2.3). */
+export interface RevocationStatusResponse {
+  /** Whether 退出所有产品与设备 can reach the other product at all on this deployment. */
+  peer: { product: string; configured: boolean };
+  identityCenter: { configured: boolean; accountUrl: string | null };
+  /** 中心停用检查 (an account stopped in the identity service loses its devices within 60 s). */
+  centralCheck: { configured: boolean };
+  events: RevocationEventInfo[];
+}
+
+/** GET /api/v2/admin/revocation-status (administrators). */
+export interface AdminRevocationStatus {
+  oidc: boolean;
+  peer: { configured: boolean; product: string | null; pending: number; failed: number; lastError: string | null; lastDeliveredAt: string | null };
+  centralCheck: { configured: boolean; lastError: string | null; lastErrorAt: string | null; lastSuccessAt: string | null };
+}
+
 export interface LinkwardenStatus {
   configured: boolean;
   baseUrl: string;

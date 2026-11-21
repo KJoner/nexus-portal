@@ -52,6 +52,18 @@ export interface Env {
   mail?: { provider: 'log' | 'smtp' | 'resend'; from: string; replyTo: string | null; smtpUrl: string | null; resendKey: string | null } | null;
   /** TN-07: limits of every account except the administrator (`NEXUS_QUOTA_*`). */
   quotas?: AccountQuotas;
+  /**
+   * ADR-019 §2.4 跨产品撤销: the other product's internal address and the shared signing secret
+   * (`NEXUS_PEER_REVOCATION_URL` / `NEXUS_PEER_REVOCATION_SECRET`, both or neither). Null: 退出所有产品与设备
+   * cannot reach LiteSync, and events from it are refused — said at start and in the account page.
+   */
+  peerRevocation?: { url: string; secret: string } | null;
+  /**
+   * ADR-019 §2.5 中心停用检查 (`NEXUS_IDENTITY_STATUS_CHECK=on`): the identity service's admin API for
+   * this realm, read with the client's own read-only service account (realm-management view-users).
+   * Derived from the issuer (`…/realms/<r>` → `…/admin/realms/<r>`) unless NEXUS_IDENTITY_ADMIN_URL.
+   */
+  identityStatus?: { adminUrl: string } | null;
 }
 
 export class EnvError extends Error {}
@@ -119,6 +131,28 @@ export function readEnv(source: NodeJS.ProcessEnv = process.env): Env {
     storageBytes: positiveInt(source, 'NEXUS_QUOTA_STORAGE_MB', DEFAULT_QUOTAS.storageBytes / 1048576) * 1048576,
   };
 
+  const peerUrl = source.NEXUS_PEER_REVOCATION_URL?.trim().replace(/\/+$/, '') || null;
+  const peerSecret = source.NEXUS_PEER_REVOCATION_SECRET?.trim() || null;
+  let peerRevocation: Env['peerRevocation'] = null;
+  if (peerUrl || peerSecret) {
+    if (!peerUrl || !peerSecret) throw new EnvError('NEXUS_PEER_REVOCATION_URL 与 NEXUS_PEER_REVOCATION_SECRET 必须同时设置（或都不设置）');
+    if (!/^https?:\/\/[^\s/?#]+/i.test(peerUrl)) throw new EnvError('NEXUS_PEER_REVOCATION_URL 必须是 http:// 或 https:// 开头的地址，例如 http://litesync:8080');
+    if (Buffer.byteLength(peerSecret, 'utf8') < 32) throw new EnvError('NEXUS_PEER_REVOCATION_SECRET 至少需要 32 字节（openssl rand -hex 32），并与 LiteSync 的 OBSYNC_PEER_REVOCATION_SECRET 相同');
+    if (!oidc) throw new EnvError('跨产品撤销按统一身份（issuer + subject）找账号：先配置 NEXUS_OIDC_ISSUER');
+    peerRevocation = { url: peerUrl, secret: peerSecret };
+  }
+  const statusCheck = (source.NEXUS_IDENTITY_STATUS_CHECK?.trim() || 'off').toLowerCase();
+  if (!['on', 'off'].includes(statusCheck)) throw new EnvError('NEXUS_IDENTITY_STATUS_CHECK 只能是 on / off');
+  let identityStatus: Env['identityStatus'] = null;
+  if (statusCheck === 'on') {
+    if (!oidc) throw new EnvError('NEXUS_IDENTITY_STATUS_CHECK=on 需要先配置统一身份（NEXUS_OIDC_ISSUER 等）');
+    const derived = /^(https?:\/\/[^?#]+?)\/realms\/([^/?#]+)\/?$/i.exec(oidc.issuer);
+    const adminUrl = source.NEXUS_IDENTITY_ADMIN_URL?.trim().replace(/\/+$/, '') || (derived ? `${derived[1]}/admin/realms/${derived[2]}` : null);
+    if (!adminUrl) throw new EnvError('无法从 NEXUS_OIDC_ISSUER 推导身份服务的管理接口地址：请设置 NEXUS_IDENTITY_ADMIN_URL（例如 https://accounts.example.com/admin/realms/accounts）');
+    if (!/^https?:\/\/[^\s/?#]+/i.test(adminUrl) || (production && !httpsUrl(adminUrl))) throw new EnvError('NEXUS_IDENTITY_ADMIN_URL 必须是完整地址（生产环境必须 https）');
+    identityStatus = { adminUrl };
+  }
+
   const dist = source.NEXUS_WEB_DIST ?? resolve(import.meta.dirname, '../../web/dist');
   const cookie = source.NEXUS_COOKIE_SECURE ?? 'auto';
   if (!['auto', 'always', 'never'].includes(cookie)) throw new EnvError('NEXUS_COOKIE_SECURE 只能是 auto / always / never');
@@ -152,5 +186,7 @@ export function readEnv(source: NodeJS.ProcessEnv = process.env): Env {
     legacyPasswordLogin: legacy,
     mail,
     quotas,
+    peerRevocation,
+    identityStatus,
   };
 }

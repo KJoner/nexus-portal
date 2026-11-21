@@ -8,6 +8,7 @@ import { refresh, resetSync, useConfigStore } from '../../../data/config-store';
 import { MemoryTransport } from '../../../data/transport';
 import { LoginPage } from '../../auth/LoginPage';
 import { AccountSection } from './AccountSection';
+import { AdminAccountsSection } from './AdminAccountsSection';
 import { AppEditor } from './AppEditor';
 import { DevicesSection } from './DevicesSection';
 import { SearchPage } from './SearchPage';
@@ -158,6 +159,49 @@ describe('账号与登录', () => {
     expect(within(result).getByRole('link', { name: /账号中心/ })).toHaveAttribute('href', 'https://id.example.org/realms/accounts/account');
     await userEvent.setup().click(screen.getByRole('button', { name: '知道了' }));
     expect(screen.queryByRole('region', { name: '退出所有产品与设备的结果' })).toBeNull();
+  });
+
+  it('shows the real state of earlier cross-product revocations, and resends one that did not arrive', async () => {
+    server.options = { oidc: true, legacyPassword: false, registration: 'open', accountUrl: 'https://id.example.org/realms/accounts/account' };
+    const at = new Date(Date.now() - 60_000).toISOString();
+    server.revocations = {
+      peer: { product: 'litesync', configured: true },
+      identityCenter: { configured: true, accountUrl: null },
+      centralCheck: { configured: true },
+      events: [
+        { eventId: 'a'.repeat(32), direction: 'outgoing', product: 'litesync', reason: 'user-request', state: 'failed', attempts: 9, nextAttemptAt: null, error: 'signature_rejected', result: null, createdAt: at, deliveredAt: null },
+        { eventId: 'b'.repeat(32), direction: 'incoming', product: 'litesync', reason: 'user-request', state: 'applied', attempts: null, nextAttemptAt: null, error: null, result: 'applied', createdAt: at, deliveredAt: null },
+      ],
+    };
+    await signInAs('user');
+    const user = open(<AccountSection />);
+    expect(await screen.findByText(/LiteSync：没有送达（对方拒绝了签名/)).toBeInTheDocument();
+    expect(screen.getByText('在 LiteSync 中执行的「退出所有产品与设备」')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '重新发送' }));
+    await waitFor(() => expect(server.retried).toEqual(['a'.repeat(32)]));
+    expect(await screen.findByText(/LiteSync：已送达/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '重新发送' })).toBeNull();
+  });
+
+  it('says so when this deployment cannot reach LiteSync at all', async () => {
+    server.options = { oidc: true, legacyPassword: false, registration: 'open', accountUrl: null };
+    server.revocations = { ...server.revocations, peer: { product: 'litesync', configured: false } };
+    await signInAs('user');
+    const user = open(<AccountSection />);
+    expect(await screen.findByText(/本部署没有配置跨产品撤销：LiteSync 不会收到通知/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /退出所有产品/ }));
+    expect(await screen.findByRole('dialog', { name: '退出所有产品与设备？' })).toHaveTextContent('第 3 步不会发生');
+  });
+
+  it('the administrator sees whether cross-product revocation and the central check are configured, and what is wrong', async () => {
+    server.options = { oidc: true, legacyPassword: true, registration: 'invite', accountUrl: null };
+    server.adminStatus = { oidc: true, peer: { configured: true, product: 'litesync', pending: 1, failed: 2, lastError: 'signature_rejected', lastDeliveredAt: null }, centralCheck: { configured: false, lastError: null, lastErrorAt: null, lastSuccessAt: null } };
+    await signInAs('admin', 'password');
+    open(<AdminAccountsSection />);
+    expect(await screen.findByText('跨产品撤销：已配置')).toBeInTheDocument();
+    expect(screen.getByText(/失败 2 条；最近的问题：对方拒绝了签名：两边的撤销密钥不一致/)).toBeInTheDocument();
+    expect(screen.getByText('中心停用检查：未开启')).toBeInTheDocument();
+    expect(screen.getByText(/开放公众注册前必须开启：NEXUS_IDENTITY_STATUS_CHECK=on/)).toBeInTheDocument();
   });
 
   it('only a unified account is offered 退出所有产品与设备', async () => {

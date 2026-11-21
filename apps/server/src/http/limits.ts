@@ -5,7 +5,7 @@
  * requests), so one account hammering the server — or waiting on slow upstreams — never costs
  * another account its share: B's normal requests are not slowed by A.
  */
-export type LimitKind = 'read' | 'write' | 'upload' | 'fetch' | 'suggest' | 'public' | 'auth';
+export type LimitKind = 'read' | 'write' | 'upload' | 'fetch' | 'suggest' | 'public' | 'auth' | 'internal';
 
 export interface BucketSpec {
   /** Tokens refilled per second. */
@@ -28,6 +28,9 @@ export const DEFAULT_LIMITS: Record<LimitKind, BucketSpec> = {
   public: { rate: 5, burst: 120 },
   // Starting a sign-in creates a stored login attempt: per client address.
   auth: { rate: 1 / 3, burst: 20 },
+  // The other product's revocation events (ADR-019 §2.4), per client address and before the
+  // signature is even checked: a backlog after an outage fits, a flood does not.
+  internal: { rate: 1, burst: 60 },
 };
 
 interface Bucket {

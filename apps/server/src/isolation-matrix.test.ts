@@ -28,6 +28,7 @@ const PUBLIC: Record<string, string> = {
   'GET /auth/link/start': '认领：内部检查旧口令会话',
   'GET /auth/callback': '身份服务回调：state + 浏览器意图 Cookie 即认证',
   'POST /auth/backchannel-logout': '身份服务的登出通知：签名令牌即认证',
+  'POST /api/internal/v1/account-revocations': '另一个产品的撤销事件（服务端之间）：HMAC 签名即认证，只能撤销、不能授予（ADR-019 §2.4）',
 };
 /** Device-token routes: covered separately below (their own authentication). */
 const DEVICE_PREFIX = '/api/sync/';

@@ -7,7 +7,8 @@ import { createApp, type Deps } from '../app';
 import { Devices, Pairings } from '../auth/devices';
 import { LoginIntents } from '../auth/intents';
 import { Oidc } from '../auth/oidc';
-import { Revocations } from '../auth/revocation';
+import { IdentityStatus } from '../auth/identity-status';
+import { Revocations, type PeerConfig } from '../auth/revocation';
 import { LoginLimiter } from '../auth/rate-limit';
 import { Auth } from '../auth/sessions';
 import { ConfigRepo } from '../config/repo';
@@ -62,6 +63,12 @@ export async function buildTestApp(
     /** TN-07: request allowances (default: the production defaults). */
     limits?: Partial<Record<LimitKind, BucketSpec>>;
     importFetch?: Deps['sources']['importFetch'];
+    /** ADR-019 §2.4: the other product (its address, the shared secret) and how to reach it. */
+    peer?: PeerConfig | null;
+    peerFetch?: typeof fetch;
+    /** ADR-019 §2.5: the central status check against the fake provider's admin API. */
+    centralCheck?: boolean;
+    sseRecheckMs?: number;
   } = {},
 ): Promise<TestApp> {
   const dir = mkdtempSync(join(tmpdir(), 'nexus-app-'));
@@ -105,7 +112,8 @@ export async function buildTestApp(
   const mail = new LogProvider();
   const oidc = opts.idp ? new Oidc({ issuer: opts.idp.issuer, clientId: opts.idp.clientId, clientSecret: opts.idp.clientSecret, redirectUri: `${PUBLIC_URL}/auth/callback`, postLogoutRedirectUri: `${PUBLIC_URL}/`, fetch: opts.idp.fetch }) : null;
   const pairings = new Pairings(devices, now);
-  const revocations = new Revocations({ db, users, devices, pairings, oidc, secrets, now });
+  const revocations = new Revocations({ db, users, devices, pairings, oidc, secrets, now, peer: opts.peer ?? null, peerFetch: opts.peerFetch });
+  const identity = oidc && opts.centralCheck && opts.idp ? new IdentityStatus({ oidc, adminUrl: opts.idp.adminUrl, users, revocations, now }) : null;
   const deps: Deps = {
     env,
     repo,
@@ -118,6 +126,8 @@ export async function buildTestApp(
     devices,
     pairings,
     revocations,
+    identity,
+    sseRecheckMs: opts.sseRecheckMs,
     wallpapers,
     icons: new IconStore(db, join(dir, 'icons'), now, quota),
     limits: new RateLimiter({ ...DEFAULT_LIMITS_FOR_TESTS, ...opts.limits }, now),

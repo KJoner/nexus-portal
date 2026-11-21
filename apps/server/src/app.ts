@@ -1,6 +1,6 @@
 import { getConnInfo } from '@hono/node-server/conninfo';
 import { serveStatic } from '@hono/node-server/serve-static';
-import { AppSchema, DEVICE_SCOPE_LABELS, DEVICE_TOKEN, isDeviceScope, OpBatchSchema, OpError, PAIR_CODE, validateApp, type CatalogResponse, type ConfigResponse, type DeviceScope, type LogoutAllResponse, type RevokeEverywhereResponse, type WallpaperSourcesResponse } from '@nexus/shared';
+import { AppSchema, DEVICE_SCOPE_LABELS, DEVICE_TOKEN, isDeviceScope, OpBatchSchema, OpError, PAIR_CODE, validateApp, type CatalogResponse, type ConfigResponse, type DeviceScope, type AdminRevocationStatus, type LogoutAllResponse, type RevocationStatusResponse, type RevokeEverywhereResponse, type WallpaperSourcesResponse } from '@nexus/shared';
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { PairingError, type DeviceAuth, type Devices, type Pairings } from './auth/devices';
 import { LoginIntents, safeReturnTo } from './auth/intents';
 import { OidcError, type Oidc } from './auth/oidc';
+import type { IdentityStatus } from './auth/identity-status';
 import { Revocations } from './auth/revocation';
 import type { LoginLimiter } from './auth/rate-limit';
 import type { Auth, Session } from './auth/sessions';
@@ -67,6 +68,10 @@ export interface Deps {
   mail?: Outbox | null;
   /** ADR-019 account revocation (built from the other parts when omitted). */
   revocations?: Revocations;
+  /** ADR-019 §2.5 中心停用检查; absent when not configured (NEXUS_IDENTITY_STATUS_CHECK). */
+  identity?: IdentityStatus | null;
+  /** How often an open event stream re-checks its session (ADR-019 §2.6: 15 s; tests shorten it). */
+  sseRecheckMs?: number;
   now?: () => number;
 }
 
@@ -105,6 +110,13 @@ export function createApp(deps: Deps) {
   const catalog = deps.catalog ?? new CatalogService({ litesyncUrl: env.litesyncUrl ?? null });
   const now = deps.now ?? Date.now;
   const revocations = deps.revocations ?? new Revocations({ db: repo.db, users, devices, pairings, oidc, secrets, now });
+  const identity = deps.identity ?? null;
+  const sseRecheckMs = deps.sseRecheckMs ?? 15_000;
+  /** Device requests past the identity service's grace (ADR-019 §2.5): retryable, the client keeps its queue. */
+  const identityUnavailable = (c: Context) => {
+    c.header('Retry-After', '60');
+    return v2Error(c, 503, 'IDENTITY_UNAVAILABLE', '暂时无法向账号中心确认这个账号的状态，请稍后重试（未发送的内容已保留）', { retryable: true });
+  };
   const app = new Hono<{ Variables: Vars }>();
 
   const clientKey = (c: Context) => {
@@ -257,10 +269,22 @@ export function createApp(deps: Deps) {
   app.use('/api/v2/catalog', byClient('public'));
   app.use('/api/v2/auth/options', byClient('public'));
   app.use('/api/pair/poll', byClient('public'));
+  app.use('/api/internal/*', byClient('internal'));
   app.use('/auth/login', byClient('auth'));
   app.use('/auth/link/start', byClient('auth'));
 
   app.get('/api/healthz', (c) => c.json({ ok: true }));
+
+  /**
+   * ADR-019 §2.4 · 另一个产品的撤销事件（服务端到服务端）. Authenticated by its HMAC signature, not by a
+   * session: 200 handled (also for a repeated event, and for an identity this product does not
+   * know), 400 malformed, 401 signature or timestamp wrong (the sender does not retry those).
+   */
+  app.post('/api/internal/v1/account-revocations', bodyLimit({ maxSize: 4096, onError: (c) => v2Error(c, 400, 'INVALID_EVENT', '事件过大') }), async (c) => {
+    const raw = new Uint8Array(await c.req.arrayBuffer());
+    const r = await revocations.receive(raw, { timestamp: c.req.header('x-revocation-timestamp'), signature: c.req.header('x-revocation-signature') });
+    return c.json(r.body, r.status);
+  });
 
   // ── 应用目录 (v0.4): public templates, the same for every visitor ─────────
   // Deliberately before the session gate: the catalog holds no private data and the
@@ -434,6 +458,11 @@ export function createApp(deps: Deps) {
     const token = /^Bearer (\S+)$/.exec(c.req.header('authorization') ?? '')?.[1];
     const device = token && DEVICE_TOKEN.test(token) ? await devices.validate(token) : null;
     if (!device) return apiError(c, 401, 'device_unauthorized', '此设备的授权已失效或已被撤销');
+    // ADR-019 §2.5: an account stopped or deleted in the identity service loses its devices here.
+    const owner = identity ? await users.get(device.ownerId) : null;
+    const verdict = owner && identity ? await identity.check(owner, 'device') : 'ok';
+    if (verdict === 'revoked') return apiError(c, 401, 'device_unauthorized', '此设备的授权已失效或已被撤销');
+    if (verdict === 'unavailable') return identityUnavailable(c);
     c.set('device', device);
     // TN-07: each paired device has its own allowance.
     const kind: LimitKind = c.req.path === '/api/sync/suggest' || c.req.path === '/api/sync/bookmarks' ? 'suggest' : 'read';
@@ -487,6 +516,9 @@ export function createApp(deps: Deps) {
     const device = token && DEVICE_TOKEN.test(token) ? await devices.validate(token) : null;
     const user = device ? await users.get(device.ownerId) : null;
     if (!device || !user || user.disabled) return v2Error(c, 401, 'DEVICE_REVOKED', '此设备的授权已失效或已被撤销，请在扩展中重新连接');
+    const verdict = identity ? await identity.check(user, 'device') : 'ok';
+    if (verdict === 'revoked') return v2Error(c, 401, 'DEVICE_REVOKED', '此设备的授权已失效或已被撤销，请在扩展中重新连接');
+    if (verdict === 'unavailable') return identityUnavailable(c);
     c.set('device', device);
     c.set('user', user);
     c.set('viaDevice', true);
@@ -504,6 +536,12 @@ export function createApp(deps: Deps) {
       await auth.revokeById(v.session.idHash);
       deleteCookie(c, COOKIE, { path: '/' });
       return apiError(c, 401, user?.disabled ? 'account_disabled' : 'unauthenticated', user?.disabled ? '此账号已被停用' : '需要登录');
+    }
+    // ADR-019 §2.5: stopped or deleted in the identity service → 动作 B here, this session included.
+    // Unreachable is not an answer: web sessions keep the refresh re-check below (ADR-011).
+    if (identity && (await identity.check(user, 'session')) === 'revoked') {
+      deleteCookie(c, COOKIE, { path: '/' });
+      return apiError(c, 401, 'session_ended', '这个账号已在账号中心停用或删除，登录已失效');
     }
     // OIDC sessions are re-checked with the identity provider: a disabled account or a sign-out
     // elsewhere ends this session within REVALIDATE_MS, not at cookie expiry.
@@ -615,6 +653,28 @@ export function createApp(deps: Deps) {
     return c.json(r satisfies RevokeEverywhereResponse);
   });
 
+  /**
+   * ADR-019 §2.3: this account's recent cross-product revocation events and their delivery state
+   * (times, the other product, states and error categories — never a token), and what this
+   * deployment has configured, so the page can say when a part cannot happen at all.
+   */
+  app.get('/api/v2/account/revocations', async (c) => {
+    const u = me(c);
+    return c.json({
+      peer: { product: revocations.peer?.product ?? 'litesync', configured: !!revocations.peer },
+      identityCenter: { configured: !!oidc, accountUrl: revocations.accountUrl },
+      centralCheck: { configured: !!identity },
+      events: await revocations.list(u.id),
+    } satisfies RevocationStatusResponse);
+  });
+
+  /** 重新发送: a pending or failed event of this account, one attempt now, a fresh 7-day window. */
+  app.post('/api/v2/account/revocations/:id/retry', async (c) => {
+    const id = c.req.param('id');
+    const r = /^[0-9a-f]{32}$/.test(id) && revocations.peer ? await revocations.retry(me(c).id, id) : null;
+    return r ? c.json(r) : v2Error(c, 404, 'NOT_FOUND', '没有可以重新发送的撤销事件');
+  });
+
   // ── Administration (v2): accounts and invitations ──────────────────────
   app.get('/api/v2/admin/users', adminOnly, async (c) => c.json({ users: (await users.list()).map((u) => ({ id: u.id, displayName: u.displayName, email: u.email, emailVerified: u.emailVerified, isAdmin: u.isAdmin, disabled: u.disabled, createdVia: u.createdVia, createdAt: u.createdAt, lastLoginAt: u.lastLoginAt, linked: !!u.issuer })) }));
   app.post('/api/v2/admin/users/:id/:action{disable|enable}', adminOnly, async (c) => {
@@ -628,6 +688,14 @@ export function createApp(deps: Deps) {
     if (!done) return v2Error(c, 404, 'NOT_FOUND', '账号不存在');
     return c.json({ id, disabled: disable });
   });
+  /** What the administrator must know: cross-product revocation and the central status check (ADR-019). */
+  app.get('/api/v2/admin/revocation-status', adminOnly, async (c) =>
+    c.json({
+      peer: await revocations.health(),
+      centralCheck: identity ? { configured: true, lastError: identity.lastError?.error ?? null, lastErrorAt: identity.lastError ? new Date(identity.lastError.at).toISOString() : null, lastSuccessAt: identity.lastSuccessAt ? new Date(identity.lastSuccessAt).toISOString() : null } : { configured: false, lastError: null, lastErrorAt: null, lastSuccessAt: null },
+      oidc: !!oidc,
+    } satisfies AdminRevocationStatus),
+  );
   app.post('/api/v2/admin/invites', adminOnly, bodyLimit({ maxSize: 1024 }), async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { ttlDays?: unknown };
     const ttl = typeof body.ttlDays === 'number' ? body.ttlDays : 7;
@@ -668,10 +736,16 @@ export function createApp(deps: Deps) {
       });
       await stream.writeSSE({ event: 'revision', data: JSON.stringify({ revision: (await repo.version(u.id)).revision }), retry: 3000 });
       while (open) {
-        await stream.sleep(25_000);
-        // A session ended elsewhere (logout-all, account disabled) stops the stream at the next tick.
-        if (open && !(await auth.validate(getCookie(c, COOKIE))).valid) break;
-        if (open) await stream.write(': ping\n\n');
+        await stream.sleep(sseRecheckMs);
+        if (!open) break;
+        // ADR-019 §2.6: every 15 s the session and the account's epoch are checked again (and the
+        // identity service, at most once a minute): a revocation anywhere closes the stream, and the
+        // page then asks the server who it is.
+        if (!(await auth.validate(getCookie(c, COOKIE))).valid) break;
+        const current = await users.get(u.id);
+        if (!current || current.disabled) break;
+        if (identity && (await identity.check(current, 'session')) === 'revoked') break;
+        await stream.write(': ping\n\n');
       }
     });
   });

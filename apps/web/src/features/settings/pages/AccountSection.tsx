@@ -1,10 +1,12 @@
-import type { AuthOptions } from '@nexus/shared';
+import type { AuthOptions, RevocationEventInfo, RevocationStatusResponse } from '@nexus/shared';
 import { ExternalLink, KeyRound, LogOut, MonitorX, ShieldOff } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from '../../../components/toast-store';
-import { authOptions, logout, logoutEverywhere, revokeAllProducts, useAccount, useSaveState } from '../../../data/config-store';
+import { authOptions, logout, logoutEverywhere, revocationApi, revokeAllProducts, useAccount, useSaveState } from '../../../data/config-store';
 import { HttpError } from '../../../data/transport';
 import { AUTH_ERRORS, AUTH_OFFLINE } from '../../auth/LoginPage';
+import { peerLine } from '../../auth/RevocationResult';
+import { formatAgo } from '../../../lib/time';
 import { Button, Dialog, Group, Row, Tag } from '../ui';
 
 /** Messages for the claim flow, which returns here (`/settings/data?auth_error=…`). */
@@ -14,6 +16,49 @@ const LINK_ERRORS: Record<string, string> = {
 };
 
 type Leaving = 'here' | 'product' | 'everywhere';
+
+const PRODUCT: Record<string, string> = { litesync: 'LiteSync', nexus: 'Nexus' };
+
+/**
+ * 跨产品撤销的真实状态（ADR-019 §2.3）：这个账号最近发出与收到的撤销事件。没有送达的可以重新发送；
+ * 本部署没有配置时直接说明，不让人以为 LiteSync 也退出了。
+ */
+function RevocationHistory({ status, onChange }: { status: RevocationStatusResponse; onChange(s: RevocationStatusResponse): void }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const resend = async (e: RevocationEventInfo) => {
+    setBusy(e.eventId);
+    try {
+      const next = await revocationApi.retry(e.eventId);
+      onChange({ ...status, events: status.events.map((x) => (x.eventId === e.eventId && x.direction === 'outgoing' ? next : x)) });
+      toast(next.state === 'delivered' ? { msg: `${PRODUCT[next.product] ?? next.product} 已确认`, tone: 'ok' } : { msg: '还没有送达，会在后台继续重试', tone: 'warn' });
+    } catch (err) {
+      toast({ msg: err instanceof HttpError ? err.message : '没有完成，请检查网络后重试', tone: 'error' });
+    } finally {
+      setBusy(null);
+    }
+  };
+  const events = status.events.slice(0, 5);
+  if (!events.length) return null;
+  return (
+    <>
+      {events.map((e) => {
+        const name = PRODUCT[e.product] ?? e.product;
+        if (e.direction === 'incoming')
+          return <Row key={`in-${e.eventId}`} label={`在 ${name} 中执行的「退出所有产品与设备」`} sub={`${e.state === 'applied' ? 'Nexus 已撤销这个账号的全部登录与设备' : 'Nexus 没有对应的内容需要撤销'} · ${formatAgo(Date.parse(e.createdAt))}`} />;
+        const line = peerLine({ product: e.product, state: e.state as 'pending' | 'delivered' | 'failed', eventId: e.eventId, attempts: e.attempts ?? 0, nextAttemptAt: e.nextAttemptAt, error: e.error, result: e.result });
+        return (
+          <Row key={`out-${e.eventId}`} label={<span className={line.tone === 'error' ? 'text-danger-ink' : line.tone === 'warn' ? 'text-warn' : ''}>退出所有产品与设备 · {formatAgo(Date.parse(e.createdAt))}</span>} sub={line.text}>
+            {(e.state === 'pending' || e.state === 'failed') && (
+              <Button disabled={busy === e.eventId} onClick={() => void resend(e)}>
+                重新发送
+              </Button>
+            )}
+          </Row>
+        );
+      })}
+    </>
+  );
+}
 
 /**
  * 账号与登录: who is signed in, the identity service's account console, 旧管理员认领, and the three
@@ -29,6 +74,7 @@ export function AccountSection() {
   const [leaving, setLeaving] = useState<Leaving | null>(null);
   const [linking, setLinking] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [revocations, setRevocations] = useState<RevocationStatusResponse | null>(null);
 
   useEffect(() => {
     authOptions().then(setOptions, () => setOptions(null));
@@ -47,6 +93,10 @@ export function AccountSection() {
   const accountUrl = options?.accountUrl ?? null;
   // 动作 C needs a unified identity: the other product and the identity service know the person by it.
   const allProducts = !!options?.oidc && !!me?.identityLinked;
+  useEffect(() => {
+    if (allProducts) revocationApi.status().then(setRevocations, () => setRevocations(null));
+  }, [allProducts]);
+  const peerMissing = revocations !== null && !revocations.peer.configured;
   const unsent = save.kind === 'offline' && save.pending ? `还有 ${save.pending} 项更改没有同步到服务端，退出后会丢失。` : '';
 
   const run = async (fn: () => Promise<unknown>) => {
@@ -104,13 +154,17 @@ export function AccountSection() {
           </Button>
         </Row>
         {allProducts && (
-          <Row label="退出所有产品与设备" sub="在上一项的基础上，再结束账号中心在所有浏览器的登录，并通知 LiteSync 撤销它的网页登录、Obsidian 设备和待领取授权">
+          <Row
+            label="退出所有产品与设备"
+            sub={peerMissing ? '在上一项的基础上，再结束账号中心在所有浏览器的登录。本部署没有配置跨产品撤销：LiteSync 不会收到通知，需要另外在 LiteSync 中退出' : '在上一项的基础上，再结束账号中心在所有浏览器的登录，并通知 LiteSync 撤销它的网页登录、Obsidian 设备和待领取授权'}
+          >
             <Button variant="danger" onClick={() => setLeaving('everywhere')}>
               <ShieldOff className="size-[15px]" />
               退出所有产品…
             </Button>
           </Row>
         )}
+        {revocations && <RevocationHistory status={revocations} onChange={setRevocations} />}
       </Group>
 
       <Dialog
@@ -176,6 +230,7 @@ export function AccountSection() {
           <li>账号中心：结束你在所有浏览器的账号中心登录，之后登录任何产品都要重新输入密码。</li>
           <li>LiteSync：通知它撤销你的网页登录、Obsidian 设备和尚未兑换的连接授权。暂时连不上时会在后台继续重试，状态在这一页可以看到。</li>
         </ol>
+        {peerMissing && <p className="m-0 mt-2 text-[13px] leading-[1.7] text-warn">本部署没有配置跨产品撤销（NEXUS_PEER_REVOCATION_URL / NEXUS_PEER_REVOCATION_SECRET）：第 3 步不会发生，结果里会如实显示为「未配置」。</p>}
       </Dialog>
 
       <Dialog

@@ -3,7 +3,9 @@ import { join } from 'node:path';
 import { createApp } from './app';
 import { Devices, Pairings } from './auth/devices';
 import { LoginIntents } from './auth/intents';
+import { IdentityStatus } from './auth/identity-status';
 import { Oidc } from './auth/oidc';
+import { Revocations } from './auth/revocation';
 import { LoginLimiter } from './auth/rate-limit';
 import { Auth } from './auth/sessions';
 import { ConfigRepo } from './config/repo';
@@ -71,6 +73,11 @@ async function main() {
     : null;
   const mail = env.mail ? new Outbox(db, createProvider(env.mail), { from: env.mail.from, replyTo: env.mail.replyTo }) : null;
   mail?.start();
+  // ADR-019: account revocation, the events to and from the other product, the central status check.
+  const pairings = new Pairings(devices);
+  const revocations = new Revocations({ db, users, devices, pairings, oidc, secrets: box, peer: env.peerRevocation ? { product: 'litesync', ...env.peerRevocation } : null });
+  revocations.start();
+  const identity = oidc && env.identityStatus ? new IdentityStatus({ oidc, adminUrl: env.identityStatus.adminUrl, users, revocations }) : null;
   const app = createApp({
     env,
     repo,
@@ -81,7 +88,9 @@ async function main() {
     secrets: box,
     limiter: new LoginLimiter(),
     devices,
-    pairings: new Pairings(devices),
+    pairings,
+    revocations,
+    identity,
     wallpapers,
     icons,
     health,
@@ -100,12 +109,19 @@ async function main() {
     if (env.passwordHash && env.password) console.log('[nexus] 已设置 NEXUS_PASSWORD_HASH，忽略明文 NEXUS_PASSWORD：可以从 .env 中删除它');
     else if (env.password && !env.generatedPassword) console.log('[nexus] .env 中保存着明文密码：建议运行 deploy.sh 迁移为 NEXUS_PASSWORD_HASH');
     if (mail) console.log(`[nexus] 产品通知邮件：${mail.providerName}${mail.providerName === 'log' ? '（只记录，不真正发送）' : ''}`);
+    if (oidc) {
+      if (env.peerRevocation) console.log(`[nexus] 跨产品撤销：已配置（LiteSync ${new URL(env.peerRevocation.url).host}）`);
+      else console.warn('[nexus] 跨产品撤销未配置（NEXUS_PEER_REVOCATION_URL / NEXUS_PEER_REVOCATION_SECRET）：「退出所有产品与设备」不会通知 LiteSync，LiteSync 发来的撤销事件也会被拒绝');
+      if (identity) console.log(`[nexus] 中心停用检查：已开启（${new URL(env.identityStatus!.adminUrl).host}；每个账号 60 秒查一次，身份服务不可达时宽限 15 分钟）`);
+      else console.warn('[nexus] 中心停用检查未配置（NEXUS_IDENTITY_STATUS_CHECK=on）：账号在账号中心被停用或删除后，Nexus 网页登录最迟 5 分钟内经 refresh 复核结束，已连接的扩展要在 Nexus 中停用账号或退出全部设备才会撤销。开放公众注册前必须配置');
+    }
     if (!env.webDist) console.log('[nexus] 未找到前端构建产物，仅提供 API');
   });
 
   const shutdown = () => {
     health.stop();
     mail?.stop();
+    revocations.stop();
     server.close();
     void db.close().finally(() => process.exit(0));
   };
