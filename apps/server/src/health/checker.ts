@@ -1,6 +1,6 @@
 import { hostOf, type AppEntry, type ServiceStatus, type StatusLevel } from '@nexus/shared';
 import type { ConfigRepo } from '../config/repo';
-import type { DB } from '../db';
+import { LEGACY_ADMIN_ID, type DB } from '../db';
 import type { NetPolicy } from '../net/ip';
 import { probe as realProbe, type ProbeResult } from '../net/probe';
 
@@ -59,7 +59,13 @@ interface Stored extends ServiceStatus {
 
 const MAX_CONCURRENT = 4;
 
-/** Runs each enabled service's check on its own interval; results survive restarts. */
+/**
+ * Runs each enabled service's check on its own interval; results survive restarts.
+ *
+ * v0.4: checks are the operator's tool — the server opening connections to addresses on its own
+ * network — so only one account's services are ever probed: the administrator's (`owner`).
+ * Addresses saved by other accounts are never contacted (ConfigRepo also forces their switch off).
+ */
 export class HealthChecker {
   private statuses = new Map<string, Stored>();
   private timers = new Map<string, { key: string; timer: ReturnType<typeof setTimeout> }>();
@@ -68,22 +74,30 @@ export class HealthChecker {
   private queue: (() => void)[] = [];
   private stopped = false;
   private offChange: (() => void) | null = null;
+  private loaded: Promise<void> | null = null;
 
   constructor(
     private db: DB,
     private repo: ConfigRepo,
     private policy: NetPolicy,
     private probe: ProbeFn = realProbe,
-  ) {
-    for (const r of db.prepare('select * from health_status').all() as { app_id: string; level: StatusLevel; message: string; checked_at: string; latency_ms: number | null; fails: number; key: string; via: 'lan' | 'ext' }[]) {
-      this.statuses.set(r.app_id, { appId: r.app_id, level: r.level, message: r.message, checkedAt: r.checked_at, latencyMs: r.latency_ms, via: r.via, fails: r.fails, key: r.key });
-    }
+    readonly owner: string = LEGACY_ADMIN_ID,
+  ) {}
+
+  /** Results of the previous run, read once. */
+  private load(): Promise<void> {
+    this.loaded ??= (async () => {
+      const rows = await this.db.all<{ app_id: string; level: StatusLevel; message: string; checked_at: string; latency_ms: number | null; fails: number; key: string; via: 'lan' | 'ext' }>('select * from health_status where owner_id = ?', [this.owner]);
+      for (const r of rows) this.statuses.set(r.app_id, { appId: r.app_id, level: r.level, message: r.message, checkedAt: r.checked_at, latencyMs: r.latency_ms, via: r.via, fails: Number(r.fails), key: r.key });
+    })();
+    return this.loaded;
   }
 
-  start() {
+  async start() {
     this.stopped = false;
-    this.offChange = this.repo.onChange(() => this.sync());
-    this.sync();
+    await this.load();
+    this.offChange = this.repo.onChange(this.owner, () => void this.sync());
+    await this.sync();
   }
 
   stop() {
@@ -93,7 +107,8 @@ export class HealthChecker {
     this.timers.clear();
   }
 
-  list(): ServiceStatus[] {
+  async list(): Promise<ServiceStatus[]> {
+    await this.load();
     return [...this.statuses.values()].map(({ fails: _f, key: _k, ...s }) => s);
   }
 
@@ -102,8 +117,8 @@ export class HealthChecker {
     return () => this.listeners.delete(fn);
   }
 
-  private enabledApps(): AppEntry[] {
-    return this.repo.snapshot().config.apps.filter((a) => a.kind === 'service' && a.health.enabled && !a.hidden);
+  private async enabledApps(): Promise<AppEntry[]> {
+    return (await this.repo.snapshot(this.owner)).config.apps.filter((a) => a.kind === 'service' && a.health.enabled && !a.hidden);
   }
 
   private keyOf(app: AppEntry) {
@@ -111,9 +126,10 @@ export class HealthChecker {
   }
 
   /** Reconciles schedules with the configuration after every change. */
-  sync() {
+  async sync() {
     if (this.stopped) return;
-    const apps = this.enabledApps();
+    await this.load();
+    const apps = await this.enabledApps();
     const ids = new Set(apps.map((a) => a.id));
     for (const [id, t] of this.timers) {
       if (!ids.has(id)) {
@@ -124,7 +140,7 @@ export class HealthChecker {
     for (const id of [...this.statuses.keys()]) {
       if (!ids.has(id)) {
         this.statuses.delete(id);
-        this.db.prepare('delete from health_status where app_id = ?').run(id);
+        await this.db.run('delete from health_status where owner_id = ? and app_id = ?', [this.owner, id]);
         this.emit({ appId: id, removed: true });
       }
     }
@@ -159,7 +175,8 @@ export class HealthChecker {
 
   /** Checks one service now and reschedules it. */
   async runNow(appId: string): Promise<ServiceStatus | null> {
-    const app = this.enabledApps().find((a) => a.id === appId);
+    await this.load();
+    const app = (await this.enabledApps()).find((a) => a.id === appId);
     if (!app) return null;
     const key = this.keyOf(app);
     const t = this.timers.get(appId);
@@ -177,12 +194,13 @@ export class HealthChecker {
       latencyMs = p.latencyMs ?? null;
       result = judge(p, target.via, prevFails);
     }
-    if (this.stopped || !this.enabledApps().some((a) => a.id === appId && this.keyOf(a) === key)) return null;
+    if (this.stopped || !(await this.enabledApps()).some((a) => a.id === appId && this.keyOf(a) === key)) return null;
     const status: Stored = { appId, level: result.level, message: result.message, checkedAt: new Date().toISOString(), latencyMs, via, fails: result.fails, key };
     this.statuses.set(appId, status);
-    this.db
-      .prepare('insert into health_status (app_id, level, message, checked_at, latency_ms, fails, key, via) values (?, ?, ?, ?, ?, ?, ?, ?) on conflict(app_id) do update set level = excluded.level, message = excluded.message, checked_at = excluded.checked_at, latency_ms = excluded.latency_ms, fails = excluded.fails, key = excluded.key, via = excluded.via')
-      .run(appId, status.level, status.message, status.checkedAt, latencyMs, status.fails, key, via);
+    await this.db.run(
+      'insert into health_status (owner_id, app_id, level, message, checked_at, latency_ms, fails, key, via) values (?, ?, ?, ?, ?, ?, ?, ?, ?) on conflict (owner_id, app_id) do update set level = excluded.level, message = excluded.message, checked_at = excluded.checked_at, latency_ms = excluded.latency_ms, fails = excluded.fails, key = excluded.key, via = excluded.via',
+      [this.owner, appId, status.level, status.message, status.checkedAt, latencyMs, status.fails, key, via],
+    );
     const { fails: _f, key: _k, ...pub } = status;
     this.emit(pub);
     // Failing services are re-checked sooner so a blip clears (or escalates) quickly.

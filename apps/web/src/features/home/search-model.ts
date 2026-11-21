@@ -1,7 +1,7 @@
 import { buildSearch, engineSearchUrl, flattenRows, resolvePrefix, type Bookmark, type Config, type Engine, type QuickAction, type SearchRow } from '@nexus/shared';
 import { Activity, Globe, History, Image, Search, Settings } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { linkwardenApi, suggestApi, useConfig } from '../../data/config-store';
+import { linkwardenApi, suggestApi, useConfig, useIsAdmin } from '../../data/config-store';
 import { useRecentStore, visibleRecent } from '../../data/recent';
 import { useServices } from '../../data/status';
 import type { TileTarget } from '../../icons/AppTile';
@@ -12,10 +12,14 @@ import { useShownWallpaper } from './rotation';
 
 export type QuickActionId = 'status' | 'wallpaper' | 'settings';
 
-/** Engines offered in the menu and Alt ↑↓ cycle; Linkwarden only once its search is switched on. */
+/**
+ * Engines offered in the menu and Alt ↑↓ cycle; Linkwarden only once its search is switched on, and
+ * only for the administrator (it is the operator's integration, v0.4).
+ */
 export function useEngines(): Engine[] {
   const config = useConfig();
-  return useMemo(() => config.engines.filter((e) => e.kind === 'web' || config.settings.search.linkwarden), [config.engines, config.settings.search.linkwarden]);
+  const lw = useIsAdmin() && config.settings.search.linkwarden;
+  return useMemo(() => config.engines.filter((e) => e.kind === 'web' || lw), [config.engines, lw]);
 }
 
 /**
@@ -68,7 +72,8 @@ export function useSearchModel(query: string, engineId: string, maxApps: number)
   const config = useConfig();
   const engines = useEngines();
   const { engine: prefixed, rest } = resolvePrefix(query, engines);
-  const bookmarks = useBookmarks(rest, config.settings.search.linkwarden && !config.settings.privacy.guest);
+  const admin = useIsAdmin();
+  const bookmarks = useBookmarks(rest, admin && config.settings.search.linkwarden && !config.settings.privacy.guest);
   const effective = prefixed ?? engines.find((e) => e.id === engineId);
   const webId = effective?.kind === 'web' ? effective.id : (engines.find((e) => e.kind === 'web')?.id ?? 'google');
   const suggestions = useSuggestions(rest, webId, config.settings.search.suggest && !config.settings.privacy.guest);
@@ -80,7 +85,8 @@ export function useSearchModel(query: string, engineId: string, maxApps: number)
   return useMemo(() => {
     const guest = config.settings.privacy.guest;
     const actions: QuickAction[] = [
-      ...(guest ? [] : [{ id: 'status', title: '查看服务状态', sub: summary.text }]),
+      // Service status is the operator's view (v0.4): other accounts are not offered it.
+      ...(guest || !admin ? [] : [{ id: 'status', title: '查看服务状态', sub: summary.text }]),
       { id: 'wallpaper', title: '更换壁纸', sub: shown ? `当前：${shown}` : '换一张' },
       { id: 'settings', title: '打开设置', sub: '外观、快捷方式、应用与搜索' },
     ];
@@ -104,7 +110,7 @@ export function useSearchModel(query: string, engineId: string, maxApps: number)
       formatAgo,
     });
     return { engines, result, rows: flattenRows(result.sections) };
-  }, [config, engines, recentItems, summary.text, shown, query, engineId, maxApps, bookmarks, suggestions, pinyin]);
+  }, [config, admin, engines, recentItems, summary.text, shown, query, engineId, maxApps, bookmarks, suggestions, pinyin]);
 }
 
 export function rowTile(row: SearchRow, config: Config, engine: Engine): TileTarget {

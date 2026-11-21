@@ -127,9 +127,12 @@ export async function encodeVariants(input: Buffer, folder: string, maxBytes = M
   return { width, height, widths, placeholder: `data:image/webp;base64,${tiny.toString('base64')}`, luma: await bandLuma(base) };
 }
 
+
 /**
  * Library wallpapers live under `<data>/wallpapers/<id>/`. Hotlinked photos (Unsplash, whose terms
- * forbid re-hosting) are rows without files.
+ * forbid re-hosting) are rows without files. Every row belongs to one account (v0.4) and every
+ * lookup is made for an account: an id that belongs to someone else reads as not found, so a
+ * guessed or leaked id never serves another account's picture.
  */
 export class WallpaperStore {
   constructor(
@@ -137,28 +140,38 @@ export class WallpaperStore {
     private dir: string,
   ) {}
 
-  list(): UploadedWallpaper[] {
-    return (this.db.prepare('select * from wallpapers order by created_at').all() as Row[]).map(toApi);
+  async list(ownerId: string): Promise<UploadedWallpaper[]> {
+    return (await this.db.all<Row>('select * from wallpapers where owner_id = ? order by created_at', [ownerId])).map(toApi);
   }
 
-  get(id: string): UploadedWallpaper | null {
-    const row = this.db.prepare('select * from wallpapers where id = ?').get(id) as Row | undefined;
+  async get(ownerId: string, id: string): Promise<UploadedWallpaper | null> {
+    const row = await this.db.get<Row>('select * from wallpapers where id = ? and owner_id = ?', [id, ownerId]);
     return row ? toApi(row) : null;
   }
 
   /** The library entry already made from a source item (gallery id, POTD date, photo id). */
-  findByRef(source: WallpaperSource, ref: string): UploadedWallpaper | null {
-    const row = this.db.prepare('select * from wallpapers where source = ? and ref = ?').get(source, ref) as Row | undefined;
+  async findByRef(ownerId: string, source: WallpaperSource, ref: string): Promise<UploadedWallpaper | null> {
+    const row = await this.db.get<Row>('select * from wallpapers where owner_id = ? and source = ? and ref = ?', [ownerId, source, ref]);
     return row ? toApi(row) : null;
   }
 
-  async add(input: Buffer, rawName: string, meta: WallpaperMeta = { source: 'upload' }): Promise<UploadedWallpaper> {
+  /**
+   * Folder of the same public picture already in some account's library (精选图库 originals are
+   * public): lets another account get its own copy without downloading it again. Only the files
+   * are reused; the caller gets a row of its own.
+   */
+  async publicFolder(source: 'gallery', ref: string): Promise<{ folder: string; wallpaper: UploadedWallpaper } | null> {
+    const row = await this.db.get<Row>('select * from wallpapers where source = ? and ref = ? order by created_at limit 1', [source, ref]);
+    return row ? { folder: join(this.dir, row.id), wallpaper: toApi(row) } : null;
+  }
+
+  async add(ownerId: string, input: Buffer, rawName: string, meta: WallpaperMeta = { source: 'upload' }): Promise<UploadedWallpaper> {
     const id = newId(meta.source);
     const folder = join(this.dir, id);
     try {
       const encoded = await encodeVariants(input, folder, meta.maxBytes);
       const name = rawName.replace(/\.[^.]+$/, '').trim().slice(0, 40) || '我的壁纸';
-      return this.insert({ id, name, ...encoded, meta });
+      return await this.insert(ownerId, { id, name, ...encoded, meta });
     } catch (e) {
       await rm(folder, { recursive: true, force: true });
       throw e;
@@ -166,12 +179,12 @@ export class WallpaperStore {
   }
 
   /** A picture whose variants already exist (a kept 每日一图): the files are copied, not encoded again. */
-  async addEncoded(from: string, w: UploadedWallpaper, meta: WallpaperMeta): Promise<UploadedWallpaper> {
+  async addEncoded(ownerId: string, from: string, w: UploadedWallpaper, meta: WallpaperMeta): Promise<UploadedWallpaper> {
     const id = newId(meta.source);
     const folder = join(this.dir, id);
     try {
       await cp(from, folder, { recursive: true, filter: (src) => src === from || VARIANT.test(basename(src)) });
-      return this.insert({ id, name: w.name, width: w.width, height: w.height, widths: w.widths, placeholder: w.placeholder, luma: w.luma, meta });
+      return await this.insert(ownerId, { id, name: w.name, width: w.width, height: w.height, widths: w.widths, placeholder: w.placeholder, luma: w.luma, meta });
     } catch (e) {
       await rm(folder, { recursive: true, force: true });
       throw e;
@@ -179,47 +192,61 @@ export class WallpaperStore {
   }
 
   /** A hotlinked photo: only metadata is kept; `color` paints until the image arrives. */
-  addRemote(remote: string, name: string, size: { width: number; height: number }, color: string, meta: WallpaperMeta): UploadedWallpaper {
+  addRemote(ownerId: string, remote: string, name: string, size: { width: number; height: number }, color: string, meta: WallpaperMeta): Promise<UploadedWallpaper> {
     const hex = /^#[0-9a-f]{6}$/i.test(color) ? color : '#2a2724';
     const placeholder = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><rect width="1" height="1" fill="${hex}"/></svg>`)}`;
     const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
     const luma = Math.round((0.2126 * r! + 0.7152 * g! + 0.0722 * b!) * 1000) / 1000;
-    return this.insert({ id: newId(meta.source), name: name.slice(0, 40) || '在线壁纸', width: size.width, height: size.height, widths: [], placeholder, luma, meta, remote });
+    return this.insert(ownerId, { id: newId(meta.source), name: name.slice(0, 40) || '在线壁纸', width: size.width, height: size.height, widths: [], placeholder, luma, meta, remote });
   }
 
-  private insert(w: { id: string; name: string; width: number; height: number; widths: number[]; placeholder: string; luma: number | null; meta: WallpaperMeta; remote?: string }): UploadedWallpaper {
+  private async insert(ownerId: string, w: { id: string; name: string; width: number; height: number; widths: number[]; placeholder: string; luma: number | null; meta: WallpaperMeta; remote?: string }): Promise<UploadedWallpaper> {
     const createdAt = new Date().toISOString();
-    this.db
-      .prepare('insert into wallpapers (id, name, width, height, widths, placeholder, created_at, source, ref, credit, luma, focal, remote) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(w.id, w.name, w.width, w.height, JSON.stringify(w.widths), w.placeholder, createdAt, w.meta.source, w.meta.ref ?? '', w.meta.credit ? JSON.stringify(w.meta.credit) : '', w.luma, w.meta.focal ? JSON.stringify(w.meta.focal) : '', w.remote ?? '');
-    return this.get(w.id)!;
+    await this.db.run('insert into wallpapers (id, owner_id, name, width, height, widths, placeholder, created_at, source, ref, credit, luma, focal, remote) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
+      w.id,
+      ownerId,
+      w.name,
+      w.width,
+      w.height,
+      JSON.stringify(w.widths),
+      w.placeholder,
+      createdAt,
+      w.meta.source,
+      w.meta.ref ?? '',
+      w.meta.credit ? JSON.stringify(w.meta.credit) : '',
+      w.luma,
+      w.meta.focal ? JSON.stringify(w.meta.focal) : '',
+      w.remote ?? '',
+    ]);
+    return (await this.get(ownerId, w.id))!;
   }
 
-  /** Absolute path of a variant, or null. Both parts are pattern-checked: no path traversal. */
-  filePath(id: string, file: string): string | null {
+  /** Absolute path of a variant of the account's own wallpaper, or null. Both parts are pattern-checked: no path traversal. */
+  async filePath(ownerId: string, id: string, file: string): Promise<string | null> {
     const m = VARIANT.exec(file);
     if (!ID.test(id) || !m) return null;
-    const w = this.get(id);
+    const w = await this.get(ownerId, id);
     return w && w.widths.includes(Number(m[1])) ? join(this.dir, id, file) : null;
   }
 
-  async remove(id: string): Promise<boolean> {
-    if (!ID.test(id) || !this.get(id)) return false;
-    this.db.prepare('delete from wallpapers where id = ?').run(id);
+  async remove(ownerId: string, id: string): Promise<boolean> {
+    if (!ID.test(id) || !(await this.get(ownerId, id))) return false;
+    await this.db.run('delete from wallpapers where id = ? and owner_id = ?', [id, ownerId]);
+    // Another account's copy of the same public picture has a folder of its own: nothing shared is removed.
     await rm(join(this.dir, id), { recursive: true, force: true });
     return true;
   }
 
   /** Takes a row out of the library and moves its files into `dest`; nothing is deleted. */
-  async moveOut(id: string, dest: string) {
+  async moveOut(ownerId: string, id: string, dest: string) {
     await rename(join(this.dir, id), join(dest, id)).catch((e: NodeJS.ErrnoException) => {
       if (e.code !== 'ENOENT') throw e;
     });
-    this.db.prepare('delete from wallpapers where id = ?').run(id);
+    await this.db.run('delete from wallpapers where id = ? and owner_id = ?', [id, ownerId]);
   }
 
   /** From now on the row is the user's own, however it got here. */
-  markSaved(id: string) {
-    this.db.prepare("update wallpapers set source = 'saved' where id = ?").run(id);
+  async markSaved(ownerId: string, id: string) {
+    await this.db.run("update wallpapers set source = 'saved' where id = ? and owner_id = ?", [id, ownerId]);
   }
 }

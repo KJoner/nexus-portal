@@ -103,6 +103,60 @@ export interface SessionResponse {
   authenticated: boolean;
 }
 
+/** GET /api/v2/auth/options (v0.4, public): how this deployment signs people in. */
+export interface AuthOptions {
+  /** Unified sign-in through the identity service. */
+  oidc: boolean;
+  /** The old access password (the legacy administrator's way in). */
+  legacyPassword: boolean;
+  registration: 'closed' | 'invite' | 'open';
+  /** The identity service's account console (profile, password, sessions), when OIDC is on. */
+  accountUrl: string | null;
+}
+
+/** GET /api/v2/me (v0.4): who this session belongs to. Never a source of permissions on the client. */
+export interface MeResponse {
+  account: { id: string; displayName: string; email: string; emailVerified: boolean };
+  product: 'nexus';
+  role: 'admin' | 'user';
+  permissions: string[];
+  onboarding: { state: 'empty_collection' | 'ready' };
+  /** How this session was opened. */
+  session: 'password' | 'oidc';
+  identityLinked: boolean;
+  /** The legacy administrator, signed in with the old password, can bind a unified account. */
+  canLinkIdentity: boolean;
+}
+
+/** GET /api/v2/admin/users (v0.4, administrators). */
+export interface AdminUser {
+  id: string;
+  displayName: string;
+  email: string;
+  emailVerified: boolean;
+  isAdmin: boolean;
+  disabled: boolean;
+  createdVia: 'legacy' | 'oidc';
+  createdAt: number;
+  lastLoginAt: number | null;
+  /** Bound to an identity of the identity service. */
+  linked: boolean;
+}
+
+/** POST /api/v2/admin/invites (v0.4): the code is shown once and stored only as a hash. */
+export interface InviteResponse {
+  code: string;
+  expiresAt: number;
+}
+
+/** POST /api/v2/account/logout-all (v0.4). */
+export interface LogoutAllResponse {
+  sessions: number;
+  devices: number;
+  /** Where to send the browser to end the identity-service session too (absent without OIDC). */
+  endSessionUrl: string | null;
+}
+
 export interface LinkwardenStatus {
   configured: boolean;
   baseUrl: string;

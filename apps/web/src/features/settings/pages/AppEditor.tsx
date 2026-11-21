@@ -2,7 +2,7 @@ import { hostOf, isHttpUrl, LOCKED_CATEGORY, MAX_PINS, newAppId, slug, TONES, va
 import { ChevronDown, Upload, X } from 'lucide-react';
 import { Dialog as RDialog } from 'radix-ui';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { testHealth, useConfig, uploadIcon } from '../../../data/config-store';
+import { testHealth, useConfig, useIsAdmin, uploadIcon } from '../../../data/config-store';
 import { BUILTIN_GLYPHS, libraryIconUrl } from '../../../icons/glyphs';
 import { AppTile } from '../../../icons/AppTile';
 import { cn } from '../../../lib/cn';
@@ -97,6 +97,7 @@ function AliasEditor({ aliases, onChange }: { aliases: string[]; onChange(next: 
  */
 export function AppEditor({ appId, initialName, initialUrl, onClose, onDelete }: Props) {
   const config = useConfig();
+  const admin = useIsAdmin();
   const compact = useCompact();
   const existing = appId ? config.apps.find((a) => a.id === appId) : undefined;
   const wasPinned = !!existing && config.pins.includes(existing.id);
@@ -417,7 +418,8 @@ export function AppEditor({ appId, initialName, initialUrl, onClose, onDelete }:
     </Row>
   );
 
-  const healthBlock = svc && (
+  // Health checks make the server probe addresses: the operator's tool only (v0.4).
+  const healthBlock = svc && admin && (
     <div className={cn('flex flex-col divide-y divide-ink/6', compact ? 'rounded-2xl bg-ink/6' : 'rounded-2xl bg-ink/4')}>
       <Row label={<>健康检查 <span className="text-[12.5px] text-ink/42">可选</span></>} sub="开启后首页显示状态角标；关闭则标为「未监测」">
         <Switch label="健康检查" checked={draft.health.enabled} onChange={(enabled) => set((d) => ({ ...d, health: { ...d.health, enabled } }))} />

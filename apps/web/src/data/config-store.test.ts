@@ -42,7 +42,8 @@ describe('sync engine', () => {
     expect(state().pending).toHaveLength(1);
     expect(pins()).not.toContain('youtube');
     // Survives a reload: the outbox is persisted.
-    expect(JSON.parse(localStorage.getItem('nexus.cache.v2')!).pending).toHaveLength(1);
+    // v0.4: under this account's own key.
+    expect(JSON.parse(localStorage.getItem('nexus.cache.v3:legacy-admin')!).pending).toHaveLength(1);
     server.online = true;
     await refresh();
     expect(state().online).toBe(true);

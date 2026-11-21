@@ -1,5 +1,5 @@
 import { uiPreset, type UiSettings } from '@nexus/shared';
-import { useConfig } from '../../../data/config-store';
+import { useConfig, useIsAdmin } from '../../../data/config-store';
 import { patch } from '../model';
 import { Group, PageHeader, Row, Segmented, Slider, Switch, useCompact } from '../ui';
 
@@ -20,6 +20,7 @@ const MODES: { value: Mode; label: string }[] = [
 export function DisplayPage() {
   const config = useConfig();
   const compact = useCompact();
+  const admin = useIsAdmin();
   const ui = config.settings.ui;
   const { labels } = config.settings.home;
   const d = ui.desktop;
@@ -46,7 +47,7 @@ export function DisplayPage() {
   const phone = (
     <Group title="手机首页">
       {toggle('时钟', undefined, m.clock === 'show', (v) => setM({ clock: v ? 'show' : 'hide' }))}
-      {toggle('服务状态', '出现异常时始终显示', m.status === 'show', (v) => setM({ status: v ? 'show' : 'hide' }))}
+      {admin && toggle('服务状态', '出现异常时始终显示', m.status === 'show', (v) => setM({ status: v ? 'show' : 'hide' }))}
       {toggle('设置按钮', '隐藏后，长按壁纸空白处即可打开设置', m.settings === 'show', (v) => setM({ settings: v ? 'show' : 'hide' }))}
       {toggle('壁纸名称与署名', '许可要求署名的图片始终显示', m.wallpaperCredit === 'show', (v) => setM({ wallpaperCredit: v ? 'show' : 'hide' }))}
       <Row label="时钟大小" stacked={compact}>
@@ -64,10 +65,10 @@ export function DisplayPage() {
             {toggle('Nexus 标志', undefined, d.brand, (v) => setD({ brand: v }))}
             {toggle('「首页」导航', undefined, d.navHome, (v) => setD({ navHome: v }))}
             {toggle('「应用」导航', undefined, d.navApps, (v) => setD({ navApps: v }))}
-            {toggle('「运行概览」导航', undefined, d.navOverview, (v) => setD({ navOverview: v }))}
+            {admin && toggle('「运行概览」导航', undefined, d.navOverview, (v) => setD({ navOverview: v }))}
           </>
         )}
-        {mode('服务状态', '有服务异常时始终显示', d.status, (v) => setD({ status: v }))}
+        {admin && mode('服务状态', '有服务异常时始终显示', d.status, (v) => setD({ status: v }))}
         {mode('设置按钮', '隐藏后仍可按 , 键、右键空白处，或访问 /settings 打开设置', d.settings, (v) => setD({ settings: v }))}
       </Group>
       <Group title="桌面 · 中间">

@@ -1,0 +1,55 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+
+/**
+ * Guards the identity templates in infra/identity (ADR-011): the settings that make sign-in safe
+ * are fixed in the repository, so an edit that weakens one fails here instead of in production.
+ * This does not run Keycloak; the real-instance checks are listed in infra/identity/README.md.
+ */
+const dir = join(import.meta.dirname, '..', '..', '..', 'infra', 'identity');
+const realm = JSON.parse(readFileSync(join(dir, 'realm', 'accounts-realm.json'), 'utf8')) as Record<string, unknown> & { clients: Record<string, unknown>[]; attributes: Record<string, string>; smtpServer: Record<string, string> };
+const compose = readFileSync(join(dir, 'compose.yaml'), 'utf8');
+const init = readFileSync(join(dir, 'postgres-init', '01-databases.sh'), 'utf8');
+
+describe('identity realm template', () => {
+  it('requires verified e-mail, limits link lifetimes and resists password guessing', () => {
+    expect(realm).toMatchObject({ realm: 'accounts', verifyEmail: true, registrationEmailAsUsername: true, duplicateEmailsAllowed: false, resetPasswordAllowed: true, rememberMe: false, bruteForceProtected: true, sslRequired: 'external' });
+    expect(realm.attributes['actionTokenGeneratedByUserLifespan.verify-email']).toBe('1800');
+    expect(realm.attributes['actionTokenGeneratedByUserLifespan.reset-credentials']).toBe('900');
+    expect(String(realm.passwordPolicy)).toMatch(/length\((1\d|[89])\)/);
+    expect(realm.defaultLocale).toBe('zh-CN');
+    // Admin event details can carry personal data: off.
+    expect(realm.adminEventsDetailsEnabled).toBe(false);
+  });
+
+  it('has exactly the two product clients, each confidential, code flow with PKCE S256 only', () => {
+    expect(realm.clients.map((c) => c.clientId).sort()).toEqual(['litesync-web', 'nexus-web']);
+    for (const c of realm.clients) {
+      const a = c.attributes as Record<string, string>;
+      const base = c.clientId === 'nexus-web' ? '${NEXUS_PUBLIC_URL}' : '${LITESYNC_PUBLIC_URL}';
+      expect(c, String(c.clientId)).toMatchObject({ publicClient: false, standardFlowEnabled: true, implicitFlowEnabled: false, directAccessGrantsEnabled: false, serviceAccountsEnabled: false, frontchannelLogout: false, fullScopeAllowed: false });
+      expect(a['pkce.code.challenge.method']).toBe('S256');
+      expect(a['oauth2.device.authorization.grant.enabled']).toBe('false');
+      // Exact callback, no wildcards anywhere.
+      expect(c.redirectUris).toEqual([`${base}/auth/callback`]);
+      expect(c.webOrigins).toEqual([base]);
+      expect(JSON.stringify(c)).not.toMatch(/\*|"\+"/);
+      expect(a['backchannel.logout.url']).toBe(`${base}/auth/backchannel-logout`);
+      expect(a['backchannel.logout.session.required']).toBe('true');
+      // Secrets are never in the repository.
+      expect(String(c.secret)).toMatch(/^\$\{[A-Z_]+\}$/);
+    }
+  });
+
+  it('keeps every credential out of the files', () => {
+    expect(realm.smtpServer.password).toBe('${SMTP_PASSWORD}');
+    for (const line of compose.split('\n').filter((l) => /PASSWORD|SECRET/.test(l) && l.includes(':') && !l.trim().startsWith('#'))) expect(line, line).toMatch(/\$\{[A-Z_]+/);
+  });
+
+  it('exposes no port beyond this machine and isolates the database roles', () => {
+    for (const m of compose.matchAll(/^\s*- "([^"]+):\d+"$/gm)) expect(m[1]).toMatch(/^127\.0\.0\.1:/);
+    for (const db of ['keycloak', 'nexus', 'litesync']) expect(init).toMatch(new RegExp(`REVOKE CONNECT, TEMPORARY ON DATABASE ${db}\\s+FROM PUBLIC`));
+    expect(init).toMatch(/NOSUPERUSER NOCREATEDB NOCREATEROLE/);
+  });
+});

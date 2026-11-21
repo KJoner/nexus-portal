@@ -1,7 +1,7 @@
 import type { RecentItem } from '@nexus/shared';
 import { create } from 'zustand';
 import { storage } from '../lib/storage';
-import { useConfigStore } from './config-store';
+import { onAccountChange, useConfigStore } from './config-store';
 
 const KEY = 'nexus.recent.v1';
 const MAX = 30;
@@ -37,6 +37,9 @@ export const useRecentStore = create<RecentStore>((set, get) => ({
     set({ items });
   },
 }));
+
+// Recent opens and searches are one person's: another account signing in here starts empty.
+onAccountChange(() => useRecentStore.setState({ items: [] }));
 
 /** Items visible under current privacy and retention settings. */
 export function visibleRecent(items: readonly RecentItem[], settings: ReturnType<typeof useConfigStore.getState>['snapshot']['config']['settings']): RecentItem[] {

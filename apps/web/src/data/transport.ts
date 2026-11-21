@@ -4,13 +4,18 @@ import {
   defaultConfig,
   OpError,
   type ApiErrorBody,
+  type AdminUser,
   type AppEntry,
+  type AuthOptions,
   type Bookmark,
   type CatalogResponse,
   type ConfigResponse,
   type DeviceInfo,
   type HealthTestResult,
+  type InviteResponse,
   type LinkwardenStatus,
+  type LogoutAllResponse,
+  type MeResponse,
   type OpBatch,
   type PairingRequest,
   type ServiceStatus,
@@ -69,7 +74,15 @@ export interface Transport {
   devices(): Promise<DeviceInfo[]>;
   revokeDevice(id: string): Promise<DeviceInfo[]>;
   pairingRequest(code: string): Promise<PairingRequest>;
-  decidePairing(code: string, approve: boolean): Promise<void>;
+  decidePairing(code: string, approve: boolean, scopes?: string[]): Promise<void>;
+  /** v0.4 accounts: sign-in options (public), who this session is, 退出所有设备. */
+  authOptions(): Promise<AuthOptions>;
+  me(): Promise<MeResponse>;
+  logoutAll(): Promise<LogoutAllResponse>;
+  /** v0.4 administration (administrators only; the server answers 403 otherwise). */
+  adminUsers(): Promise<AdminUser[]>;
+  setUserDisabled(id: string, disabled: boolean): Promise<void>;
+  createInvite(ttlDays: number): Promise<InviteResponse>;
   /** v0.4 应用目录: public templates, all pages merged (the catalog is small). */
   catalog(): Promise<CatalogResponse>;
   /** Server pushes: config revisions and health results. Returns an unsubscribe function. */
@@ -144,9 +157,17 @@ export const httpTransport: Transport = {
   devices: () => request('/api/devices'),
   revokeDevice: (id) => request(`/api/devices/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   pairingRequest: (code) => request(`/api/devices/pairing/${encodeURIComponent(code)}`),
-  decidePairing: async (code, approve) => {
-    await request(`/api/devices/pairing/${encodeURIComponent(code)}`, { method: 'POST', body: JSON.stringify({ approve }) });
+  decidePairing: async (code, approve, scopes) => {
+    await request(`/api/devices/pairing/${encodeURIComponent(code)}`, { method: 'POST', body: JSON.stringify(scopes ? { approve, scopes } : { approve }) });
   },
+  authOptions: () => request('/api/v2/auth/options'),
+  me: () => request('/api/v2/me'),
+  logoutAll: () => request('/api/v2/account/logout-all', { method: 'POST' }),
+  adminUsers: async () => (await request<{ users: AdminUser[] }>('/api/v2/admin/users')).users,
+  setUserDisabled: async (id, disabled) => {
+    await request(`/api/v2/admin/users/${encodeURIComponent(id)}/${disabled ? 'disable' : 'enable'}`, { method: 'POST' });
+  },
+  createInvite: (ttlDays) => request('/api/v2/admin/invites', { method: 'POST', body: JSON.stringify({ ttlDays }) }),
   async catalog() {
     const first = await request<CatalogResponse>('/api/v2/catalog?limit=200');
     const items = [...first.items];
@@ -183,6 +204,10 @@ export class MemoryTransport implements Transport {
   calls: OpBatch[] = [];
   /** 应用目录 served by this fake server (tests fill it in; the real file is not bundled here). */
   catalogData: CatalogResponse = { catalogVersion: 'test', categories: [], items: [], nextCursor: null };
+  /** v0.4: whose session this fake server answers for. */
+  account: { id: string; role: 'admin' | 'user'; session: 'password' | 'oidc'; canLinkIdentity: boolean } = { id: 'legacy-admin', role: 'admin', session: 'password', canLinkIdentity: false };
+  options: AuthOptions = { oidc: false, legacyPassword: true, registration: 'closed', accountUrl: null };
+  loggedOutAll = 0;
   catalogCalls = 0;
   private listeners = new Set<(r: number) => void>();
 
@@ -291,6 +316,37 @@ export class MemoryTransport implements Transport {
   }
   async decidePairing(): Promise<void> {
     throw new HttpError(404, 'not_found', '连接请求不存在或已过期');
+  }
+  async authOptions(): Promise<AuthOptions> {
+    if (!this.online) throw new NetworkError();
+    return this.options;
+  }
+  async me(): Promise<MeResponse> {
+    this.guard();
+    const a = this.account;
+    return { account: { id: a.id, displayName: a.id === 'legacy-admin' ? '管理员' : a.id, email: '', emailVerified: false }, product: 'nexus', role: a.role, permissions: [], onboarding: { state: this.config.apps.length ? 'ready' : 'empty_collection' }, session: a.session, identityLinked: a.session === 'oidc', canLinkIdentity: a.canLinkIdentity };
+  }
+  async logoutAll(): Promise<LogoutAllResponse> {
+    this.guard();
+    this.loggedOutAll++;
+    this.authenticated = false;
+    return { sessions: 1, devices: 0, endSessionUrl: null };
+  }
+  users: AdminUser[] = [];
+  invites: InviteResponse[] = [];
+  async adminUsers(): Promise<AdminUser[]> {
+    this.guard();
+    return this.users;
+  }
+  async setUserDisabled(id: string, disabled: boolean): Promise<void> {
+    this.guard();
+    this.users = this.users.map((u) => (u.id === id ? { ...u, disabled } : u));
+  }
+  async createInvite(ttlDays: number): Promise<InviteResponse> {
+    this.guard();
+    const invite = { code: `nxi_test${this.invites.length}`, expiresAt: Date.now() + ttlDays * 86_400_000 };
+    this.invites.push(invite);
+    return invite;
   }
   async catalog(): Promise<CatalogResponse> {
     if (!this.online) throw new NetworkError();

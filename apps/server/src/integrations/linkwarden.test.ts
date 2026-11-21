@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { openDb, type DB } from '../db';
+import { openDb, type SqliteDatabase } from '../db';
 import { Linkwarden, LinkwardenError } from './linkwarden';
 import { SecretBox } from './secret';
 
@@ -39,7 +39,7 @@ function fakeLinkwarden(): Promise<{ server: Server; base: string; seen: string[
 }
 
 describe('Linkwarden integration', () => {
-  let db: DB;
+  let db: SqliteDatabase;
   let lw: Linkwarden;
   let fake: Awaited<ReturnType<typeof fakeLinkwarden>>;
   beforeEach(async () => {
@@ -47,14 +47,14 @@ describe('Linkwarden integration', () => {
     fake = await fakeLinkwarden();
     lw = new Linkwarden(db, new SecretBox(randomBytes(32)), { allowPrivate: true, allowLoopback: true });
   });
-  afterEach(() => {
+  afterEach(async () => {
     fake.server.close();
-    db.close();
+    await db.close();
   });
 
   it('verifies the token before storing it, and stores it encrypted', async () => {
     await expect(lw.connect(fake.base, 'wrong')).rejects.toMatchObject({ code: 'unauthorized' });
-    expect(lw.status().configured).toBe(false);
+    expect((await lw.status()).configured).toBe(false);
     const s = await lw.connect(`${fake.base}/`, TOKEN);
     expect(s).toMatchObject({ configured: true, baseUrl: fake.base, tokenLast4: '3f2a', lastError: null });
     const row = db.prepare('select token_enc from integrations').get() as { token_enc: string };

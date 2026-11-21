@@ -2,7 +2,7 @@ import { hostOf, validateEngine, type Engine, type LinkwardenStatus } from '@nex
 import { Check, ChevronDown, ChevronUp, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from '../../../components/toast-store';
-import { linkwardenApi, useConfig } from '../../../data/config-store';
+import { linkwardenApi, useConfig, useIsAdmin } from '../../../data/config-store';
 import { useRecentStore } from '../../../data/recent';
 import { AppTile } from '../../../icons/AppTile';
 import { cn } from '../../../lib/cn';
@@ -133,9 +133,11 @@ export function SearchPage() {
   const [clearOpen, setClearOpen] = useState(false);
   const history = useRecentStore((st) => st.items.filter((x) => x.kind === 'search').length);
   const [lw, setLw] = useState<LinkwardenStatus | null>(null);
+  // Linkwarden is the operator's integration (v0.4): other accounts neither see nor query it.
+  const admin = useIsAdmin();
   useEffect(() => {
-    linkwardenApi.status().then(setLw, () => setLw({ configured: false, baseUrl: '', tokenLast4: '', lastOkAt: null, lastError: '无法读取连接状态' }));
-  }, []);
+    if (admin) linkwardenApi.status().then(setLw, () => setLw({ configured: false, baseUrl: '', tokenLast4: '', lastOkAt: null, lastError: '无法读取连接状态' }));
+  }, [admin]);
   const lwToggle = (
     <Row label="Linkwarden 收藏搜索" sub={lw?.configured ? '在结果中混排收藏，并可把「我的收藏」设为引擎；查询经 Nexus 服务端转发' : '先在下方连接 Linkwarden'} disabled={!lw?.configured && !s.linkwarden}>
       <Switch
@@ -194,7 +196,7 @@ export function SearchPage() {
       <>
         <Group title="默认搜索引擎">
           <div role="radiogroup" aria-label="默认搜索引擎" className="flex flex-col divide-y divide-ink/7">
-            {E.map((e) => (
+            {E.filter((e) => admin || e.kind !== 'linkwarden').map((e) => (
               <button key={e.id} type="button" role="radio" aria-checked={s.defaultEngine === e.id} disabled={offOf(e)} onClick={() => setDefault(e)} className="flex min-h-14 items-center gap-3 border-0 bg-transparent px-4 py-2 text-left text-ink active:bg-ink/8 disabled:opacity-45">
                 <AppTile target={{ kind: 'engine', engine: e }} size={30} />
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -213,10 +215,12 @@ export function SearchPage() {
             <Switch label="在结果中显示应用" checked={s.showApps} onChange={(v) => patch('search', { showApps: v })} />
           </Row>
         </Group>
-        <Group title="Linkwarden">
-          {lwToggle}
-          <LinkwardenCard status={lw} setStatus={setLw} />
-        </Group>
+        {admin && (
+          <Group title="Linkwarden">
+            {lwToggle}
+            <LinkwardenCard status={lw} setStatus={setLw} />
+          </Group>
+        )}
         <Button size="lg" className="w-full rounded-2xl bg-ink/6 text-[#f4b2a3]" disabled={!history} onClick={() => setClearOpen(true)}>
           清除搜索历史{history ? `（${history} 条）` : ''}
         </Button>
@@ -230,6 +234,8 @@ export function SearchPage() {
       <PageHeader title="搜索" sub="列表顺序即首页引擎菜单与 Alt ↑↓ 的切换顺序。在搜索框输入「前缀 + 空格」可临时改用对应引擎。" />
       <Group title="搜索引擎">
         {E.map((e, i) => {
+          // Linkwarden belongs to the operator: another account's copy of the engine is not offered.
+          if (!admin && e.kind === 'linkwarden') return null;
           const off = offOf(e);
           const isDef = s.defaultEngine === e.id;
           return (
@@ -311,8 +317,8 @@ export function SearchPage() {
         <Row label="在结果中显示应用" sub="输入时把匹配的应用与服务排在网页搜索之前">
           <Switch label="在结果中显示应用" checked={s.showApps} onChange={(v) => patch('search', { showApps: v })} />
         </Row>
-        {lwToggle}
-        <LinkwardenCard status={lw} setStatus={setLw} />
+        {admin && lwToggle}
+        {admin && <LinkwardenCard status={lw} setStatus={setLw} />}
       </Group>
       {clearDialog}
     </div>

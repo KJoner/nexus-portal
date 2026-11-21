@@ -289,6 +289,17 @@ docker compose up -d
 - **Node.js 版本**：Node 22 维护期到 2027 年 4 月。到期前把 `Dockerfile` 里的 `NODE_IMAGE` 和 CI 中的 `node-version` 一起升级，再发布新版本。
 - **Docker Hub 令牌**：到期前生成新令牌，更新仓库 Secret `DOCKERHUB_TOKEN`。
 
+## 公开部署：多账号与统一身份（v0.4，可选）
+
+不做任何设置时，Nexus 仍是自托管的单用户门户（SQLite + 访问密码），升级后数据、设置与已连接的扩展都不变。要让其他人注册使用：
+
+1. 按 [`infra/identity/README.md`](infra/identity/README.md) 部署统一身份（Keycloak）与 PostgreSQL——LiteSync 与 Nexus 共用同一个账号中心，各自只在自己的服务端完成登录。
+2. 已有数据先迁到 PostgreSQL（[`docs/deploy.md`](docs/deploy.md#8-迁移到-postgresql公开部署)：演练 → 正式 → 核对报告；SQLite 文件不会被改动，可随时回退）。
+3. 设置 `NEXUS_PUBLIC_URL`、`NEXUS_OIDC_*`、`NEXUS_DATABASE_URL`，注册方式先用 `invite`。
+4. 管理员用访问密码登录，在「设置 › 数据、同步与安全」点「绑定统一账号」（旧管理员认领）；之后用统一账号登录，口令登录自动关闭。邀请码、停用账号也在这一页。
+
+账号之间完全隔离：收藏、图标、壁纸、设备、事件流和本机缓存都按账号分开。服务状态、健康检查和 Linkwarden 只属于管理员；公开部署默认不让服务器访问内网地址。浏览器扩展按连接时批准的范围（默认只读）访问，旧扩展的权限不会被自动扩大。
+
 ## 服务端环境变量
 
 | 变量 | 说明 |
@@ -302,12 +313,18 @@ docker compose up -d
 | `NEXUS_COOKIE_SECURE` | `auto`（默认，按 https 判断）/ `always` / `never` |
 | `NEXUS_SESSION_DAYS` | 会话有效天数，默认 30，使用中自动续期 |
 | `NEXUS_SECRET` | 加密服务凭据（Linkwarden 令牌）的密钥，≥ 16 位；未设置时在数据目录生成 `secret.key` |
-| `NEXUS_HEALTH_ALLOW_PRIVATE` | 健康检查与集成是否可访问局域网 / Tailscale 地址，默认 `true` |
+| `NEXUS_HEALTH_ALLOW_PRIVATE` | 健康检查与集成是否可访问局域网 / Tailscale 地址。未设置时：自托管（未配置统一身份）为 `true`，公开部署为 `false` |
 | `NEXUS_HEALTH_ALLOW_LOOPBACK` | 是否允许访问回环地址，默认 `false` |
 | `NEXUS_UNSPLASH_ACCESS_KEY` | 可选。填写后，外观设置中出现 Unsplash 壁纸来源；Key 只在服务器使用，每个部署需自行申请 |
 | `NEXUS_LITESYNC_URL` | 可选（v0.4）。本部署的 LiteSync 地址（https）。设置后应用目录里才出现 LiteSync，用户自己选择是否添加，任何人都不会被自动固定 |
+| `NEXUS_PUBLIC_URL` | v0.4 起服务端也读取：统一身份的回调地址（`/auth/callback`）、退出后的回跳地址由它生成；配置了统一身份时必填，生产环境必须 https |
+| `NEXUS_DATABASE_URL` | 可选（v0.4）。PostgreSQL 连接串；未设置时使用数据目录里的 SQLite。从 SQLite 迁移见 [`docs/deploy.md`](docs/deploy.md#8-迁移到-postgresql公开部署) |
+| `NEXUS_OIDC_ISSUER` / `NEXUS_OIDC_CLIENT_ID` / `NEXUS_OIDC_CLIENT_SECRET` | 可选（v0.4）。统一身份（OIDC，授权码 + PKCE，只在服务端完成）。三者与 `NEXUS_PUBLIC_URL` 一起设置后开启多账号 |
+| `NEXUS_REGISTRATION_MODE` | `closed` / `invite`（默认）/ `open`：新身份第一次进入时能否建立 Nexus 账号 |
+| `NEXUS_LEGACY_PASSWORD_LOGIN` | `auto`（默认：管理员绑定统一账号后关闭访问密码登录）/ `on` / `off`；未配置统一身份时始终可用 |
+| `NEXUS_MAIL_PROVIDER` | 产品通知邮件：`log`（默认，只写日志）/ `smtp`（`NEXUS_SMTP_URL`）/ `resend`（`NEXUS_RESEND_API_KEY`）；发件人 `NEXUS_MAIL_FROM`，回复地址 `NEXUS_MAIL_REPLY_TO` |
 
-Compose 额外读取 `NEXUS_VERSION`（镜像标签）、`NEXUS_IMAGE`、`NEXUS_BIND`、`NEXUS_PORT` 和 `NEXUS_PUBLIC_URL`（会传给 `NEXUS_ALLOWED_ORIGINS`），说明见 [`.env.example`](.env.example)。
+Compose 额外读取 `NEXUS_VERSION`（镜像标签）、`NEXUS_IMAGE`、`NEXUS_BIND`、`NEXUS_PORT`；`NEXUS_PUBLIC_URL` 同时传给 `NEXUS_ALLOWED_ORIGINS`。说明见 [`.env.example`](.env.example)。
 
 ## 许可证
 

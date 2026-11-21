@@ -45,6 +45,37 @@ jobs:
       - run: npm test
       - run: npm run build
 
+  # The `pg` half of the server suite runs on PGlite above (one connection: everything is
+  # serialized). Here it runs on a real server, where transactions interleave — the forced
+  # interleaving tests in concurrency.test.ts only run in this job.
+  postgres:
+    name: Server tests on PostgreSQL 17
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17.10-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+        env:
+          # A throwaway database inside this job; nothing else can reach it.
+          POSTGRES_PASSWORD: ci-only
+          POSTGRES_DB: nexus_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d nexus_test"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npx vitest run --project server
+        env:
+          NEXUS_TEST_PG_URL: postgres://postgres:ci-only@127.0.0.1:5432/nexus_test
+
   e2e:
     name: End-to-end (Chromium · WebKit iPhone)
     runs-on: ubuntu-24.04

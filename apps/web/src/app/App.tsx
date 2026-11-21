@@ -99,7 +99,12 @@ class ErrorBoundary extends Component<{ children: ReactNode }, BoundaryState> {
             <button
               type="button"
               onClick={() => {
-                storage.remove('nexus.cache.v2');
+                // Every account's cache in this browser (v0.4 keys them per account), and the old one.
+                try {
+                  for (const k of Object.keys(localStorage)) if (k.startsWith('nexus.cache.')) storage.remove(k);
+                } catch {
+                  /* storage disabled */
+                }
                 location.reload();
               }}
               className="h-10 rounded-xl border-0 bg-ink/9 px-4 text-[13.5px] text-ink"

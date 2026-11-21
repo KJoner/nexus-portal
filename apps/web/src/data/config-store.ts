@@ -1,4 +1,4 @@
-import { applyOps, ConfigSchema, defaultConfig, invertOp, normalizeConfig, OpError, applyOp, type AppEntry, type Config, type ConfigResponse, type Op, type Snapshot, type UploadedWallpaper } from '@nexus/shared';
+import { applyOps, ConfigSchema, defaultConfig, invertOp, normalizeConfig, OpError, applyOp, type AppEntry, type Config, type ConfigResponse, type MeResponse, type Op, type Snapshot, type UploadedWallpaper } from '@nexus/shared';
 import { create } from 'zustand';
 import { storage } from '../lib/storage';
 import { useStatusStore } from './status-store';
@@ -31,11 +31,36 @@ interface ConfigStore {
   /** Showing built-in defaults because neither the server nor a cache was available. */
   fallback: boolean;
   lastSavedAt: number;
+  /** v0.4: who the server says this session belongs to (null until checked this page load). */
+  account: MeResponse | null;
+  /**
+   * The cached data on screen is known to belong to the signed-in account. Until then nothing is
+   * sent: an unsent change queued under one account must never reach the server as another.
+   */
+  verified: boolean;
   dispatch(ops: Op | Op[]): DispatchResult;
 }
 
-const CACHE_KEY = 'nexus.cache.v2';
+/**
+ * v0.4: one cache per account — `nexus.cache.v3:<account id>` — and a pointer to the account this
+ * browser last verified. The pre-v0.4 cache (`v2`) had no owner: it can only have been the legacy
+ * administrator's, so it is handed to that account once verified, and dropped for anyone else.
+ */
+const CACHE_PREFIX = 'nexus.cache.v3:';
+const ACCOUNT_KEY = 'nexus.account.v1';
+const LEGACY_CACHE_KEY = 'nexus.cache.v2';
+const LEGACY_ADMIN = 'legacy-admin';
 const CLIENT_KEY = 'nexus.client';
+const cacheKey = (account: string) => `${CACHE_PREFIX}${account}`;
+let cacheAccount: string | null = storage.get<{ id: string }>(ACCOUNT_KEY)?.id ?? null;
+/** The role last confirmed for that account: operator UI appears without waiting for /me (no flicker). */
+let cachedRole: 'admin' | 'user' | null = storage.get<{ role?: 'admin' | 'user' }>(ACCOUNT_KEY)?.role ?? null;
+const accountListeners = new Set<() => void>();
+/** Per-person data kept elsewhere (recent searches) is dropped when another account signs in here. */
+export function onAccountChange(fn: () => void) {
+  accountListeners.add(fn);
+  return () => accountListeners.delete(fn);
+}
 
 interface Cache {
   confirmed: Snapshot | null;
@@ -50,8 +75,8 @@ const clientId = (() => {
   return id;
 })();
 
-function readCache(): Cache {
-  const raw = storage.get<Cache>(CACHE_KEY);
+function readCache(account: string | null): Cache {
+  const raw = account ? storage.get<Cache>(cacheKey(account)) : null;
   if (!raw) return { confirmed: null, pending: [], wallpapers: [] };
   const parsed = raw.confirmed && ConfigSchema.safeParse(raw.confirmed.config);
   const confirmed = parsed && parsed.success ? { ...raw.confirmed!, config: normalizeConfig(parsed.data) } : null;
@@ -75,8 +100,8 @@ function rebase(base: Config, pending: Batch[]): { config: Config; pending: Batc
   return { config, pending: kept, dropped };
 }
 
-function initialState() {
-  const cache = readCache();
+function initialState(account: string | null = cacheAccount) {
+  const cache = readCache(account);
   const base = cache.confirmed ?? { revision: 0, updatedAt: new Date(0).toISOString(), config: defaultConfig() };
   const r = rebase(base.config, cache.pending);
   return {
@@ -89,6 +114,8 @@ function initialState() {
     ready: !!cache.confirmed,
     fallback: false,
     lastSavedAt: cache.confirmed ? Date.parse(cache.confirmed.updatedAt) : 0,
+    account: null as MeResponse | null,
+    verified: false,
   };
 }
 
@@ -121,8 +148,44 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
 }));
 
 function persist() {
+  if (!cacheAccount) return;
   const s = useConfigStore.getState();
-  storage.set(CACHE_KEY, { confirmed: s.confirmed, pending: s.pending, wallpapers: s.wallpapers } satisfies Cache);
+  storage.set(cacheKey(cacheAccount), { confirmed: s.confirmed, pending: s.pending, wallpapers: s.wallpapers } satisfies Cache);
+}
+
+/** Private images cached by the Service Worker are keyed by address, not account: they go with the account. */
+function wipeImageCaches() {
+  if (typeof caches !== 'undefined') for (const name of ['nexus-wallpapers', 'nexus-daily', 'nexus-icons']) void caches.delete(name);
+}
+
+/**
+ * Asks the server who this session belongs to. Another account than the cache's: nothing of the
+ * previous one stays on screen, and its cache (with any unsent changes) waits under its own key
+ * for that person to sign in again here.
+ */
+async function verifyAccount(): Promise<void> {
+  const me = await transport.me();
+  const id = me.account.id;
+  const legacy = storage.get<Cache>(LEGACY_CACHE_KEY);
+  if (legacy) {
+    if (id === LEGACY_ADMIN && !storage.get(cacheKey(LEGACY_ADMIN))) storage.set(cacheKey(LEGACY_ADMIN), legacy);
+    storage.remove(LEGACY_CACHE_KEY);
+  }
+  cachedRole = me.role;
+  if (cacheAccount !== id) {
+    const switched = cacheAccount !== null;
+    cacheAccount = id;
+    storage.set(ACCOUNT_KEY, { id, role: me.role });
+    useConfigStore.setState({ ...initialState(id), auth: 'authenticated', account: me, verified: true });
+    useStatusStore.getState().replace([]);
+    if (switched) {
+      wipeImageCaches();
+      accountListeners.forEach((fn) => fn());
+    }
+  } else {
+    storage.set(ACCOUNT_KEY, { id, role: me.role });
+    useConfigStore.setState({ account: me, verified: true });
+  }
 }
 
 function accept(res: ConfigResponse, pending = useConfigStore.getState().pending) {
@@ -137,7 +200,7 @@ function accept(res: ConfigResponse, pending = useConfigStore.getState().pending
 
 function onFailure(e: unknown) {
   if (e instanceof HttpError && e.status === 401) {
-    useConfigStore.setState({ auth: 'anonymous' });
+    useConfigStore.setState({ auth: 'anonymous', verified: false });
   } else if (e instanceof NetworkError) {
     const s = useConfigStore.getState();
     useConfigStore.setState({ online: false, ready: true, fallback: !s.confirmed });
@@ -161,7 +224,7 @@ async function sendPending() {
   for (;;) {
     const s = useConfigStore.getState();
     const batch = s.pending[0];
-    if (!batch || s.auth === 'anonymous') return;
+    if (!batch || s.auth === 'anonymous' || !s.verified) return;
     try {
       const res = await transport.postOps({ clientId, batchId: batch.id, ops: batch.ops });
       accept(res, useConfigStore.getState().pending.filter((b) => b.id !== batch.id));
@@ -184,6 +247,7 @@ async function sendPending() {
 
 export async function refresh(): Promise<void> {
   try {
+    await verifyAccount();
     await flush();
     if (useConfigStore.getState().auth === 'anonymous') return;
     accept(await transport.getConfig());
@@ -271,21 +335,41 @@ export async function login(password: string): Promise<void> {
   connectEvents();
 }
 
-/** Signs out and forgets everything this browser cached about the portal. */
+/** Forgets everything this browser cached for the signed-in account. */
+function forgetLocal() {
+  unsubscribe?.();
+  unsubscribe = null;
+  clearTimeout(reconnectTimer);
+  if (cacheAccount) storage.remove(cacheKey(cacheAccount));
+  storage.remove(ACCOUNT_KEY);
+  storage.remove(LEGACY_CACHE_KEY);
+  storage.remove('nexus.recent.v1');
+  cacheAccount = null;
+  cachedRole = null;
+  // Private images cached by the Service Worker go too.
+  wipeImageCaches();
+  accountListeners.forEach((fn) => fn());
+  useStatusStore.getState().replace([]);
+  useConfigStore.setState({ ...initialState(null), auth: 'anonymous' });
+}
+
+/** 退出当前产品: signs out of Nexus in this browser and forgets what it cached. */
 export async function logout(): Promise<void> {
   try {
     await transport.logout();
   } finally {
-    unsubscribe?.();
-    unsubscribe = null;
-    clearTimeout(reconnectTimer);
-    storage.remove(CACHE_KEY);
-    storage.remove('nexus.recent.v1');
-    // Private images cached by the Service Worker go too.
-    if (typeof caches !== 'undefined') for (const name of ['nexus-wallpapers', 'nexus-daily', 'nexus-icons']) void caches.delete(name);
-    useStatusStore.getState().replace([]);
-    useConfigStore.setState({ ...initialState(), auth: 'anonymous' });
+    forgetLocal();
   }
+}
+
+/**
+ * 退出所有设备: every session and paired device of the account ends on the server. Returns where to
+ * send the browser to end the identity-service session as well (null without unified sign-in).
+ */
+export async function logoutEverywhere(): Promise<string | null> {
+  const r = await transport.logoutAll();
+  forgetLocal();
+  return r.endSessionUrl;
 }
 
 export async function uploadWallpaper(file: File): Promise<UploadedWallpaper> {
@@ -337,7 +421,7 @@ export const devicesApi = {
   list: () => transport.devices(),
   revoke: (id: string) => transport.revokeDevice(id),
   pairing: (code: string) => transport.pairingRequest(code),
-  decide: (code: string, approve: boolean) => transport.decidePairing(code, approve),
+  decide: (code: string, approve: boolean, scopes?: string[]) => transport.decidePairing(code, approve, scopes),
 };
 
 export async function deleteWallpaper(id: string): Promise<void> {
@@ -353,13 +437,15 @@ export function setTransport(next: Transport) {
   transport = next;
 }
 
-/** Tests: swap the transport and reset to a clean, signed-in state. */
-export function resetSync(next: Transport) {
+/** Tests: swap the transport and reset to a clean, signed-in, verified state of `account`. */
+export function resetSync(next: Transport, account = LEGACY_ADMIN) {
   transport = next;
-  storage.remove(CACHE_KEY);
+  for (const k of [LEGACY_CACHE_KEY, ACCOUNT_KEY, cacheKey(account)]) storage.remove(k);
+  cacheAccount = account;
+  cachedRole = null;
   unsubscribe?.();
   unsubscribe = null;
-  useConfigStore.setState({ ...initialState(), auth: 'authenticated' });
+  useConfigStore.setState({ ...initialState(account), auth: 'authenticated', verified: true });
 }
 export { connectEvents as connectSyncEvents };
 
@@ -373,4 +459,19 @@ export function useSaveState(): SaveState {
 }
 
 export const useConfig = (): Config => useConfigStore((s) => s.snapshot.config);
+/** v0.4: the signed-in account (null until the server has answered). For display only. */
+export const useAccount = () => useConfigStore((s) => s.account);
+/**
+ * Operator tools (service status, health checks, Linkwarden) are hidden for everyone else; the
+ * server enforces it regardless. Unknown yet (no answer and nothing cached — e.g. the browser
+ * extension, which never asks) keeps the single-user behaviour: shown.
+ */
+export const useIsAdmin = () => useConfigStore((s) => (s.account ? s.account.role === 'admin' : cachedRole !== 'user'));
+export const authOptions = () => transport.authOptions();
+/** v0.4 administration (administrators only). */
+export const adminApi = {
+  users: () => transport.adminUsers(),
+  setDisabled: (id: string, disabled: boolean) => transport.setUserDisabled(id, disabled),
+  invite: (ttlDays: number) => transport.createInvite(ttlDays),
+};
 export const dispatch = (ops: Op | Op[]) => useConfigStore.getState().dispatch(ops);

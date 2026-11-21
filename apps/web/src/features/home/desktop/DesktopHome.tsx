@@ -1,11 +1,11 @@
 import { appHref, desktopShortcuts, hostOf, MAX_PINS, pinnedSites, shownServices, uiPreset, type AppEntry } from '@nexus/shared';
-import { Activity, ArrowUpRight, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, ExternalLink, Eye, EyeOff, GripVertical, Image, LayoutTemplate, Pencil, Pin, PinOff, Settings, SlidersHorizontal } from 'lucide-react';
+import { Activity, ArrowRight, ArrowUpRight, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, ExternalLink, Eye, EyeOff, GripVertical, Image, LayoutTemplate, Pencil, Pin, PinOff, Settings, SlidersHorizontal } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { ContextMenu, menuPoint, type MenuItem, type MenuState } from '../../../components/ContextMenu';
 import { ToastHost } from '../../../components/ToastHost';
 import { toast } from '../../../components/toast-store';
-import { dispatch, flush, useConfig, useConfigStore } from '../../../data/config-store';
+import { dispatch, flush, useConfig, useConfigStore, useIsAdmin } from '../../../data/config-store';
 import { useServices } from '../../../data/status';
 import { useMotionLevel, useNow, useViewport } from '../../../lib/hooks';
 import { host } from '../../../lib/host';
@@ -54,7 +54,9 @@ export function DesktopHome() {
   const allRef = useRef<HTMLButtonElement>(null);
   const pillRef = useRef<HTMLButtonElement>(null);
 
-  const showStatus = !privacy.guest;
+  // Service status is the operator's view of the servers; other accounts have none (v0.4).
+  const isAdmin = useIsAdmin();
+  const showStatus = !privacy.guest && isAdmin;
   // 布局微调: vertical offset and slab width, kept inside the window.
   const top = Math.max(72, (h >= 900 ? 228 : Math.round(h * 0.24)) + Math.round((h * ui.offsetY) / 100));
   const slabW = Math.min(ui.searchWidth, w - 120);
@@ -335,6 +337,18 @@ export function DesktopHome() {
               />
             }
           />
+          {/* A new account's empty collection: point to 应用目录 instead of an empty dock (v0.4). */}
+          {!edit && !privacy.guest && config.apps.length === 0 && (
+            <button
+              type="button"
+              onClick={() => navigate('/catalog')}
+              className="mx-auto mt-3.5 flex h-11 w-fit items-center gap-2 rounded-2xl border-0 px-4 text-[13px] text-ink/80 backdrop-blur-[30px] transition-colors duration-140 hover:text-ink"
+              style={{ background: 'rgba(26,25,22,0.5)', boxShadow: 'inset 0 0 0 1px rgba(239,234,225,0.06)' }}
+            >
+              收藏库还是空的 · 去「应用目录」挑几个常用网站
+              <ArrowRight className="size-4" />
+            </button>
+          )}
           {edit && (
             <div className="mt-3.5 flex h-12 animate-pop items-center gap-3.5 rounded-2xl pr-2 pl-[18px] text-[13px] text-ink/78 backdrop-blur-[30px]" style={{ background: 'rgba(26,25,22,0.62)', boxShadow: 'inset 0 0 0 1px rgba(230,192,138,0.28)' }}>
               <span className="font-medium text-ink">编辑首页</span>

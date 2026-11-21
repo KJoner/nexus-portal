@@ -1,0 +1,90 @@
+# 统一身份（Keycloak）与共享 PostgreSQL —— LiteSync 与 Nexus Portal 共用一个账号（ADR-011 / ADR-018）。
+#
+# 一个 PostgreSQL 实例，三个独立数据库与三个独立角色：
+#   keycloak / keycloak        身份服务自己的表（只有 Keycloak 读写）
+#   nexus    / nexus_app       Nexus Portal 业务数据（NEXUS_DATABASE_URL 指向它）
+#   litesync / litesync_app    预留给 LiteSync 元数据迁移（批次 G）；在那之前 LiteSync 仍用自己的 sync.db
+# 角色之间互相没有连接权限（见 postgres-init/01-databases.sh）。
+#
+# 用法见同目录 README.md。所有密钥都来自 .env（复制 .env.example 后填写，权限 600），不要提交。
+name: identity
+
+services:
+  postgres:
+    image: postgres:17.10-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?在 .env 中设置 POSTGRES_SUPERUSER_PASSWORD}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?在 .env 中设置 KEYCLOAK_DB_PASSWORD}
+      NEXUS_DB_PASSWORD: ${NEXUS_DB_PASSWORD:?在 .env 中设置 NEXUS_DB_PASSWORD}
+      LITESYNC_DB_PASSWORD: ${LITESYNC_DB_PASSWORD:?在 .env 中设置 LITESYNC_DB_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # 只在第一次初始化空数据目录时执行
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    # 不对公网开放：Nexus 与 Keycloak 通过 compose 网络（或本机 127.0.0.1）访问
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.1
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["start", "--import-realm"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      # 对外地址（由反向代理终结 HTTPS）。必须是用户浏览器看到的那个 https 地址
+      KC_HOSTNAME: ${ACCOUNTS_PUBLIC_URL:?在 .env 中设置 ACCOUNTS_PUBLIC_URL，例如 https://accounts.example.com}
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+      KC_HEALTH_ENABLED: "true"
+      # 首次启动创建的临时管理员；登录管理控制台后请建立正式管理员并删除它
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_BOOTSTRAP_ADMIN:-temp-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_BOOTSTRAP_PASSWORD:?在 .env 中设置 KEYCLOAK_BOOTSTRAP_PASSWORD}
+      # realm 模板（realm/accounts-realm.json）里的 ${…} 占位符在首次导入时取这些值
+      NEXUS_PUBLIC_URL: ${NEXUS_PUBLIC_URL:?在 .env 中设置 NEXUS_PUBLIC_URL}
+      LITESYNC_PUBLIC_URL: ${LITESYNC_PUBLIC_URL:?在 .env 中设置 LITESYNC_PUBLIC_URL}
+      NEXUS_OIDC_CLIENT_SECRET: ${NEXUS_OIDC_CLIENT_SECRET:?在 .env 中设置 NEXUS_OIDC_CLIENT_SECRET}
+      LITESYNC_OIDC_CLIENT_SECRET: ${LITESYNC_OIDC_CLIENT_SECRET:?在 .env 中设置 LITESYNC_OIDC_CLIENT_SECRET}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-no-reply@accounts.example.com}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-账号中心}
+      SMTP_REPLY_TO: ${SMTP_REPLY_TO:-}
+    volumes:
+      - ./realm:/opt/keycloak/data/import:ro
+    ports:
+      - "127.0.0.1:${KEYCLOAK_PORT:-8180}:8080"
+    healthcheck:
+      # 管理端口 9000 的 /health/ready（KC_HEALTH_ENABLED），再加上 realm 本身：本机实测 Keycloak
+      # 26.8 在导入 realm 之前就报告 UP，只看前者会让产品在 realm 还不存在时开始登录
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q UP <&3 && exec 4<>/dev/tcp/127.0.0.1/8080 && printf 'GET /realms/accounts/.well-known/openid-configuration HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&4 && grep -q 'HTTP/1.. 200' <&4"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  postgres-data:

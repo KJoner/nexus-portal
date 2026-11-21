@@ -44,7 +44,8 @@ export const INDEX: { page: PageId; label: string; kw: string }[] = [
   ['data', '配置同步', '设备 同步 离线'],
   ['data', '导入与导出', 'json 备份 导入 导出'],
   ['data', '隐私', '访客 最近使用'],
-  ['data', '登录状态', '账户 退出 登录'],
+  ['data', '账号与登录', '账户 账号 退出 登录 退出全部设备 统一账号 账号中心 绑定 认领 密码'],
+  ['data', '账号与邀请', '管理员 用户 邀请码 注册 停用'],
   ['data', '浏览器扩展', 'chrome edge 扩展 新标签页 设备 授权 连接 撤销'],
   ['data', '重置设置', '恢复默认 重置'],
 ].map(([page, label, kw]) => ({ page: page as PageId, label: label!, kw: kw! }));

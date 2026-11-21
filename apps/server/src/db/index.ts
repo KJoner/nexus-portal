@@ -1,134 +1,48 @@
-import Database from 'better-sqlite3';
+import Sqlite from 'better-sqlite3';
 import { mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { EnvError } from '../env';
+import { PgDatabase } from './pg';
+import { MIGRATIONS, PG_MIGRATIONS } from './schema';
+import type { Database } from './sql';
+import { SqliteDatabase } from './sqlite';
 
-export type DB = Database.Database;
+export { MIGRATIONS, PG_MIGRATIONS };
+export { forUpdate, isUniqueViolation, truthy, type Database, type Param, type Queryable } from './sql';
+export { SqliteDatabase } from './sqlite';
 
-/** Append-only; `user_version` records how many have run. */
-export const MIGRATIONS: readonly string[] = [
-  `
-  create table meta (key text primary key, value text not null);
+/** What repositories hold: either back end, behind the same asynchronous interface. */
+export type DB = Database;
 
-  -- The whole portal configuration is one validated JSON document. All writes go through the
-  -- shared op reducer, so the document is the single source of truth for apps, pins and settings.
-  create table config (
-    id integer primary key check (id = 1),
-    revision integer not null,
-    updated_at text not null,
-    data text not null
-  );
-
-  -- Applied op batches: makes retries idempotent and keeps a short audit trail.
-  create table op_log (
-    revision integer primary key,
-    batch_id text not null unique,
-    client_id text not null,
-    ops text not null,
-    created_at text not null
-  );
-
-  create table auth (
-    id integer primary key check (id = 1),
-    password_hash text not null,
-    updated_at text not null
-  );
-
-  create table sessions (
-    id_hash text primary key,
-    created_at integer not null,
-    expires_at integer not null,
-    last_seen integer not null,
-    user_agent text not null default ''
-  );
-  create index sessions_expiry on sessions (expires_at);
-
-  create table wallpapers (
-    id text primary key,
-    name text not null,
-    width integer not null,
-    height integer not null,
-    widths text not null,
-    placeholder text not null,
-    created_at text not null
-  );
-  `,
-  `
-  -- Last health result per service; the checker resumes from here after a restart.
-  create table health_status (
-    app_id text primary key,
-    level text not null,
-    message text not null,
-    checked_at text not null,
-    latency_ms integer,
-    fails integer not null default 0,
-    key text not null,
-    via text not null default 'ext'
-  );
-  `,
-  `
-  -- Credentials for read-only integrations; token_enc is AES-256-GCM (see integrations/secret.ts).
-  create table integrations (
-    id text primary key,
-    base_url text not null,
-    token_enc text not null,
-    token_last4 text not null,
-    last_ok_at text,
-    last_error text,
-    updated_at text not null
-  );
-  `,
-  `
-  -- v0.2: the configuration document can hold up to 36 pins and new settings that v0.1 cannot
-  -- read (it would silently fall back to defaults). Bumping the version makes older releases
-  -- refuse this database instead; rolling back means restoring the automatic backup.
-  insert or replace into meta (key, value) values ('config_format', '2');
-  `,
-  `
-  -- v0.2: wallpapers from public sources (精选图库, 每日一图, Unsplash, imported addresses).
-  alter table wallpapers add column source text not null default 'upload';
-  alter table wallpapers add column ref text not null default '';
-  alter table wallpapers add column credit text not null default '';
-  alter table wallpapers add column luma real;
-  alter table wallpapers add column focal text not null default '';
-  alter table wallpapers add column remote text not null default '';
-  create index wallpapers_source_ref on wallpapers (source, ref);
-  `,
-  `
-  -- v0.3: devices (the Chrome extension) that read the configuration with their own token.
-  -- Only the token's SHA-256 is stored; deleting a row revokes the device.
-  create table devices (
-    id text primary key,
-    name text not null,
-    token_hash text not null unique,
-    created_at integer not null,
-    last_used_at integer,
-    user_agent text not null default ''
-  );
-  `,
-];
+/** The account that owns everything a single-user installation stored before v0.4. */
+export const LEGACY_ADMIN_ID = 'legacy-admin';
 
 const KEEP_BACKUPS = 5;
 
-export function openDb(file: string): DB {
+/**
+ * Opens (and migrates) a SQLite database. Synchronous on purpose: the migrations run on the raw
+ * handle before anything else can use it.
+ */
+export function openDb(file: string): SqliteDatabase {
   if (file !== ':memory:') mkdirSync(dirname(file), { recursive: true });
-  const db = new Database(file);
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
-  db.pragma('busy_timeout = 3000');
-  migrate(db, file);
-  return db;
+  const raw = new Sqlite(file);
+  raw.pragma('journal_mode = WAL');
+  raw.pragma('foreign_keys = ON');
+  raw.pragma('busy_timeout = 3000');
+  migrate(raw, file);
+  return new SqliteDatabase(raw);
 }
 
 /**
  * Consistent copy of the database before an upgrade changes it: `<data>/backups/nexus-v<N>-<time>.db`.
  * Only the newest few are kept. Returns the path of the copy.
  */
-export function backupDb(db: DB, file: string, version: number): string {
+export function backupDb(db: Sqlite.Database | SqliteDatabase, file: string, version: number): string {
+  const raw = db instanceof SqliteDatabase ? db.raw : db;
   const dir = join(dirname(file), 'backups');
   mkdirSync(dir, { recursive: true });
   const dest = join(dir, `nexus-v${version}-${new Date().toISOString().replace(/[:.]/g, '-')}.db`);
-  db.exec(`vacuum into '${dest.replace(/'/g, "''")}'`);
+  raw.exec(`vacuum into '${dest.replace(/'/g, "''")}'`);
   const old = readdirSync(dir)
     .filter((f) => /^nexus-v\d+-.+\.db$/.test(f))
     .sort()
@@ -137,7 +51,7 @@ export function backupDb(db: DB, file: string, version: number): string {
   return dest;
 }
 
-function migrate(db: DB, file: string) {
+function migrate(db: Sqlite.Database, file: string) {
   const current = db.pragma('user_version', { simple: true }) as number;
   // A database written by a newer release: running older code on it could corrupt data.
   if (current > MIGRATIONS.length) {
@@ -155,4 +69,31 @@ function migrate(db: DB, file: string) {
       db.pragma(`user_version = ${v + 1}`);
     })();
   }
+}
+
+/** Applies pending PostgreSQL migrations, each in its own transaction. Safe to run on every start. */
+export async function migratePg(db: Database): Promise<number> {
+  await db.exec('create table if not exists schema_migrations (version integer primary key, applied_at bigint not null)');
+  const row = await db.get<{ v: number | null }>('select max(version) as v from schema_migrations');
+  const current = Number(row?.v ?? 0);
+  if (current > PG_MIGRATIONS.length) throw new EnvError(`数据库版本（${current}）比当前程序（${PG_MIGRATIONS.length}）新：请使用较新的镜像`);
+  for (let v = current; v < PG_MIGRATIONS.length; v++) {
+    await db.tx(async () => {
+      await db.exec(PG_MIGRATIONS[v]!);
+      await db.run('insert into schema_migrations (version, applied_at) values (?, ?)', [v + 1, Date.now()]);
+    });
+  }
+  return PG_MIGRATIONS.length;
+}
+
+/** PostgreSQL (`NEXUS_DATABASE_URL`), migrated. */
+export async function openPg(url: string): Promise<PgDatabase> {
+  const db = PgDatabase.connect(url);
+  try {
+    await migratePg(db);
+  } catch (e) {
+    await db.close().catch(() => undefined);
+    throw e;
+  }
+  return db;
 }

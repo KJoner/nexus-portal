@@ -1,5 +1,5 @@
 import type { Bookmark, LinkwardenStatus } from '@nexus/shared';
-import type { DB } from '../db';
+import { LEGACY_ADMIN_ID, type DB } from '../db';
 import type { NetPolicy } from '../net/ip';
 import { getJson, UpstreamError } from '../net/http';
 import type { SecretBox } from './secret';
@@ -37,21 +37,26 @@ export function normalizeBaseUrl(input: string): string {
   return `${u.origin}${u.pathname.replace(/\/+$/, '')}`;
 }
 
-/** Read-only Linkwarden access. The token never leaves the server; only its last 4 characters do. */
+/**
+ * Read-only Linkwarden access. The token never leaves the server; only its last 4 characters do.
+ * v0.4: an operator integration — the routes are administrator-only, and the row belongs to the
+ * account that connected it (`owner`, the administrator).
+ */
 export class Linkwarden {
   constructor(
     private db: DB,
     private box: SecretBox,
     private policy: NetPolicy,
     private fetchJson: typeof getJson = getJson,
+    readonly owner: string = LEGACY_ADMIN_ID,
   ) {}
 
-  private row(): Row | undefined {
-    return this.db.prepare("select * from integrations where id = 'linkwarden'").get() as Row | undefined;
+  private row(): Promise<Row | undefined> {
+    return this.db.get<Row>("select * from integrations where owner_id = ? and id = 'linkwarden'", [this.owner]);
   }
 
-  status(): LinkwardenStatus {
-    const r = this.row();
+  async status(): Promise<LinkwardenStatus> {
+    const r = await this.row();
     return r ? { configured: true, baseUrl: r.base_url, tokenLast4: r.token_last4, lastOkAt: r.last_ok_at, lastError: r.last_error } : { configured: false, baseUrl: '', tokenLast4: '', lastOkAt: null, lastError: null };
   }
 
@@ -81,30 +86,31 @@ export class Linkwarden {
   /** Verifies the address and token with a real search before storing anything. */
   async connect(baseUrlInput: string, tokenInput: string | undefined): Promise<LinkwardenStatus> {
     const baseUrl = normalizeBaseUrl(baseUrlInput);
-    const existing = this.row();
+    const existing = await this.row();
     const token = tokenInput?.trim() || (existing ? this.box.open(existing.token_enc) : '');
     if (!token) throw new LinkwardenError('invalid', '请填写访问令牌');
     await this.query(baseUrl, token, '');
     const now = new Date().toISOString();
-    this.db
-      .prepare("insert into integrations (id, base_url, token_enc, token_last4, last_ok_at, last_error, updated_at) values ('linkwarden', ?, ?, ?, ?, null, ?) on conflict(id) do update set base_url = excluded.base_url, token_enc = excluded.token_enc, token_last4 = excluded.token_last4, last_ok_at = excluded.last_ok_at, last_error = null, updated_at = excluded.updated_at")
-      .run(baseUrl, this.box.seal(token), token.slice(-4), now, now);
+    await this.db.run(
+      "insert into integrations (owner_id, id, base_url, token_enc, token_last4, last_ok_at, last_error, updated_at) values (?, 'linkwarden', ?, ?, ?, ?, null, ?) on conflict (owner_id, id) do update set base_url = excluded.base_url, token_enc = excluded.token_enc, token_last4 = excluded.token_last4, last_ok_at = excluded.last_ok_at, last_error = null, updated_at = excluded.updated_at",
+      [this.owner, baseUrl, this.box.seal(token), token.slice(-4), now, now],
+    );
     return this.status();
   }
 
-  disconnect() {
-    this.db.prepare("delete from integrations where id = 'linkwarden'").run();
+  async disconnect() {
+    await this.db.run("delete from integrations where owner_id = ? and id = 'linkwarden'", [this.owner]);
   }
 
   async search(q: string): Promise<Bookmark[]> {
-    const r = this.row();
+    const r = await this.row();
     if (!r) throw new LinkwardenError('not_configured', '尚未连接 Linkwarden');
     try {
       const result = await this.query(r.base_url, this.box.open(r.token_enc), q.slice(0, 200));
-      if (r.last_error) this.db.prepare("update integrations set last_error = null, last_ok_at = ? where id = 'linkwarden'").run(new Date().toISOString());
+      if (r.last_error) await this.db.run("update integrations set last_error = null, last_ok_at = ? where owner_id = ? and id = 'linkwarden'", [new Date().toISOString(), this.owner]);
       return result;
     } catch (e) {
-      if (e instanceof LinkwardenError) this.db.prepare("update integrations set last_error = ? where id = 'linkwarden'").run(e.message);
+      if (e instanceof LinkwardenError) await this.db.run("update integrations set last_error = ? where owner_id = ? and id = 'linkwarden'", [e.message, this.owner]);
       throw e;
     }
   }

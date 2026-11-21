@@ -1,6 +1,6 @@
 import { randomBytes, scrypt } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { openDb } from '../db';
+import { LEGACY_ADMIN_ID, openDb } from '../db';
 import { EnvError, readEnv } from '../env';
 import { hashPassword, isArgon2Hash, needsRehash, verifyPassword } from './password';
 import { Auth } from './sessions';
@@ -50,7 +50,7 @@ describe('configured password', () => {
     expect(await auth.ensurePassword({ hash: h1, plain: null })).toBe('set');
     expect(await auth.ensurePassword({ hash: h1, plain: null })).toBe('unchanged');
     expect(await auth.checkPassword('first long password')).toBe(true);
-    auth.createSession('test');
+    await auth.createSession(LEGACY_ADMIN_ID, 'test');
     expect(await auth.ensurePassword({ hash: await hashPassword('second long password'), plain: null })).toBe('set');
     expect(sessions(db)).toBe(0);
     expect(await auth.checkPassword('first long password')).toBe(false);
@@ -59,7 +59,7 @@ describe('configured password', () => {
   it('a plain password from an old .env upgrades the old hash in place and keeps sessions', async () => {
     const { db, auth } = setup();
     db.prepare("insert into auth (id, password_hash, updated_at) values (1, ?, 'x')").run(await legacyHash('old long password'));
-    auth.createSession('test');
+    await auth.createSession(LEGACY_ADMIN_ID, 'test');
     expect(await auth.ensurePassword({ hash: null, plain: 'old long password' })).toBe('upgraded');
     expect(sessions(db)).toBe(1);
     expect((db.prepare('select password_hash h from auth').get() as { h: string }).h).toMatch(/^\$argon2id\$/);

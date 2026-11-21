@@ -3,7 +3,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ConfigRepo } from '../config/repo';
-import { openDb, type DB } from '../db';
+import { LEGACY_ADMIN_ID as OWNER, openDb, type DB } from '../db';
 import { classifyIp, isAllowed } from '../net/ip';
 import { probe, type ProbeResult } from '../net/probe';
 import { checkTarget, HealthChecker, judge } from './checker';
@@ -134,37 +134,40 @@ describe('HealthChecker', () => {
     results = [];
     checker = new HealthChecker(db, repo, { allowPrivate: true, allowLoopback: false }, async () => results.shift() ?? { reached: true, status: 200, latencyMs: 10, message: 'HTTP 200' });
   });
-  afterEach(() => {
+  afterEach(async () => {
     checker.stop();
-    db.close();
+    await db.close();
   });
 
-  const enable = (id: string, hidden = false) => {
-    const app = repo.snapshot().config.apps.find((a) => a.id === id)!;
-    const r = repo.apply(`b-${Math.random()}`, 'test', [{ type: 'app.upsert', app: { ...app, hidden, health: { enabled: true, target: '/health', intervalSec: 60 } } }]);
-    repo.emit(r.snapshot.revision);
+  // The administrator's own services (v0.4: the only ones ever checked).
+  const enable = async (id: string, hidden = false) => {
+    const app = (await repo.snapshot(OWNER)).config.apps.find((a) => a.id === id)!;
+    const r = await repo.apply(OWNER, `b-${Math.random()}`, 'test', [{ type: 'app.upsert', app: { ...app, hidden, health: { enabled: true, target: '/health', intervalSec: 60 } } }], { admin: true });
+    repo.emit(OWNER, r.snapshot.revision);
+    // The change listener reconciles asynchronously; wait for it like the server's next tick would.
+    await checker.sync();
   };
 
   it('checks enabled services only, persists results and escalates failures', async () => {
-    checker.start();
+    await checker.start();
     expect(await checker.runNow('litebox')).toBeNull();
-    enable('litebox');
+    await enable('litebox');
     results.push({ reached: false, errorCode: 'TIMEOUT', message: '请求超时' }, { reached: false, errorCode: 'TIMEOUT', message: '请求超时' });
     expect((await checker.runNow('litebox'))?.level).toBe('unknown');
     expect((await checker.runNow('litebox'))?.level).toBe('error');
     expect((await checker.runNow('litebox'))?.level).toBe('ok');
     const restarted = new HealthChecker(db, repo, { allowPrivate: true, allowLoopback: false });
-    expect(restarted.list()).toMatchObject([{ appId: 'litebox', level: 'ok' }]);
+    expect(await restarted.list()).toMatchObject([{ appId: 'litebox', level: 'ok' }]);
   });
 
   it('drops a service’s status when its check is turned off or it is hidden', async () => {
     const events: unknown[] = [];
     checker.onStatus((s) => events.push(s));
-    checker.start();
-    enable('obsync');
+    await checker.start();
+    await enable('obsync');
     await checker.runNow('obsync');
-    enable('obsync', true);
-    expect(checker.list()).toEqual([]);
+    await enable('obsync', true);
+    expect(await checker.list()).toEqual([]);
     expect(events.at(-1)).toEqual({ appId: 'obsync', removed: true });
   });
 });

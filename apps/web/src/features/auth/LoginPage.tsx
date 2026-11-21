@@ -1,7 +1,7 @@
-import { defaultConfig } from '@nexus/shared';
-import { ArrowRight } from 'lucide-react';
+import { defaultConfig, type AuthOptions } from '@nexus/shared';
+import { ArrowRight, KeyRound, LogIn } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { login } from '../../data/config-store';
+import { authOptions, login } from '../../data/config-store';
 import { HttpError, NetworkError } from '../../data/transport';
 import { cn } from '../../lib/cn';
 import { useNow, useViewport } from '../../lib/hooks';
@@ -10,20 +10,59 @@ import { Wallpaper } from '../home/Wallpaper';
 
 const LOOK = defaultConfig().settings.look;
 
+/** Why the identity service sent the browser back without a session (codes from /auth/callback). */
+export const AUTH_ERRORS: Record<string, string> = {
+  state: '登录已过期或被中断，请重新开始。',
+  rejected: '登录没有完成：身份校验未通过。请重新登录。',
+  unavailable: '暂时无法连接账号中心，请稍后再试。',
+  registration_closed: '暂未开放注册。已有账号可以直接登录。',
+  invite_required: '目前仅限受邀注册：请填写邀请码后再继续。',
+  invite_invalid: '邀请码无效、已过期或已经用过。',
+  disabled: '这个账号已被停用。如有疑问请联系管理员。',
+  access_denied: '已取消登录。',
+  idp_error: '账号中心返回了错误，请重试。',
+  link_requires_password: '请先用管理员访问密码登录，再绑定统一账号。',
+  identity_taken: '这个统一账号已经在使用，不能用来认领管理员账号。',
+  account_linked_elsewhere: '管理员账号已经绑定了另一个统一账号。',
+  session_ended: '登录已失效，请重新登录。',
+};
+
+const here = () => `${location.pathname}${location.search.replace(/[?&]auth_error=[^&]*/g, '').replace(/^&/, '?')}${location.hash}`;
+
 /**
  * Not in the design files: built from the home page's own pieces (wallpaper, clock, search slab
  * material) so signing in feels like the same place, without exposing any private data.
+ *
+ * v0.4: the primary way in is the shared account (one account for Nexus and LiteSync), through the
+ * identity service; the old access password stays for the legacy administrator while the server
+ * allows it.
  */
 export function LoginPage() {
   const { w, h } = useViewport();
   const desktop = w >= 900 && h >= 560;
   const now = useNow(false);
+  const [options, setOptions] = useState<AuthOptions | null>(null);
+  const [optionsError, setOptionsError] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [password, setPassword] = useState('');
+  const [invite, setInvite] = useState('');
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(() => AUTH_ERRORS[new URLSearchParams(location.search).get('auth_error') ?? ''] ?? '');
   const input = useRef<HTMLInputElement>(null);
 
-  useEffect(() => input.current?.focus(), []);
+  useEffect(() => {
+    authOptions().then(
+      (o) => {
+        setOptions(o);
+        if (!o.oidc) setShowPassword(true);
+      },
+      // An older server without /api/v2: the password form, as before.
+      (e) => (e instanceof HttpError && e.status === 404 ? (setOptions({ oidc: false, legacyPassword: true, registration: 'closed', accountUrl: null }), setShowPassword(true)) : setOptionsError(true)),
+    );
+  }, []);
+  useEffect(() => {
+    if (showPassword) input.current?.focus();
+  }, [showPassword]);
 
   const submit = async (e: { preventDefault(): void }) => {
     e.preventDefault();
@@ -41,6 +80,14 @@ export function LoginPage() {
     }
   };
 
+  /** A full-page navigation: the server talks to the identity service, the browser never sees a token. */
+  const signIn = () => {
+    const q = new URLSearchParams({ returnTo: here() });
+    if (invite.trim()) q.set('invite', invite.trim());
+    location.assign(`/auth/login?${q}`);
+  };
+
+  const panel = 'rgba(26,25,22,0.48)';
   return (
     <div className="fixed inset-0 overflow-clip bg-base" style={{ height: '100dvh' }}>
       <Wallpaper look={LOOK} variant={desktop ? 'desktop' : 'mobile'} receded={false} />
@@ -59,46 +106,86 @@ export function LoginPage() {
             <span className="text-[14px] text-ink/70">{formatDate(now)}</span>
           </div>
         )}
-        <form
-          onSubmit={submit}
+        <div
           className={cn('flex flex-col gap-3 p-5 backdrop-blur-[32px] backdrop-saturate-[1.15]', desktop ? 'rounded-3xl' : 'rounded-[34px] px-4 pb-4')}
-          style={{ background: desktop ? 'rgba(26,25,22,0.48)' : 'rgba(26,25,22,0.5)', boxShadow: '0 30px 80px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.07)' }}
+          style={{ background: desktop ? panel : 'rgba(26,25,22,0.5)', boxShadow: '0 30px 80px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.07)' }}
         >
           <div className="flex items-center gap-2.5 px-1 text-[15px] font-semibold">
             <span className="size-2 rounded-full bg-amber" style={{ boxShadow: '0 0 14px rgba(230,192,138,0.75)' }} />
             Nexus
-            <span className="text-[13px] font-normal text-ink/50">输入访问密码以继续</span>
+            <span className="text-[13px] font-normal text-ink/50">{options?.oidc ? '登录或注册以继续' : '输入访问密码以继续'}</span>
           </div>
-          <input type="text" name="username" autoComplete="username" value="nexus" readOnly hidden />
-          <div className="flex gap-2.5">
-            <input
-              ref={input}
-              type="password"
-              name="password"
-              autoComplete="current-password"
-              enterKeyHint="go"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="访问密码"
-              aria-label="访问密码"
-              aria-invalid={!!error}
-              aria-describedby={error ? 'login-error' : undefined}
-              className="h-[52px] min-w-0 flex-1 rounded-[18px] border-0 px-4 text-[16px] text-ink caret-amber outline-none"
-              style={{ background: 'rgba(239,234,225,0.09)', boxShadow: error ? 'inset 0 0 0 1.5px rgba(233,118,95,0.7)' : 'inset 0 0 0 1px rgba(239,234,225,0.06)' }}
-            />
-            <button
-              type="submit"
-              disabled={!password || busy}
-              aria-label="进入"
-              className="grid size-[52px] flex-none place-items-center rounded-[18px] border-0 bg-amber text-on-amber transition-opacity hover:bg-amber-hi disabled:opacity-45"
-            >
-              {busy ? <span className="size-4 animate-spin-slow rounded-full border-2 border-on-amber/70 border-t-transparent" /> : <ArrowRight className="size-5" />}
+
+          {optionsError && <p className="m-0 px-1 text-[13px] text-ink/70">无法连接 Nexus 服务端，请检查网络后刷新页面。</p>}
+
+          {options?.oidc && (
+            <div className="flex flex-col gap-2.5">
+              {options.registration === 'invite' && (
+                <input
+                  value={invite}
+                  onChange={(e) => setInvite(e.target.value)}
+                  placeholder="邀请码（第一次注册时填写）"
+                  aria-label="邀请码"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="h-11 rounded-[14px] border-0 px-4 text-[14.5px] text-ink caret-amber outline-none"
+                  style={{ background: 'rgba(239,234,225,0.07)', boxShadow: 'inset 0 0 0 1px rgba(239,234,225,0.06)' }}
+                />
+              )}
+              <button type="button" onClick={signIn} className="flex h-[52px] items-center justify-center gap-2.5 rounded-[18px] border-0 bg-amber text-[15.5px] font-semibold text-on-amber transition-colors hover:bg-amber-hi">
+                <LogIn className="size-[18px]" />
+                使用统一账号登录
+              </button>
+              <p className="m-0 px-1 text-[12.5px] leading-[1.6] text-ink/56">
+                {options.registration === 'closed' ? '暂未开放注册，已有账号可以直接登录。' : '还没有账号？在账号中心选择「注册」，验证邮箱后回到这里。'}同一个账号也可以登录 LiteSync。
+              </p>
+            </div>
+          )}
+
+          {options?.oidc && options.legacyPassword && !showPassword && (
+            <button type="button" onClick={() => setShowPassword(true)} className="flex h-9 items-center gap-2 self-start rounded-[10px] border-0 bg-transparent px-1 text-[12.5px] text-ink/56 hover:text-ink/80">
+              <KeyRound className="size-3.5" />
+              管理员访问密码登录
             </button>
-          </div>
+          )}
+
+          {options?.legacyPassword && showPassword && (
+            <form onSubmit={submit} className="flex flex-col gap-2">
+              <input type="text" name="username" autoComplete="username" value="nexus" readOnly hidden />
+              <div className="flex gap-2.5">
+                <input
+                  ref={input}
+                  type="password"
+                  name="password"
+                  autoComplete="current-password"
+                  enterKeyHint="go"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="访问密码"
+                  aria-label="访问密码"
+                  aria-invalid={!!error}
+                  aria-describedby={error ? 'login-error' : undefined}
+                  className="h-[52px] min-w-0 flex-1 rounded-[18px] border-0 px-4 text-[16px] text-ink caret-amber outline-none"
+                  style={{ background: 'rgba(239,234,225,0.09)', boxShadow: error ? 'inset 0 0 0 1.5px rgba(233,118,95,0.7)' : 'inset 0 0 0 1px rgba(239,234,225,0.06)' }}
+                />
+                <button
+                  type="submit"
+                  disabled={!password || busy}
+                  aria-label="进入"
+                  className={cn('grid size-[52px] flex-none place-items-center rounded-[18px] border-0 transition-opacity disabled:opacity-45', options.oidc ? 'bg-ink/12 text-ink hover:bg-ink/18' : 'bg-amber text-on-amber hover:bg-amber-hi')}
+                >
+                  {busy ? <span className="size-4 animate-spin-slow rounded-full border-2 border-current/70 border-t-transparent" /> : <ArrowRight className="size-5" />}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {options && !options.oidc && !options.legacyPassword && <p className="m-0 px-1 text-[13px] text-ink/70">此部署暂时无法登录：没有配置访问密码或统一账号，请联系管理员。</p>}
+
           <p id="login-error" role="alert" className="m-0 min-h-[18px] px-1 text-[12.5px] text-danger-ink">
             {error}
           </p>
-        </form>
+        </div>
       </main>
     </div>
   );

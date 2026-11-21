@@ -1,6 +1,6 @@
 import { getConnInfo } from '@hono/node-server/conninfo';
 import { serveStatic } from '@hono/node-server/serve-static';
-import { AppSchema, DEVICE_TOKEN, OpBatchSchema, OpError, PAIR_CODE, validateApp, type CatalogResponse, type ConfigResponse, type DeviceInfo, type WallpaperSourcesResponse } from '@nexus/shared';
+import { AppSchema, DEVICE_SCOPE_LABELS, DEVICE_TOKEN, isDeviceScope, OpBatchSchema, OpError, PAIR_CODE, validateApp, type CatalogResponse, type ConfigResponse, type DeviceScope, type WallpaperSourcesResponse } from '@nexus/shared';
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
@@ -10,20 +10,26 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { z } from 'zod';
-import { PairingError, type Devices, type Pairings } from './auth/devices';
+import { PairingError, type DeviceAuth, type Devices, type Pairings } from './auth/devices';
+import { LoginIntents, safeReturnTo } from './auth/intents';
+import { OidcError, type Oidc } from './auth/oidc';
 import type { LoginLimiter } from './auth/rate-limit';
-import type { Auth } from './auth/sessions';
+import type { Auth, Session } from './auth/sessions';
 import { CatalogCursorError, CatalogService } from './catalog/service';
 import type { ConfigRepo } from './config/repo';
+import { LEGACY_ADMIN_ID } from './db';
 import type { Env } from './env';
 import type { HealthChecker } from './health/checker';
 import { apiError, csrf, headers, isHttps, v2Error } from './http/security';
 import { isValidIconKey, type IconProxy, type IconSource } from './icons/proxy';
-import { LinkwardenError, type Linkwarden } from './integrations/linkwarden';
-import { fetchSuggestions } from './integrations/suggest';
 import { IconError, MAX_ICON_BYTES, type IconStore } from './icons/store';
+import { LinkwardenError, type Linkwarden } from './integrations/linkwarden';
+import type { SecretBox } from './integrations/secret';
+import { fetchSuggestions } from './integrations/suggest';
+import type { Outbox } from './mail/outbox';
 import type { getBytes } from './net/http';
 import type { NetPolicy } from './net/ip';
+import type { User, Users } from './users/users';
 import { importFromUrl, SourceError, type Daily, type Ensured, type Gallery, type Unsplash } from './wallpapers/sources';
 import { MAX_UPLOAD_BYTES, WallpaperError, type WallpaperStore } from './wallpapers/store';
 
@@ -31,6 +37,14 @@ export interface Deps {
   env: Env;
   repo: ConfigRepo;
   auth: Auth;
+  /** v0.4 accounts. */
+  users: Users;
+  /** v0.4 OIDC sign-ins in progress. */
+  intents: LoginIntents;
+  /** v0.4 relying party; absent when the deployment keeps the single-user password. */
+  oidc?: Oidc | null;
+  /** Encrypts refresh tokens and ID tokens kept with OIDC sessions. */
+  secrets: SecretBox;
   limiter: LoginLimiter;
   devices: Devices;
   pairings: Pairings;
@@ -43,6 +57,9 @@ export interface Deps {
   sources: WallpaperSources;
   /** Public 应用目录; built from the bundled catalog and the deployment's LiteSync address when omitted. */
   catalog?: CatalogService;
+  /** Product notification mail (null: none sent). */
+  mail?: Outbox | null;
+  now?: () => number;
 }
 
 /** v0.2 wallpaper sources. Remote imports use their own, stricter network policy (public only). */
@@ -54,10 +71,18 @@ export interface WallpaperSources {
   importFetch?: typeof getBytes;
 }
 
+type Vars = { user: User; session: Session; device: DeviceAuth };
+
 const COOKIE = 'nexus_session';
+const INTENT_COOKIE = 'nexus_oidc';
 const LoginSchema = z.object({ password: z.string().min(1).max(256) });
-const PairStartSchema = z.object({ name: z.string().trim().min(1).max(60) });
+const PairStartSchema = z.object({ name: z.string().trim().min(1).max(60), scopes: z.array(z.string().max(32)).max(8).optional() });
 const PairPollSchema = z.object({ pairId: z.string().min(1).max(64), secret: z.string().min(1).max(128) });
+const DecideSchema = z.object({ approve: z.boolean(), scopes: z.array(z.string().max(32)).max(8).optional() });
+/** OIDC sessions are re-checked with the identity provider this often… */
+const REVALIDATE_MS = 5 * 60_000;
+/** …and survive an unreachable provider this long before they end. */
+const REVALIDATE_GRACE_MS = 60 * 60_000;
 
 /** Weak comparison (RFC 9110): proxies such as Cloudflare turn strong ETags weak when they compress. */
 function etagMatches(header: string | undefined, etag: string): boolean {
@@ -66,8 +91,11 @@ function etagMatches(header: string | undefined, etag: string): boolean {
   return header.split(',').some((t) => t.trim() === '*' || bare(t) === bare(etag));
 }
 
-export function createApp({ env, repo, auth, limiter, devices, pairings, wallpapers, icons, health, iconProxy, linkwarden, suggestFetch, sources, catalog = new CatalogService({ litesyncUrl: env.litesyncUrl ?? null }) }: Deps) {
-  const app = new Hono<{ Variables: { device: DeviceInfo } }>();
+export function createApp(deps: Deps) {
+  const { env, repo, auth, users, intents, oidc = null, secrets, limiter, devices, pairings, wallpapers, icons, health, iconProxy, linkwarden, suggestFetch, sources, mail = null } = deps;
+  const catalog = deps.catalog ?? new CatalogService({ litesyncUrl: env.litesyncUrl ?? null });
+  const now = deps.now ?? Date.now;
+  const app = new Hono<{ Variables: Vars }>();
 
   const clientKey = (c: Context) => {
     if (env.trustProxy) {
@@ -82,8 +110,26 @@ export function createApp({ env, repo, auth, limiter, devices, pairings, wallpap
       return 'unknown';
     }
   };
+  const secure = (c: Context) => env.cookieSecure === 'always' || (env.cookieSecure === 'auto' && isHttps(c, env));
+  const setSession = (c: Context, token: string, maxAge: number) => setCookie(c, COOKIE, token, { httpOnly: true, sameSite: 'Lax', secure: secure(c), path: '/', maxAge });
 
-  const configResponse = (): ConfigResponse => ({ ...repo.snapshot(), wallpapers: wallpapers.list() });
+  /**
+   * The old access password is the legacy administrator's way in — and the way to claim a unified
+   * account. Once that account is claimed (and OIDC is on), it closes unless forced open.
+   */
+  const legacyPasswordAvailable = async () => {
+    if (env.legacyPasswordLogin === 'off') return false;
+    if (!(await auth.hasPassword())) return false;
+    if (env.legacyPasswordLogin === 'on' || !oidc) return true;
+    const admin = await users.get(LEGACY_ADMIN_ID);
+    return !admin?.issuer;
+  };
+
+  const configResponse = async (ownerId: string): Promise<ConfigResponse> => ({ ...(await repo.snapshot(ownerId)), wallpapers: await wallpapers.list(ownerId) });
+  const notify = async (user: User, key: string, template: 'device-authorized' | 'signed-out-everywhere', data: Record<string, string> = {}) => {
+    if (!mail || !user.email || !user.emailVerified) return;
+    await mail.enqueue(key, template, user.email, data).catch((e) => console.error('[nexus] 邮件入队失败', e));
+  };
 
   // Read-only handlers shared by the portal (session) and paired devices (/api/sync, token).
   const lwError = (c: Context, e: unknown) => {
@@ -97,10 +143,12 @@ export function createApp({ env, repo, auth, limiter, devices, pairings, wallpap
     if (e instanceof WallpaperError) return apiError(c, e.code === 'too_large' ? 413 : 415, e.code, e.message);
     throw e;
   };
+  /** Operator tools (health checks, Linkwarden) are administrator-only in data and in routes. */
   const read = {
-    status: (c: Context) => c.json(health.list()),
-    bookmarks: async (c: Context) => {
+    status: async (c: Context, admin: boolean) => c.json(admin ? await health.list() : []),
+    bookmarks: async (c: Context, admin: boolean) => {
       const q = (c.req.query('q') ?? '').trim();
+      if (!admin) return apiError(c, 404, 'not_configured', '尚未连接 Linkwarden');
       if (!q) return c.json({ bookmarks: [] });
       try {
         return c.json({ bookmarks: await linkwarden.search(q) });
@@ -109,8 +157,8 @@ export function createApp({ env, repo, auth, limiter, devices, pairings, wallpap
       }
     },
     /** 搜索建议 — off unless the user enabled it; failures just mean no suggestions. */
-    suggest: async (c: Context) => {
-      if (!repo.snapshot().config.settings.search.suggest) return apiError(c, 403, 'disabled', '搜索建议未开启');
+    suggest: async (c: Context, ownerId: string) => {
+      if (!(await repo.snapshot(ownerId)).config.settings.search.suggest) return apiError(c, 403, 'disabled', '搜索建议未开启');
       const q = (c.req.query('q') ?? '').trim();
       if (!q) return c.json({ suggestions: [] });
       try {
@@ -119,7 +167,7 @@ export function createApp({ env, repo, auth, limiter, devices, pairings, wallpap
         return c.json({ suggestions: [] });
       }
     },
-    wallpaperSources: (c: Context) => c.json({ gallery: sources.gallery.list(), unsplash: sources.unsplash.configured } satisfies WallpaperSourcesResponse),
+    wallpaperSources: async (c: Context, ownerId: string) => c.json({ gallery: await sources.gallery.list(ownerId), unsplash: sources.unsplash.configured } satisfies WallpaperSourcesResponse),
     /** Reads a cache, never the configuration: a new day costs no revision and no sync. */
     daily: async (c: Context) => {
       try {
@@ -128,25 +176,26 @@ export function createApp({ env, repo, auth, limiter, devices, pairings, wallpap
         return sourceError(c, e);
       }
     },
-    wallpaperFile: (c: Context) => {
+    wallpaperFile: async (c: Context, ownerId: string) => {
       const id = c.req.param('id')!;
       const file = c.req.param('file')!;
-      const path = wallpapers.filePath(id, file) ?? sources.daily.filePath(id, file);
+      // The day's public picture is the same for everyone; library pictures are the account's own.
+      const path = (await wallpapers.filePath(ownerId, id, file)) ?? sources.daily.filePath(id, file);
       if (!path) return apiError(c, 404, 'not_found', '壁纸不存在');
       const ext = path.slice(path.lastIndexOf('.') + 1);
       c.header('Content-Type', ext === 'jpg' ? 'image/jpeg' : `image/${ext}`);
-      // Ids are never reused, so variants are immutable — but private to this user.
+      // Ids are never reused, so variants are immutable — but private to this account.
       c.header('Cache-Control', 'private, max-age=31536000, immutable');
       return c.body(Readable.toWeb(createReadStream(path)) as ReadableStream);
     },
-    icon: (c: Context) => {
-      const path = icons.filePath(c.req.param('file')!.replace(/\.png$/, ''));
+    icon: async (c: Context, ownerId: string) => {
+      const path = await icons.filePath(ownerId, c.req.param('file')!.replace(/\.png$/, ''));
       if (!path || !existsSync(path)) return apiError(c, 404, 'not_found', '图标不存在');
       c.header('Content-Type', 'image/png');
       c.header('Cache-Control', 'private, max-age=31536000, immutable');
       return c.body(Readable.toWeb(createReadStream(path)) as ReadableStream);
     },
-    /** Cached brand icons: …/icon-cache/{di|si}/<slug>, …/icon-cache/fav/<host>. */
+    /** Cached brand icons: …/icon-cache/{di|si}/<slug>, …/icon-cache/fav/<host>. Public data. */
     iconCache: async (c: Context) => {
       const source = c.req.param('source') as IconSource;
       const key = c.req.param('key')!.toLowerCase();
@@ -180,6 +229,10 @@ export function createApp({ env, repo, auth, limiter, devices, pairings, wallpap
     await next();
     if (!c.res.headers.has('cache-control')) c.header('Cache-Control', 'no-store');
   });
+  app.use('/auth/*', async (c, next) => {
+    await next();
+    c.header('Cache-Control', 'no-store');
+  });
   app.use('/api/*', csrf(env));
 
   app.get('/api/healthz', (c) => c.json({ ok: true }));
@@ -202,8 +255,19 @@ export function createApp({ env, repo, auth, limiter, devices, pairings, wallpap
   });
 
   // ── Auth ────────────────────────────────────────────────────────────────
-  app.get('/api/auth/session', (c) => c.json({ authenticated: auth.validate(getCookie(c, COOKIE)).valid }));
+  /** How this deployment signs people in (the login page asks before showing anything). */
+  app.get('/api/v2/auth/options', async (c) =>
+    c.json({
+      oidc: !!oidc,
+      legacyPassword: await legacyPasswordAvailable(),
+      registration: oidc ? (env.registration ?? 'invite') : 'closed',
+      accountUrl: oidc ? `${oidc.settings.issuer.replace(/\/+$/, '')}/account` : null,
+    }),
+  );
 
+  app.get('/api/auth/session', async (c) => c.json({ authenticated: (await auth.validate(getCookie(c, COOKIE))).valid }));
+
+  /** The old access password (the legacy administrator's account). */
   app.post('/api/auth/login', bodyLimit({ maxSize: 4096 }), async (c) => {
     const key = clientKey(c);
     const wait = limiter.retryAfter(key);
@@ -211,6 +275,7 @@ export function createApp({ env, repo, auth, limiter, devices, pairings, wallpap
       c.header('Retry-After', String(wait));
       return apiError(c, 429, 'rate_limited', `尝试次数过多，请 ${Math.ceil(wait / 60)} 分钟后再试`);
     }
+    if (!(await legacyPasswordAvailable())) return apiError(c, 403, 'legacy_login_disabled', '此部署已改用统一账号登录');
     const body = LoginSchema.safeParse(await c.req.json().catch(() => null));
     if (!body.success) return apiError(c, 400, 'invalid', '请输入密码');
     if (!(await auth.checkPassword(body.data.password))) {
@@ -218,25 +283,111 @@ export function createApp({ env, repo, auth, limiter, devices, pairings, wallpap
       return apiError(c, 401, 'bad_password', '密码不正确');
     }
     limiter.succeed(key);
-    const { token, maxAgeSec } = auth.createSession(c.req.header('user-agent') ?? '');
-    setCookie(c, COOKIE, token, { httpOnly: true, sameSite: 'Lax', secure: env.cookieSecure === 'always' || (env.cookieSecure === 'auto' && isHttps(c, env)), path: '/', maxAge: maxAgeSec });
+    const { token, maxAgeSec } = await auth.createSession(LEGACY_ADMIN_ID, c.req.header('user-agent') ?? '');
+    setSession(c, token, maxAgeSec);
     return c.json({ authenticated: true });
   });
 
-  app.post('/api/auth/logout', (c) => {
-    auth.revoke(getCookie(c, COOKIE));
+  /** 退出当前产品: this browser's Nexus session only (the identity service and LiteSync stay signed in). */
+  app.post('/api/auth/logout', async (c) => {
+    await auth.revoke(getCookie(c, COOKIE));
     deleteCookie(c, COOKIE, { path: '/' });
     return c.json({ authenticated: false });
   });
 
-  // ── Paired devices (Chrome extension): pairing, then read-only sync with a device token ──
-  // Never reads the session cookie. The extension calls from a chrome-extension:// origin, which
-  // is why csrf() skips the Origin check for these two prefixes (the client header still applies).
+  // ── OIDC (browser navigations, not API calls) ───────────────────────────
+  const startOidc = async (c: Context, kind: 'login' | 'link', opts: { returnTo?: string; invite?: string; linkUserId?: string }) => {
+    if (!oidc) return c.redirect('/', 302);
+    const intent = await intents.create(kind, opts);
+    let url: URL;
+    try {
+      url = await oidc.authorizationUrl({ state: intent.state, nonce: intent.nonce, codeChallenge: intent.codeChallenge, prompt: kind === 'link' ? 'login' : undefined });
+    } catch {
+      return c.redirect('/?auth_error=unavailable', 302);
+    }
+    setCookie(c, INTENT_COOKIE, intent.token, { httpOnly: true, sameSite: 'Lax', secure: secure(c), path: '/auth', maxAge: intent.maxAgeSec });
+    return c.redirect(url.toString(), 302);
+  };
+
+  app.get('/auth/login', (c) => startOidc(c, 'login', { returnTo: c.req.query('returnTo'), invite: c.req.query('invite') }));
+
+  /** 旧管理员认领: only from a session opened with the old password, for an account not yet bound. */
+  app.get('/auth/link/start', async (c) => {
+    const v = await auth.validate(getCookie(c, COOKIE));
+    if (!v.valid || v.session.kind !== 'password') return c.redirect('/?auth_error=link_requires_password', 302);
+    const user = await users.get(v.session.userId);
+    if (!user || user.issuer) return c.redirect('/settings/data?auth_error=already_linked', 302);
+    return startOidc(c, 'link', { returnTo: '/settings/data?linked=1', linkUserId: user.id });
+  });
+
+  app.get('/auth/callback', async (c) => {
+    const intent = await intents.consume(getCookie(c, INTENT_COOKIE), c.req.query('state'));
+    deleteCookie(c, INTENT_COOKIE, { path: '/auth' });
+    if (!oidc) return c.redirect('/', 302);
+    if (!intent) return c.redirect('/?auth_error=state', 302);
+    if (c.req.query('error')) return c.redirect(`/?auth_error=${c.req.query('error') === 'access_denied' ? 'access_denied' : 'idp_error'}`, 302);
+    let signed: Awaited<ReturnType<Oidc['exchange']>>;
+    try {
+      // The registered public callback, not the address the request reached us on (a reverse
+      // proxy's upstream): redirect_uri must match exactly at the token endpoint.
+      const callback = new URL(`${oidc.settings.redirectUri}${new URL(c.req.url).search}`);
+      signed = await oidc.exchange(callback, intent);
+    } catch (e) {
+      // Only the category is logged: never the code, tokens or claims.
+      console.warn(`[nexus] 统一身份回调被拒绝（${e instanceof OidcError ? e.code : 'error'}）`);
+      return c.redirect(`/?auth_error=${e instanceof OidcError && e.code === 'unavailable' ? 'unavailable' : 'rejected'}`, 302);
+    }
+    let user: User;
+    if (intent.kind === 'link') {
+      const r = await users.link(intent.linkUserId!, signed.claims);
+      if (r !== 'linked' && r !== 'already_linked') return c.redirect(`/settings/data?auth_error=${r}`, 302);
+      console.log(`[nexus] 账号认领：${intent.linkUserId} 已绑定统一身份`);
+      user = (await users.get(intent.linkUserId!))!;
+      // The old way in may close now (legacy login `auto`); this browser continues with the new identity.
+      await auth.revoke(getCookie(c, COOKIE));
+    } else {
+      const r = await users.signIn(signed.claims, env.registration ?? 'invite', intent.invite);
+      if (!r.ok) return c.redirect(`/?auth_error=${r.reason}`, 302);
+      user = r.user;
+    }
+    const { token, maxAgeSec } = await auth.createSession(user.id, c.req.header('user-agent') ?? '', {
+      kind: 'oidc',
+      oidcSid: signed.sid,
+      refreshEnc: signed.refreshToken ? secrets.seal(signed.refreshToken) : null,
+      idTokenEnc: secrets.seal(signed.idToken),
+      revalidateAt: now() + REVALIDATE_MS,
+    });
+    setSession(c, token, maxAgeSec);
+    return c.redirect(intent.returnTo, 302);
+  });
+
+  /** OIDC Back-Channel Logout: the identity service ends sessions here (server to server). */
+  app.post('/auth/backchannel-logout', bodyLimit({ maxSize: 16 * 1024 }), async (c) => {
+    if (!oidc) return c.body(null, 404);
+    const form = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>);
+    const token = typeof form.logout_token === 'string' ? form.logout_token : '';
+    try {
+      const { sub, sid } = await oidc.verifyLogoutToken(token);
+      if (sid) await auth.revokeBySid(sid);
+      else if (sub) {
+        const user = await users.byIdentity(oidc.settings.issuer, sub);
+        if (user) await auth.revokeAllForUser(user.id);
+      }
+      return c.body(null, 200);
+    } catch {
+      return c.json({ error: 'invalid_request' }, 400);
+    }
+  });
+
+  // ── Paired devices (browser extension): pairing, then sync with a device token ──
+  // Never reads the session cookie. The extension calls from an extension origin, which is why
+  // csrf() skips the Origin check for these two prefixes (the client header still applies).
   app.post('/api/pair/start', bodyLimit({ maxSize: 1024 }), async (c) => {
     const body = PairStartSchema.safeParse(await c.req.json().catch(() => null));
     if (!body.success) return apiError(c, 400, 'invalid', '缺少设备名称');
+    const scopes = (body.data.scopes ?? ['config:read']).filter(isDeviceScope);
     try {
-      return c.json(pairings.start(body.data.name, clientKey(c), c.req.header('user-agent') ?? ''), 201);
+      return c.json(pairings.start(body.data.name, clientKey(c), c.req.header('user-agent') ?? '', scopes), 201);
     } catch (e) {
       if (e instanceof PairingError) return apiError(c, 429, e.code, e.message);
       throw e;
@@ -246,97 +397,179 @@ export function createApp({ env, repo, auth, limiter, devices, pairings, wallpap
   app.post('/api/pair/poll', bodyLimit({ maxSize: 1024 }), async (c) => {
     const body = PairPollSchema.safeParse(await c.req.json().catch(() => null));
     if (!body.success) return apiError(c, 400, 'invalid', '请求格式不正确');
-    return c.json(pairings.poll(body.data.pairId, body.data.secret));
+    return c.json(await pairings.poll(body.data.pairId, body.data.secret));
   });
 
   app.use('/api/sync/*', async (c, next) => {
     const token = /^Bearer (\S+)$/.exec(c.req.header('authorization') ?? '')?.[1];
-    const device = token && DEVICE_TOKEN.test(token) ? devices.validate(token) : null;
+    const device = token && DEVICE_TOKEN.test(token) ? await devices.validate(token) : null;
     if (!device) return apiError(c, 401, 'device_unauthorized', '此设备的授权已失效或已被撤销');
     c.set('device', device);
     return next();
   });
+  /** Every /api/sync read needs config:read; tokens without it (none exist yet) get nothing here. */
+  const syncScope = (c: Context<{ Variables: Vars }>, scope: DeviceScope) => c.get('device').scopes.includes(scope);
+  const syncOwner = async (c: Context<{ Variables: Vars }>) => {
+    const d = c.get('device');
+    return { ownerId: d.ownerId, admin: !!(await users.get(d.ownerId))?.isAdmin };
+  };
+  app.use('/api/sync/*', async (c, next) => (c.req.path === '/api/sync/revoke' || syncScope(c, 'config:read') ? next() : apiError(c, 403, 'scope_required', '此设备没有读取导航的权限')));
 
   /** Conditional GET: an unchanged configuration costs one tiny 304 instead of the whole document. */
-  app.get('/api/sync/config', (c) => {
+  app.get('/api/sync/config', async (c) => {
+    const { ownerId } = await syncOwner(c);
     // Revision plus write time: a restored backup that reuses a revision number still differs.
     const tag = (v: { revision: number; updatedAt: string }) => `"${v.revision}-${Date.parse(v.updatedAt).toString(36)}"`;
-    const current = tag(repo.version());
+    const current = tag(await repo.version(ownerId));
     if (etagMatches(c.req.header('if-none-match'), current)) {
       c.header('ETag', current);
       return c.body(null, 304);
     }
-    const res = configResponse();
+    const res = await configResponse(ownerId);
     c.header('ETag', tag(res));
     return c.json(res);
   });
-  app.get('/api/sync/status', read.status);
-  app.get('/api/sync/bookmarks', read.bookmarks);
-  app.get('/api/sync/suggest', read.suggest);
-  app.get('/api/sync/wallpaper-sources', read.wallpaperSources);
-  app.get('/api/sync/daily', read.daily);
-  app.get('/api/sync/wallpapers/:id/:file', read.wallpaperFile);
-  app.get('/api/sync/icons/:file', read.icon);
-  app.get('/api/sync/icon-cache/:source/:key', read.iconCache);
+  app.get('/api/sync/status', async (c) => read.status(c, (await syncOwner(c)).admin));
+  app.get('/api/sync/bookmarks', async (c) => read.bookmarks(c, (await syncOwner(c)).admin));
+  app.get('/api/sync/suggest', async (c) => read.suggest(c, (await syncOwner(c)).ownerId));
+  app.get('/api/sync/wallpaper-sources', async (c) => read.wallpaperSources(c, (await syncOwner(c)).ownerId));
+  app.get('/api/sync/daily', (c) => read.daily(c));
+  app.get('/api/sync/wallpapers/:id/:file', async (c) => read.wallpaperFile(c, (await syncOwner(c)).ownerId));
+  app.get('/api/sync/icons/:file', async (c) => read.icon(c, (await syncOwner(c)).ownerId));
+  app.get('/api/sync/icon-cache/:source/:key', (c) => read.iconCache(c));
   /** 断开连接 in the extension revokes its own token. */
-  app.post('/api/sync/revoke', (c) => {
-    devices.revoke(c.get('device').id);
+  app.post('/api/sync/revoke', async (c) => {
+    const d = c.get('device');
+    await devices.revoke(d.ownerId, d.id);
     return c.json({ revoked: true });
   });
   app.all('/api/sync/*', (c) => apiError(c, 404, 'not_found', '接口不存在'));
 
-  // Everything else under /api needs a session.
+  // Everything else under /api needs a session, which names the account.
   app.use('/api/*', async (c, next) => {
     const token = getCookie(c, COOKIE);
-    const v = auth.validate(token);
+    const v = await auth.validate(token);
     if (!v.valid) return apiError(c, 401, 'unauthenticated', '需要登录');
-    if (v.renewed && token) {
-      setCookie(c, COOKIE, token, { httpOnly: true, sameSite: 'Lax', secure: env.cookieSecure === 'always' || (env.cookieSecure === 'auto' && isHttps(c, env)), path: '/', maxAge: env.sessionDays * 86_400 });
+    const user = await users.get(v.session.userId);
+    if (!user || user.disabled) {
+      await auth.revokeById(v.session.idHash);
+      deleteCookie(c, COOKIE, { path: '/' });
+      return apiError(c, 401, user?.disabled ? 'account_disabled' : 'unauthenticated', user?.disabled ? '此账号已被停用' : '需要登录');
     }
+    // OIDC sessions are re-checked with the identity provider: a disabled account or a sign-out
+    // elsewhere ends this session within REVALIDATE_MS, not at cookie expiry.
+    const s = v.session;
+    if (s.kind === 'oidc' && oidc && s.revalidateAt !== null && s.revalidateAt <= now()) {
+      const refresh = s.refreshEnc ? safeOpen(secrets, s.refreshEnc) : null;
+      const r = refresh ? await oidc.refresh(refresh) : ({ ok: false, reason: 'invalid' } as const);
+      if (r.ok) await auth.markRevalidated(s.idHash, now() + REVALIDATE_MS, r.refreshToken ? secrets.seal(r.refreshToken) : undefined);
+      else if (r.reason === 'invalid' || now() - s.revalidateAt > REVALIDATE_GRACE_MS) {
+        await auth.revokeById(s.idHash);
+        deleteCookie(c, COOKIE, { path: '/' });
+        return apiError(c, 401, 'session_ended', '登录已失效，请重新登录');
+      }
+    }
+    if (v.renewed && token) setSession(c, token, env.sessionDays * 86_400);
+    c.set('user', user);
+    c.set('session', s);
     return next();
+  });
+  const me = (c: Context<{ Variables: Vars }>) => c.get('user');
+  const adminOnly: MiddlewareHandler<{ Variables: Vars }> = async (c, next) => (c.get('user').isAdmin ? next() : apiError(c, 403, 'admin_only', '仅管理员可用'));
+
+  // ── Account (v2) ────────────────────────────────────────────────────────
+  app.get('/api/v2/me', async (c) => {
+    const u = me(c);
+    const cfg = await repo.snapshot(u.id);
+    return c.json({
+      account: { id: u.id, displayName: u.displayName || u.email || (u.id === LEGACY_ADMIN_ID ? '管理员' : '用户'), email: u.email, emailVerified: u.emailVerified },
+      product: 'nexus',
+      role: u.isAdmin ? 'admin' : 'user',
+      permissions: u.isAdmin ? ['collection', 'devices', 'health', 'integrations', 'admin'] : ['collection', 'devices'],
+      onboarding: { state: cfg.config.apps.length ? 'ready' : 'empty_collection' },
+      session: c.get('session').kind,
+      identityLinked: !!u.issuer,
+      canLinkIdentity: !!oidc && !u.issuer && c.get('session').kind === 'password',
+    });
+  });
+
+  /** 退出所有设备: every browser session and every paired device of this account. */
+  app.post('/api/v2/account/logout-all', async (c) => {
+    const u = me(c);
+    const idToken = c.get('session').idTokenEnc ? safeOpen(secrets, c.get('session').idTokenEnc!) : null;
+    const sessions = await auth.revokeAllForUser(u.id);
+    const removed = await devices.revokeAllForOwner(u.id);
+    deleteCookie(c, COOKIE, { path: '/' });
+    await notify(u, `signed-out:${u.id}:${now()}`, 'signed-out-everywhere');
+    const endSession = oidc ? await oidc.endSessionUrl(idToken) : null;
+    return c.json({ sessions, devices: removed, endSessionUrl: endSession?.toString() ?? null });
+  });
+
+  // ── Administration (v2): accounts and invitations ──────────────────────
+  app.get('/api/v2/admin/users', adminOnly, async (c) => c.json({ users: (await users.list()).map((u) => ({ id: u.id, displayName: u.displayName, email: u.email, emailVerified: u.emailVerified, isAdmin: u.isAdmin, disabled: u.disabled, createdVia: u.createdVia, createdAt: u.createdAt, lastLoginAt: u.lastLoginAt, linked: !!u.issuer })) }));
+  app.post('/api/v2/admin/users/:id/:action{disable|enable}', adminOnly, async (c) => {
+    const id = c.req.param('id');
+    if (id === me(c).id) return v2Error(c, 409, 'SELF_LOCKOUT', '不能停用自己的账号');
+    const disable = c.req.param('action') === 'disable';
+    if (!(await users.setDisabled(id, disable))) return v2Error(c, 404, 'NOT_FOUND', '账号不存在');
+    // Disabling ends access now: sessions and paired devices go (offline caches cannot be wiped remotely).
+    if (disable) {
+      await auth.revokeAllForUser(id);
+      await devices.revokeAllForOwner(id);
+    }
+    return c.json({ id, disabled: disable });
+  });
+  app.post('/api/v2/admin/invites', adminOnly, bodyLimit({ maxSize: 1024 }), async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { ttlDays?: unknown };
+    const ttl = typeof body.ttlDays === 'number' ? body.ttlDays : 7;
+    return c.json(await users.createInvite(me(c).id, ttl), 201);
   });
 
   // ── Configuration ───────────────────────────────────────────────────────
-  app.get('/api/config', (c) => c.json(configResponse()));
+  app.get('/api/config', async (c) => c.json(await configResponse(me(c).id)));
 
   app.post('/api/config/ops', bodyLimit({ maxSize: 2 * 1024 * 1024 }), async (c) => {
     const body = OpBatchSchema.safeParse(await c.req.json().catch(() => null));
     if (!body.success) return apiError(c, 400, 'invalid', body.error.issues[0]?.message ?? '请求格式不正确');
+    const u = me(c);
     try {
-      const r = repo.apply(body.data.batchId, body.data.clientId, body.data.ops as never);
-      if (r.changed) repo.emit(r.snapshot.revision);
-      return c.json({ ...r.snapshot, wallpapers: wallpapers.list() } satisfies ConfigResponse);
+      const r = await repo.apply(u.id, body.data.batchId, body.data.clientId, body.data.ops as never, { admin: u.isAdmin });
+      if (r.changed) repo.emit(u.id, r.snapshot.revision);
+      return c.json({ ...r.snapshot, wallpapers: await wallpapers.list(u.id) } satisfies ConfigResponse);
     } catch (e) {
       if (e instanceof OpError) return apiError(c, 422, e.code, e.message);
       throw e;
     }
   });
 
-  /** Server-sent revision numbers; other devices fetch the snapshot when it moves. */
+  /** Server-sent revision numbers of this account (and, for the administrator, health results). */
   app.get('/api/events', (c) => {
+    const u = me(c);
     c.header('X-Accel-Buffering', 'no');
     c.header('Cache-Control', 'no-cache');
     return streamSSE(c, async (stream) => {
       let open = true;
-      const off = repo.onChange((revision) => void stream.writeSSE({ event: 'revision', data: JSON.stringify({ revision }) }));
-      const offStatus = health.onStatus((s) => void stream.writeSSE({ event: 'status', data: JSON.stringify(s) }));
+      const off = repo.onChange(u.id, (revision) => void stream.writeSSE({ event: 'revision', data: JSON.stringify({ revision }) }));
+      const offStatus = u.isAdmin ? health.onStatus((s) => void stream.writeSSE({ event: 'status', data: JSON.stringify(s) })) : () => undefined;
       stream.onAbort(() => {
         open = false;
         off();
         offStatus();
       });
-      await stream.writeSSE({ event: 'revision', data: JSON.stringify({ revision: repo.snapshot().revision }), retry: 3000 });
+      await stream.writeSSE({ event: 'revision', data: JSON.stringify({ revision: (await repo.version(u.id)).revision }), retry: 3000 });
       while (open) {
         await stream.sleep(25_000);
+        // A session ended elsewhere (logout-all, account disabled) stops the stream at the next tick.
+        if (open && !(await auth.validate(getCookie(c, COOKIE))).valid) break;
         if (open) await stream.write(': ping\n\n');
       }
     });
   });
 
   // ── Paired devices: list, revoke, approve a pairing ────────────────────
-  app.get('/api/devices', (c) => c.json(devices.list()));
+  app.get('/api/devices', async (c) => c.json(await devices.list(me(c).id)));
 
-  app.delete('/api/devices/:id', (c) => (devices.revoke(c.req.param('id')) ? c.json(devices.list()) : apiError(c, 404, 'not_found', '设备不存在')));
+  app.delete('/api/devices/:id', async (c) => ((await devices.revoke(me(c).id, c.req.param('id'))) ? c.json(await devices.list(me(c).id)) : apiError(c, 404, 'not_found', '设备不存在')));
 
   app.get('/api/devices/pairing/:code', (c) => {
     const code = c.req.param('code').toUpperCase();
@@ -344,24 +577,32 @@ export function createApp({ env, repo, auth, limiter, devices, pairings, wallpap
     return req ? c.json(req) : apiError(c, 404, 'not_found', '连接请求不存在或已过期');
   });
 
+  /** Approving binds the device to the signed-in account, with at most the scopes it asked for. */
   app.post('/api/devices/pairing/:code', bodyLimit({ maxSize: 1024 }), async (c) => {
-    const body = (await c.req.json().catch(() => null)) as { approve?: unknown } | null;
-    if (typeof body?.approve !== 'boolean') return apiError(c, 400, 'invalid', '请求格式不正确');
+    const body = DecideSchema.safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return apiError(c, 400, 'invalid', '请求格式不正确');
     const code = c.req.param('code').toUpperCase();
-    if (!PAIR_CODE.test(code) || !pairings.decide(code, body.approve)) return apiError(c, 404, 'not_found', '连接请求不存在或已过期');
-    return c.json({ approved: body.approve });
+    const u = me(c);
+    const request = PAIR_CODE.test(code) ? pairings.peek(code) : null;
+    const grant = body.data.scopes?.filter(isDeviceScope);
+    if (!request || !pairings.decide(code, body.data.approve, u.id, grant)) return apiError(c, 404, 'not_found', '连接请求不存在或已过期');
+    if (body.data.approve) {
+      const granted = (request.scopes ?? ['config:read']).filter((s) => !grant || grant.includes(s));
+      await notify(u, `device-authorized:${code}:${u.id}`, 'device-authorized', { device: request.name, scopes: granted.map((s) => DEVICE_SCOPE_LABELS[s]).join('、') });
+    }
+    return c.json({ approved: body.data.approve });
   });
 
-  // ── Health checks ───────────────────────────────────────────────────────
-  app.get('/api/status', read.status);
+  // ── Health checks (administrator) ───────────────────────────────────────
+  app.get('/api/status', async (c) => read.status(c, me(c).isAdmin));
 
-  app.post('/api/status/:id/check', async (c) => {
+  app.post('/api/status/:id/check', adminOnly, async (c) => {
     const s = await health.runNow(c.req.param('id'));
     return s ? c.json(s) : apiError(c, 404, 'not_found', '该服务没有开启健康检查');
   });
 
   /** 测试连接 for an unsaved draft. Same host rule and network policy as scheduled checks. */
-  app.post('/api/health/test', bodyLimit({ maxSize: 64 * 1024 }), async (c) => {
+  app.post('/api/health/test', adminOnly, bodyLimit({ maxSize: 64 * 1024 }), async (c) => {
     const body = (await c.req.json().catch(() => null)) as { app?: unknown } | null;
     const parsed = AppSchema.safeParse(body?.app);
     if (!parsed.success) return apiError(c, 400, 'invalid', '请先填写完整的地址');
@@ -371,10 +612,10 @@ export function createApp({ env, repo, auth, limiter, devices, pairings, wallpap
     return c.json(await health.test(app));
   });
 
-  // ── Linkwarden (read-only) ─────────────────────────────────────────────
-  app.get('/api/integrations/linkwarden', (c) => c.json(linkwarden.status()));
+  // ── Linkwarden (administrator, read-only) ──────────────────────────────
+  app.get('/api/integrations/linkwarden', adminOnly, async (c) => c.json(await linkwarden.status()));
 
-  app.put('/api/integrations/linkwarden', bodyLimit({ maxSize: 8 * 1024 }), async (c) => {
+  app.put('/api/integrations/linkwarden', adminOnly, bodyLimit({ maxSize: 8 * 1024 }), async (c) => {
     const body = (await c.req.json().catch(() => null)) as { baseUrl?: unknown; token?: unknown } | null;
     if (typeof body?.baseUrl !== 'string' || (body.token !== undefined && typeof body.token !== 'string')) return apiError(c, 400, 'invalid', '请填写 Linkwarden 地址');
     try {
@@ -385,16 +626,16 @@ export function createApp({ env, repo, auth, limiter, devices, pairings, wallpap
     }
   });
 
-  app.delete('/api/integrations/linkwarden', (c) => {
-    linkwarden.disconnect();
-    return c.json(linkwarden.status());
+  app.delete('/api/integrations/linkwarden', adminOnly, async (c) => {
+    await linkwarden.disconnect();
+    return c.json(await linkwarden.status());
   });
 
-  app.get('/api/bookmarks', read.bookmarks);
-  app.get('/api/suggest', read.suggest);
+  app.get('/api/bookmarks', async (c) => read.bookmarks(c, me(c).isAdmin));
+  app.get('/api/suggest', async (c) => read.suggest(c, me(c).id));
 
-  // ── Wallpapers ──────────────────────────────────────────────────────────
-  app.get('/api/wallpapers', (c) => c.json(wallpapers.list()));
+  // ── Wallpapers (the account's own library) ──────────────────────────────
+  app.get('/api/wallpapers', async (c) => c.json(await wallpapers.list(me(c).id)));
 
   app.post(
     '/api/wallpapers',
@@ -404,8 +645,8 @@ export function createApp({ env, repo, auth, limiter, devices, pairings, wallpap
       const file = form?.get('file');
       if (!(file instanceof File)) return apiError(c, 400, 'invalid', '没有收到图片文件');
       try {
-        const w = await wallpapers.add(Buffer.from(await file.arrayBuffer()), file.name);
-        repo.touch();
+        const w = await wallpapers.add(me(c).id, Buffer.from(await file.arrayBuffer()), file.name);
+        await repo.touch(me(c).id);
         return c.json(w, 201);
       } catch (e) {
         if (e instanceof WallpaperError) return apiError(c, e.code === 'too_large' ? 413 : 415, e.code, e.message);
@@ -414,15 +655,15 @@ export function createApp({ env, repo, auth, limiter, devices, pairings, wallpap
     },
   );
 
-  app.get('/api/wallpapers/:id/:file', read.wallpaperFile);
+  app.get('/api/wallpapers/:id/:file', async (c) => read.wallpaperFile(c, me(c).id));
 
   // ── Wallpaper sources (精选图库 · 每日一图 · Unsplash · 网址导入) ──────────
-  /** A new library entry bumps the revision so every device fetches the updated wallpaper list. */
-  const added = (c: Context, r: Ensured) => {
-    if (r.created) repo.touch();
+  /** A new library entry bumps the revision so every device of the account fetches the updated list. */
+  const added = async (c: Context<{ Variables: Vars }>, r: Ensured) => {
+    if (r.created) await repo.touch(me(c).id);
     return c.json(r.wallpaper, r.created ? 201 : 200);
   };
-  app.get('/api/wallpaper-sources', read.wallpaperSources);
+  app.get('/api/wallpaper-sources', async (c) => read.wallpaperSources(c, me(c).id));
   app.get('/api/gallery/:id/preview', async (c) => {
     try {
       const body = await sources.gallery.preview(c.req.param('id'));
@@ -435,15 +676,15 @@ export function createApp({ env, repo, auth, limiter, devices, pairings, wallpap
   });
   app.post('/api/gallery/:id', async (c) => {
     try {
-      return added(c, await sources.gallery.ensure(c.req.param('id')));
+      return await added(c, await sources.gallery.ensure(me(c).id, c.req.param('id')));
     } catch (e) {
       return sourceError(c, e);
     }
   });
-  app.get('/api/daily', read.daily);
+  app.get('/api/daily', (c) => read.daily(c));
   app.post('/api/daily/:id/keep', async (c) => {
     try {
-      return added(c, await sources.daily.keep(c.req.param('id')));
+      return await added(c, await sources.daily.keep(me(c).id, c.req.param('id')));
     } catch (e) {
       return sourceError(c, e);
     }
@@ -452,8 +693,8 @@ export function createApp({ env, repo, auth, limiter, devices, pairings, wallpap
     const body = (await c.req.json().catch(() => null)) as { url?: unknown } | null;
     if (typeof body?.url !== 'string' || body.url.length > 2048) return apiError(c, 400, 'invalid', '请输入图片地址');
     try {
-      const w = await importFromUrl(wallpapers, body.url, sources.importPolicy, sources.importFetch);
-      repo.touch();
+      const w = await importFromUrl(wallpapers, me(c).id, body.url, sources.importPolicy, sources.importFetch);
+      await repo.touch(me(c).id);
       return c.json(w, 201);
     } catch (e) {
       return sourceError(c, e);
@@ -468,23 +709,24 @@ export function createApp({ env, repo, auth, limiter, devices, pairings, wallpap
   });
   app.post('/api/unsplash/:id', async (c) => {
     try {
-      return added(c, await sources.unsplash.use(c.req.param('id')));
+      return await added(c, await sources.unsplash.use(me(c).id, c.req.param('id')));
     } catch (e) {
       return sourceError(c, e);
     }
   });
 
   app.delete('/api/wallpapers/:id', async (c) => {
+    const u = me(c);
     const id = c.req.param('id');
-    if (!(await wallpapers.remove(id))) return apiError(c, 404, 'not_found', '壁纸不存在');
-    if (repo.snapshot().config.settings.look.wallpaper === id) {
-      const r = repo.apply(`server-${Date.now()}`, 'server', [{ type: 'settings.patch', section: 'look', patch: { wallpaper: 'fallingwater' } }]);
-      repo.emit(r.snapshot.revision);
-    } else repo.touch();
-    return c.json(configResponse());
+    if (!(await wallpapers.remove(u.id, id))) return apiError(c, 404, 'not_found', '壁纸不存在');
+    if ((await repo.snapshot(u.id)).config.settings.look.wallpaper === id) {
+      const r = await repo.apply(u.id, `server-${now()}`, 'server', [{ type: 'settings.patch', section: 'look', patch: { wallpaper: 'fallingwater' } }], { admin: u.isAdmin });
+      repo.emit(u.id, r.snapshot.revision);
+    } else await repo.touch(u.id);
+    return c.json(await configResponse(u.id));
   });
 
-  // ── App icons ───────────────────────────────────────────────────────────
+  // ── App icons (the account's own uploads) ───────────────────────────────
   app.post(
     '/api/icons',
     bodyLimit({ maxSize: MAX_ICON_BYTES + 16 * 1024, onError: (c) => apiError(c, 413, 'too_large', '文件超过 1 MB 上限') }),
@@ -493,7 +735,7 @@ export function createApp({ env, repo, auth, limiter, devices, pairings, wallpap
       const file = form?.get('file');
       if (!(file instanceof File)) return apiError(c, 400, 'invalid', '没有收到图片文件');
       try {
-        return c.json({ id: await icons.add(Buffer.from(await file.arrayBuffer()), file.type) }, 201);
+        return c.json({ id: await icons.add(me(c).id, Buffer.from(await file.arrayBuffer()), file.type) }, 201);
       } catch (e) {
         if (e instanceof IconError) return apiError(c, e.code === 'too_large' ? 413 : e.code === 'unsafe' ? 422 : 415, e.code, e.message);
         throw e;
@@ -501,9 +743,9 @@ export function createApp({ env, repo, auth, limiter, devices, pairings, wallpap
     },
   );
 
-  app.get('/api/icons/:file', read.icon);
+  app.get('/api/icons/:file', async (c) => read.icon(c, me(c).id));
 
-  app.get('/api/icon-cache/:source/:key', read.iconCache);
+  app.get('/api/icon-cache/:source/:key', (c) => read.iconCache(c));
 
   app.all('/api/*', (c) => apiError(c, 404, 'not_found', '接口不存在'));
 
@@ -545,3 +787,14 @@ export function createApp({ env, repo, auth, limiter, devices, pairings, wallpap
 
   return app;
 }
+
+/** A sealed value written with another key (NEXUS_SECRET changed) reads as absent. */
+function safeOpen(box: SecretBox, sealed: string): string | null {
+  try {
+    return box.open(sealed);
+  } catch {
+    return null;
+  }
+}
+
+export { safeReturnTo };

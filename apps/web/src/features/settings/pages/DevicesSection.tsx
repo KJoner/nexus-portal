@@ -1,13 +1,20 @@
-import { PAIR_CODE, type DeviceInfo, type PairingRequest } from '@nexus/shared';
+import { DEVICE_SCOPE_LABELS, PAIR_CODE, type DeviceInfo, type DeviceScope, type PairingRequest } from '@nexus/shared';
 import { Puzzle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { toast } from '../../../components/toast-store';
 import { devicesApi } from '../../../data/config-store';
 import { formatAgo } from '../../../lib/time';
-import { Button, Dialog, Group, Row, Spinner } from '../ui';
+import { Button, Dialog, Group, Row, Spinner, Switch } from '../ui';
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : '操作失败');
+
+/** What a device may do, in words; an old pairing without scopes is read-only (v0.4 never widens it). */
+export function describeScopes(scopes: readonly DeviceScope[] | undefined): string {
+  const s = scopes?.length ? scopes : (['config:read'] as const);
+  if (s.every((x) => x === 'config:read' || x === 'items:read')) return '只读同步';
+  return s.filter((x) => x !== 'config:read').map((x) => DEVICE_SCOPE_LABELS[x]).join('、');
+}
 
 /** Browser name and system from a User-Agent, for the approval screen (not a security check). */
 export function describeAgent(ua: string): string {
@@ -28,6 +35,8 @@ export function DevicesSection() {
   const [request, setRequest] = useState<PairingRequest | 'missing' | null>(null);
   const [busy, setBusy] = useState(false);
   const [revoking, setRevoking] = useState<DeviceInfo | null>(null);
+  // Scopes the user grants: what the extension asked for, minus anything switched off here.
+  const [granted, setGranted] = useState<DeviceScope[]>([]);
 
   const load = () =>
     devicesApi.list().then(setDevices, () => {
@@ -40,7 +49,11 @@ export function DevicesSection() {
     if (!PAIR_CODE.test(code)) return setRequest('missing');
     let live = true;
     devicesApi.pairing(code).then(
-      (r) => live && setRequest(r),
+      (r) => {
+        if (!live) return;
+        setRequest(r);
+        setGranted(r.scopes?.length ? r.scopes : ['config:read']);
+      },
       () => live && setRequest('missing'),
     );
     return () => {
@@ -57,7 +70,7 @@ export function DevicesSection() {
   const decide = async (approve: boolean) => {
     setBusy(true);
     try {
-      await devicesApi.decide(code, approve);
+      await devicesApi.decide(code, approve, approve ? granted : undefined);
       toast(approve ? { msg: '已允许连接，扩展会在几秒内完成同步', tone: 'ok' } : { msg: '已拒绝连接请求', tone: 'info' });
       close();
       // The device appears once the extension has picked up its token.
@@ -89,7 +102,7 @@ export function DevicesSection() {
             <Row
               key={d.id}
               label={<span className="flex items-center gap-2.5"><Puzzle className="size-[18px] text-ink/60" />{d.name}</span>}
-              sub={`只读同步 · 授权于 ${formatAgo(Date.parse(d.createdAt))} · ${d.lastUsedAt ? `最近同步 ${formatAgo(Date.parse(d.lastUsedAt))}` : '尚未同步'}`}
+              sub={`${describeScopes(d.scopes)} · 授权于 ${formatAgo(Date.parse(d.createdAt))} · ${d.lastUsedAt ? `最近同步 ${formatAgo(Date.parse(d.lastUsedAt))}` : '尚未同步'}`}
             >
               <Button onClick={() => setRevoking(d)}>撤销</Button>
             </Row>
@@ -97,7 +110,7 @@ export function DevicesSection() {
         ) : (
           <Row label="还没有连接的扩展" sub="在 Chrome 新标签页扩展中填写本门户的地址，再回到这里确认连接。扩展只能读取导航配置，不能修改设置。" />
         )}
-        <Row label="访问范围" sub="扩展使用各自的只读令牌：可以读取应用、分类、首页设置、服务状态、图标和壁纸；不能写入，也拿不到访问密码。更改访问密码会撤销所有扩展。" />
+        <Row label="访问范围" sub="每个扩展只能做连接时你批准的事（默认只读：应用、分类、首页设置、图标和壁纸）；拿不到你的登录凭据。「退出全部设备」、更改访问密码或停用账号都会撤销所有扩展。" />
       </Group>
 
       <Dialog
@@ -108,7 +121,7 @@ export function DevicesSection() {
         description={
           request === 'missing'
             ? '连接请求 10 分钟内有效，并且只能确认一次。请在扩展中重新发起连接。'
-            : '允许后，这个浏览器扩展可以只读同步你的导航配置、服务状态、图标和壁纸。请先确认下面的连接码与扩展中显示的完全一致；如果不是你本人发起的，请拒绝。'
+            : '请先确认下面的连接码与扩展中显示的完全一致；如果不是你本人发起的，请拒绝。允许后，这个扩展只能做下面勾选的事。'
         }
         footer={
           request === 'missing' ? (
@@ -140,6 +153,19 @@ export function DevicesSection() {
               <dt className="text-ink/50">浏览器</dt>
               <dd className="m-0">{describeAgent(request.userAgent)}</dd>
             </dl>
+            <div className="flex flex-col gap-1 rounded-2xl bg-ink/[0.035] px-3.5 py-2.5" aria-label="申请的权限">
+              <span className="text-[12px] text-ink/50">申请的权限</span>
+              {(request.scopes?.length ? request.scopes : (['config:read'] as DeviceScope[])).map((s) => (
+                <div key={s} className="flex min-h-9 items-center justify-between gap-3 text-[13px]">
+                  <span>{DEVICE_SCOPE_LABELS[s]}</span>
+                  {s === 'config:read' ? (
+                    <span className="text-[12px] text-ink/46">必需</span>
+                  ) : (
+                    <Switch label={DEVICE_SCOPE_LABELS[s]} checked={granted.includes(s)} onChange={(on) => setGranted((g) => (on ? [...g, s] : g.filter((x) => x !== s)))} />
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </Dialog>

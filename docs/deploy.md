@@ -140,9 +140,46 @@ Chrome / Edge 的「新标签页」需要浏览器扩展才能替换，第一阶
 | `NEXUS_PASSWORD_HASH` | 首次启动必填（或用旧的 `NEXUS_PASSWORD`） | 访问密码的 Argon2id 哈希；`.env` 中不保存明文 |
 | `NEXUS_PASSWORD` | 空 | 旧版的明文访问密码（≥ 8 位），仍兼容，不推荐 |
 | `NEXUS_SECRET` | 必填（compose） | 加密服务凭据的密钥（≥ 16 位）；未设置时在数据目录生成 `secret.key` |
-| `NEXUS_PUBLIC_URL` → `NEXUS_ALLOWED_ORIGINS` | 空 | 反代改写 Host 时需要的对外地址 |
+| `NEXUS_PUBLIC_URL` | 空 | 对外地址：反代改写 Host 时传给 `NEXUS_ALLOWED_ORIGINS`；v0.4 起也用于统一身份的回调地址（配置统一身份时必填，https） |
 | `NEXUS_TRUST_PROXY` | compose 中为 `1` | 信任 `X-Forwarded-*`；直接暴露端口时必须设为 `0` |
-| `NEXUS_HEALTH_ALLOW_PRIVATE` | `true` | 允许检查局域网 / Tailscale 地址 |
+| `NEXUS_HEALTH_ALLOW_PRIVATE` | 自托管 `true`，公开部署 `false` | 允许检查局域网 / Tailscale 地址 |
+| `NEXUS_DATABASE_URL` | 空（SQLite） | v0.4：PostgreSQL 连接串，见第 8 节 |
+| `NEXUS_OIDC_ISSUER` / `_CLIENT_ID` / `_CLIENT_SECRET` | 空 | v0.4：统一身份，见第 9 节 |
+| `NEXUS_REGISTRATION_MODE` | `invite` | v0.4：`closed` / `invite` / `open` |
+| `NEXUS_LEGACY_PASSWORD_LOGIN` | `auto` | v0.4：管理员绑定统一账号后关闭访问密码登录；`on` / `off` 强制 |
+| `NEXUS_MAIL_PROVIDER` | `log` | v0.4：产品通知邮件 `log` / `smtp`（`NEXUS_SMTP_URL`）/ `resend`（`NEXUS_RESEND_API_KEY`）；`NEXUS_MAIL_FROM`、`NEXUS_MAIL_REPLY_TO` |
 | `NEXUS_HEALTH_ALLOW_LOOPBACK` | `false` | 允许检查回环地址（不建议） |
 | `NEXUS_COOKIE_SECURE` | `auto` | `auto` / `always` / `never` |
 | `NEXUS_SESSION_DAYS` | `30` | 会话有效天数，使用中自动续期 |
+
+## 8. 迁移到 PostgreSQL（公开部署）
+
+自托管单用户继续用 SQLite 即可。要开放给其他人使用时，先把现有数据迁到 PostgreSQL：
+
+1. **准备库与角色**：用 `infra/identity` 时 `nexus` 库和 `nexus_app` 角色已经建好；自己的 PostgreSQL 则建一个空库，属主为 Nexus 专用角色（不要用超级用户运行 Nexus）。
+2. **备份**：按第 4 节备份数据卷（迁移器不会写 SQLite，但回退需要这份备份）。
+3. **停写**：`docker compose stop nexus`（迁移期间不能有新的写入）。
+4. **演练**（只读，不写目标库）：
+
+   ```bash
+   read -rs -p 'PostgreSQL 连接串：' NEXUS_DATABASE_URL && export NEXUS_DATABASE_URL   # 不回显，也不进 shell 历史
+   docker compose run --rm -e NEXUS_DATABASE_URL --entrypoint node nexus server/cli.mjs migrate-to-pg --dry-run
+   ```
+
+   报告列出每张表的行数、每个账号配置的 sha256、壁纸与图标文件是否齐全。`ok: false` 时先按 `problems` 处理。连接串只从环境变量读取，不要写在命令参数里留在 shell 历史中。
+5. **正式迁移**：去掉 `--dry-run` 再执行一次。迁移在一个事务里完成，写入后逐表核对行数和配置哈希，任何不一致都会整体回滚。目标库已有数据时拒绝执行；同一份 SQLite 重复执行只报告 `alreadyMigrated: true`。
+6. **切换**：在 `.env` 写入 `NEXUS_DATABASE_URL`，`docker compose up -d`。壁纸、图标等文件仍在原数据卷里，数据卷要继续挂载。
+7. **核对**：登录后检查首页、收藏、壁纸、图标；已连接的浏览器扩展继续可用（设备令牌随数据迁移）；所有人需要重新登录一次（会话不迁移）。
+
+**回退**：从 `.env` 删除 `NEXUS_DATABASE_URL` 并重启，回到原来的 SQLite（迁移后在 PostgreSQL 上产生的修改不会带回）。
+
+本机已用一次性容器验证过整套流程（合成数据）：`node scripts/smoke/pg-migrate-smoke.mjs`，见脚本开头的说明。
+
+## 9. 统一身份（多账号）
+
+部署与运维见 [`infra/identity/README.md`](../infra/identity/README.md)（Keycloak + PostgreSQL、注册开关、邮件与 DNS、备份、上线前验证）。Nexus 这一侧：
+
+- 设置 `NEXUS_PUBLIC_URL`（https）、`NEXUS_OIDC_ISSUER`、`NEXUS_OIDC_CLIENT_ID=nexus-web`、`NEXUS_OIDC_CLIENT_SECRET`；回调地址是 `NEXUS_PUBLIC_URL/auth/callback`，back-channel logout 是 `NEXUS_PUBLIC_URL/auth/backchannel-logout`，两者必须与身份服务里登记的完全一致。
+- **旧管理员认领**：保留访问密码，用它登录后在「设置 › 数据、同步与安全」点「绑定统一账号」，在账号中心登录（会要求重新输入密码）。绑定后这个统一账号就是管理员；`NEXUS_LEGACY_PASSWORD_LOGIN=auto` 时口令登录随即关闭。没有可用管理员时服务端启动日志会提示。
+- 注册方式两层都要设：身份服务 `./configure.sh registration …`，Nexus `NEXUS_REGISTRATION_MODE`。`invite` 时管理员在同一页生成一次性邀请码。
+- 「退出全部设备」结束这个账号所有浏览器的 Nexus 登录并撤销扩展；其他浏览器里账号中心的登录状态要在账号中心「设备活动」退出。

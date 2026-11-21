@@ -1,5 +1,5 @@
-import { applyOps, ConfigSchema, defaultConfig, normalizeConfig, type Config, type Op, type Snapshot } from '@nexus/shared';
-import type { DB } from '../db';
+import { applyOps, ConfigSchema, defaultConfig, newUserConfig, normalizeConfig, type Config, type Op, type Snapshot } from '@nexus/shared';
+import { forUpdate, LEGACY_ADMIN_ID, type DB } from '../db';
 
 const OP_LOG_KEEP = 500;
 
@@ -10,66 +10,124 @@ export interface ApplyResult {
   duplicate: boolean;
 }
 
-/** Owns the configuration document. Every write runs in a transaction and bumps the revision. */
-export class ConfigRepo {
-  private listeners = new Set<(revision: number) => void>();
+/** The first configuration of an account: the legacy administrator keeps the self-hosted seed. */
+export const templateFor = (ownerId: string): Config => (ownerId === LEGACY_ADMIN_ID ? defaultConfig() : newUserConfig());
 
-  constructor(private db: DB) {
-    const row = db.prepare('select 1 from config where id = 1').get();
-    if (!row) {
-      db.prepare('insert into config (id, revision, updated_at, data) values (1, 1, ?, ?)').run(new Date().toISOString(), JSON.stringify(defaultConfig()));
-    }
+/**
+ * Health checks make this server open connections to the addresses in a configuration. That is
+ * the operator's tool on the operator's network; for everyone else the switch is forced off on
+ * the server, whatever a client sends (a hidden button is not a boundary).
+ */
+export function sanitizeFor(admin: boolean, c: Config): Config {
+  if (admin || !c.apps.some((a) => a.health.enabled)) return c;
+  return { ...c, apps: c.apps.map((a) => (a.health.enabled ? { ...a, health: { ...a.health, enabled: false } } : a)) };
+}
+
+interface Row {
+  revision: number;
+  updated_at: string;
+  data: string;
+}
+
+/**
+ * One configuration document per account (v0.4). Every write runs in a transaction, bumps that
+ * account's revision and is idempotent per (account, batch id); change notifications only ever
+ * reach listeners of the same account.
+ */
+export class ConfigRepo {
+  private listeners = new Map<string, Set<(revision: number) => void>>();
+
+  constructor(
+    private db: DB,
+    private template: (ownerId: string) => Config = templateFor,
+  ) {}
+
+  /** Creates the account's document on first use (idempotent). */
+  async ensure(ownerId: string): Promise<void> {
+    await this.db.run('insert into user_config (owner_id, revision, updated_at, data) values (?, 1, ?, ?) on conflict (owner_id) do nothing', [ownerId, new Date().toISOString(), JSON.stringify(this.template(ownerId))]);
   }
 
-  snapshot(): Snapshot {
-    const row = this.db.prepare('select revision, updated_at, data from config where id = 1').get() as { revision: number; updated_at: string; data: string };
+  private async row(ownerId: string): Promise<Row> {
+    let row = await this.db.get<Row>('select revision, updated_at, data from user_config where owner_id = ?', [ownerId]);
+    if (!row) {
+      await this.ensure(ownerId);
+      row = (await this.db.get<Row>('select revision, updated_at, data from user_config where owner_id = ?', [ownerId]))!;
+    }
+    return row;
+  }
+
+  async snapshot(ownerId: string): Promise<Snapshot> {
+    const row = await this.row(ownerId);
     const parsed = ConfigSchema.safeParse(JSON.parse(row.data));
     // A document that no longer validates (manual edit, schema change) must not take the portal down.
-    const config = parsed.success ? normalizeConfig(parsed.data) : defaultConfig();
-    return { revision: row.revision, updatedAt: row.updated_at, config };
+    const config = parsed.success ? normalizeConfig(parsed.data) : this.template(ownerId);
+    return { revision: Number(row.revision), updatedAt: row.updated_at, config };
   }
 
   /** Revision and time only — no parsing — for conditional requests that usually answer 304. */
-  version(): { revision: number; updatedAt: string } {
-    const row = this.db.prepare('select revision, updated_at from config where id = 1').get() as { revision: number; updated_at: string };
-    return { revision: row.revision, updatedAt: row.updated_at };
+  async version(ownerId: string): Promise<{ revision: number; updatedAt: string }> {
+    const row = await this.row(ownerId);
+    return { revision: Number(row.revision), updatedAt: row.updated_at };
+  }
+
+  /**
+   * Inside a transaction: takes the owner's row lock (PostgreSQL), so concurrent writers for the same
+   * account queue — no lost update, no two documents with one revision, a retried batch is seen.
+   */
+  private async lock(ownerId: string): Promise<void> {
+    await this.ensure(ownerId);
+    await this.db.get(`select revision from user_config where owner_id = ?${forUpdate(this.db)}`, [ownerId]);
   }
 
   /** Applies a batch atomically. Throws `OpError` (nothing is written) when any op is rejected. */
-  apply(batchId: string, clientId: string, ops: Op[]): ApplyResult {
-    return this.db.transaction((): ApplyResult => {
-      const seen = this.db.prepare('select 1 from op_log where batch_id = ?').get(batchId);
-      const current = this.snapshot();
+  async apply(ownerId: string, batchId: string, clientId: string, ops: Op[], opts: { admin: boolean }): Promise<ApplyResult> {
+    return this.db.tx(async (): Promise<ApplyResult> => {
+      await this.lock(ownerId);
+      const seen = await this.db.get('select 1 as x from op_log where owner_id = ? and batch_id = ?', [ownerId, batchId]);
+      const current = await this.snapshot(ownerId);
       if (seen) return { snapshot: current, changed: false, duplicate: true };
-      const next = applyOps(current.config, ops);
-      if (next === current.config) return { snapshot: current, changed: false, duplicate: false };
-      const snapshot = this.write(current.revision + 1, next);
-      this.db.prepare('insert into op_log (revision, batch_id, client_id, ops, created_at) values (?, ?, ?, ?, ?)').run(snapshot.revision, batchId, clientId, JSON.stringify(ops), snapshot.updatedAt);
-      this.db.prepare('delete from op_log where revision <= ?').run(snapshot.revision - OP_LOG_KEEP);
+      const applied = applyOps(current.config, ops);
+      if (applied === current.config) return { snapshot: current, changed: false, duplicate: false };
+      const snapshot = await this.write(ownerId, current.revision + 1, sanitizeFor(opts.admin, applied));
+      await this.db.run('insert into op_log (owner_id, revision, batch_id, client_id, ops, created_at) values (?, ?, ?, ?, ?, ?)', [ownerId, snapshot.revision, batchId, clientId, JSON.stringify(ops), snapshot.updatedAt]);
+      await this.db.run('delete from op_log where owner_id = ? and revision <= ?', [ownerId, snapshot.revision - OP_LOG_KEEP]);
       return { snapshot, changed: true, duplicate: false };
-    })();
+    });
   }
 
   /** Server-side changes outside ops (e.g. a deleted wallpaper) still bump the revision for sync. */
-  touch(): Snapshot {
-    const current = this.snapshot();
-    const snapshot = this.write(current.revision + 1, current.config);
-    this.emit(snapshot.revision);
+  async touch(ownerId: string): Promise<Snapshot> {
+    const snapshot = await this.db.tx(async () => {
+      await this.lock(ownerId);
+      const current = await this.snapshot(ownerId);
+      return this.write(ownerId, current.revision + 1, current.config);
+    });
+    this.emit(ownerId, snapshot.revision);
     return snapshot;
   }
 
-  private write(revision: number, config: Config): Snapshot {
+  private async write(ownerId: string, revision: number, config: Config): Promise<Snapshot> {
     const updatedAt = new Date().toISOString();
-    this.db.prepare('update config set revision = ?, updated_at = ?, data = ? where id = 1').run(revision, updatedAt, JSON.stringify(config));
+    await this.db.run('update user_config set revision = ?, updated_at = ?, data = ? where owner_id = ?', [revision, updatedAt, JSON.stringify(config), ownerId]);
     return { revision, updatedAt, config };
   }
 
-  onChange(fn: (revision: number) => void): () => void {
-    this.listeners.add(fn);
-    return () => this.listeners.delete(fn);
+  onChange(ownerId: string, fn: (revision: number) => void): () => void {
+    let set = this.listeners.get(ownerId);
+    if (!set) this.listeners.set(ownerId, (set = new Set()));
+    set.add(fn);
+    return () => {
+      set.delete(fn);
+      if (!set.size) this.listeners.delete(ownerId);
+    };
   }
 
-  emit(revision: number) {
-    for (const fn of this.listeners) fn(revision);
+  emit(ownerId: string, revision: number) {
+    for (const fn of this.listeners.get(ownerId) ?? []) fn(revision);
+  }
+
+  /** Accounts that have a configuration (the health checker watches the administrators'). */
+  async owners(): Promise<string[]> {
+    return (await this.db.all<{ owner_id: string }>('select owner_id from user_config order by owner_id')).map((r) => r.owner_id);
   }
 }

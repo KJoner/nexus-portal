@@ -32,7 +32,8 @@ function report(file: string) {
   try {
     const dbVersion = db.pragma('user_version', { simple: true }) as number;
     const integrity = String(db.pragma('quick_check', { simple: true }));
-    const configRow = db.prepare("select count(*) n from sqlite_master where name = 'config'").get() as { n: number };
+    // v1–v6 kept one `config` row; v7 (0.4, accounts) keeps one `user_config` row per account.
+    const configRow = db.prepare("select count(*) n from sqlite_master where name in ('config', 'user_config')").get() as { n: number };
     return { dbVersion, appVersion: MIGRATIONS.length, compatible: dbVersion <= MIGRATIONS.length, integrity, hasConfig: configRow.n > 0 };
   } finally {
     db.close();
@@ -105,6 +106,30 @@ switch (cmd) {
     if (!existsSync(file)) fail(EXIT.absent, `没有数据库：${file}`);
     finish(report(file));
   }
+  case 'migrate-to-pg': {
+    // v0.4: single-user SQLite → multi-account PostgreSQL (M4). The connection string comes from
+    // NEXUS_DATABASE_URL (environment), never from arguments; the source file is never written.
+    const flags = new Map(args.flatMap((a, i) => (a.startsWith('--') ? [[a, args[i + 1] && !args[i + 1]!.startsWith('--') ? args[i + 1]! : '']] : [])));
+    const sqliteFile = flags.get('--sqlite') || '/data/nexus.db';
+    const dataDir = flags.get('--data') || '/data';
+    const url = process.env.NEXUS_DATABASE_URL;
+    if (!url) fail(EXIT.usage, '用法：NEXUS_DATABASE_URL=postgres://… cli.mjs migrate-to-pg [--sqlite /data/nexus.db] [--data /data] [--dry-run]');
+    const { PgDatabase } = await import('./db/pg');
+    const { migrateSqliteToPg, MigrationRefused } = await import('./db/migrate-to-pg');
+    const target = PgDatabase.connect(url);
+    try {
+      const report = await migrateSqliteToPg({ sqliteFile, target, dataDir, dryRun: flags.has('--dry-run') });
+      process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+      if (!report.ok) process.exitCode = EXIT.corrupt;
+    } catch (e) {
+      if (e instanceof MigrationRefused) process.stderr.write(`${e.message}\n`);
+      else process.stderr.write(`迁移失败：${e instanceof Error ? e.message : String(e)}\n`);
+      process.exitCode = EXIT.input;
+    } finally {
+      await target.close();
+    }
+    break;
+  }
   default:
-    fail(EXIT.usage, '用法：cli.mjs hash-password | hash-from-compose | db-backup <src> <dest> | db-check <file>');
+    fail(EXIT.usage, '用法：cli.mjs hash-password | hash-from-compose | db-backup <src> <dest> | db-check <file> | migrate-to-pg [--dry-run]');
 }

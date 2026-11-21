@@ -5,12 +5,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { openDb, type DB } from '../db';
+import { LEGACY_ADMIN_ID as OWNER, openDb, type SqliteDatabase } from '../db';
 import { acceptLicense, Commons, Daily, Gallery, importFromUrl, plainText, SourceError, Unsplash } from './sources';
 import { WallpaperStore } from './store';
 
 let dir: string;
-let db: DB;
+let db: SqliteDatabase;
 let store: WallpaperStore;
 let jpeg: Buffer;
 let portrait: Buffer;
@@ -24,8 +24,8 @@ beforeEach(() => {
   db = openDb(':memory:');
   store = new WallpaperStore(db, join(dir, 'wallpapers'));
 });
-afterEach(() => {
-  db.close();
+afterEach(async () => {
+  await db.close();
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -87,15 +87,15 @@ describe('精选图库', () => {
   it('downloads once into the library with credit, brightness and focal', async () => {
     const { fn, calls } = fakeCommons({ 'File:Dunes.jpg': { w: 6000, h: 3400, license: 'CC BY-SA 4.0' } });
     const g = new Gallery(store, new Commons(fn), join(dir, 'previews'), entries);
-    expect(g.list()).toEqual([{ id: 'dunes', title: '沙丘', category: 'minimal', wallpaperId: null }]);
-    const [a, b] = await Promise.all([g.ensure('dunes'), g.ensure('dunes')]);
+    expect(await g.list(OWNER)).toEqual([{ id: 'dunes', title: '沙丘', category: 'minimal', wallpaperId: null }]);
+    const [a, b] = await Promise.all([g.ensure(OWNER, 'dunes'), g.ensure(OWNER, 'dunes')]);
     expect(a.created).toBe(true);
     expect(b.wallpaper.id).toBe(a.wallpaper.id);
     expect(a.wallpaper).toMatchObject({ source: 'gallery', ref: 'dunes', name: '沙丘', focal: [40, 60], credit: { author: 'Ana & Bo', license: 'CC BY-SA 4.0', provider: 'Wikimedia Commons', required: true } });
     expect(a.wallpaper.luma).toBeGreaterThan(0.7);
     expect(calls.filter((u) => u.includes('/t/3840/'))).toHaveLength(1);
-    expect((await g.ensure('dunes')).created).toBe(false);
-    expect(g.list()[0]!.wallpaperId).toBe(a.wallpaper.id);
+    expect((await g.ensure(OWNER, 'dunes')).created).toBe(false);
+    expect((await g.list(OWNER))[0]!.wallpaperId).toBe(a.wallpaper.id);
   });
 
   it('keeps at most three requests to Wikimedia in flight', async () => {
@@ -127,10 +127,10 @@ describe('精选图库', () => {
   it('refuses non-free files, unknown ids and redirects off Wikimedia', async () => {
     const { fn } = fakeCommons({ 'File:Dunes.jpg': { w: 6000, h: 3400, license: 'CC BY-NC-SA 4.0' }, 'File:evil.jpg': { w: 6000, h: 3400, license: 'CC0' } });
     const g = new Gallery(store, new Commons(fn), join(dir, 'previews'), [...entries, { id: 'evil', category: 'dark', title: 'x', file: 'File:evil.jpg' }]);
-    await expect(g.ensure('dunes')).rejects.toMatchObject({ code: 'license' });
-    await expect(g.ensure('nope')).rejects.toMatchObject({ code: 'not_found' });
-    await expect(g.ensure('evil')).rejects.toMatchObject({ code: 'blocked' });
-    expect(store.list()).toEqual([]);
+    await expect(g.ensure(OWNER, 'dunes')).rejects.toMatchObject({ code: 'license' });
+    await expect(g.ensure(OWNER, 'nope')).rejects.toMatchObject({ code: 'not_found' });
+    await expect(g.ensure(OWNER, 'evil')).rejects.toMatchObject({ code: 'blocked' });
+    expect(await store.list(OWNER)).toEqual([]);
   });
 });
 
@@ -268,11 +268,11 @@ describe('每日一图', () => {
     const { fn } = source({ 'File:A.jpg': wide, 'File:B.jpg': wide, 'File:C.jpg': wide }, { '2026-10-29': 'A.jpg', '2026-10-30': 'B.jpg', '2026-10-31': 'C.jpg' });
     const d = daily(fn);
     const { wallpaper } = await d.current();
-    const [a, b] = await Promise.all([d.keep(wallpaper.id), d.keep(wallpaper.id)]);
+    const [a, b] = await Promise.all([d.keep(OWNER, wallpaper.id), d.keep(OWNER, wallpaper.id)]);
     expect(b.wallpaper.id).toBe(a.wallpaper.id);
     expect(a).toMatchObject({ created: true, wallpaper: { source: 'saved', ref: wallpaper.id, name: '每日一图 · 10月29日', credit: { provider: 'Wikimedia Commons' }, placeholder: wallpaper.placeholder } });
     expect(a.wallpaper.id).toMatch(/^up-/);
-    expect(await d.keep(wallpaper.id)).toMatchObject({ created: false, wallpaper: { id: a.wallpaper.id } });
+    expect(await d.keep(OWNER, wallpaper.id)).toMatchObject({ created: false, wallpaper: { id: a.wallpaper.id } });
     expect(rows()).toBe(1);
     expect(readdirSync(join(dir, 'wallpapers', a.wallpaper.id)).sort()).toEqual(['1280.avif', '1280.jpg', '1280.webp']);
 
@@ -282,8 +282,8 @@ describe('每日一图', () => {
       await d.current();
     }
     expect(d.filePath(wallpaper.id, '1280.jpg')).toBeNull();
-    expect(existsSync(store.filePath(a.wallpaper.id, '1280.jpg')!)).toBe(true);
-    await expect(d.keep('dl-000000000000')).rejects.toMatchObject({ code: 'not_found' });
+    expect(existsSync((await store.filePath(OWNER, a.wallpaper.id, '1280.jpg'))!)).toBe(true);
+    await expect(d.keep(OWNER, 'dl-000000000000')).rejects.toMatchObject({ code: 'not_found' });
   });
 });
 
@@ -308,13 +308,13 @@ describe('Unsplash (optional)', () => {
     }) as typeof fetch;
     const u = new Unsplash('key-123', store, fn);
     expect(await u.search('lake')).toEqual([{ id: 'abc_123', thumb: photo.urls.small, color: '#c0d0e0', author: 'Lee', description: 'misty lake' }]);
-    const r = await u.use('abc_123');
+    const r = await u.use(OWNER, 'abc_123');
     expect(r.wallpaper).toMatchObject({ source: 'unsplash', ref: 'abc_123', widths: [], remote: photo.urls.raw, credit: { author: 'Lee', authorUrl: 'https://unsplash.com/@lee?utm_source=nexus_portal&utm_medium=referral', provider: 'Unsplash', required: true } });
     await new Promise((r) => setTimeout(r, 0));
     expect(calls.map((c) => c.url)).toContain(photo.links.download_location);
     expect(calls.every((c) => c.auth === 'Client-ID key-123')).toBe(true);
-    expect((await u.use('abc_123')).created).toBe(false);
-    await expect(u.use('../x')).rejects.toBeInstanceOf(SourceError);
+    expect((await u.use(OWNER, 'abc_123')).created).toBe(false);
+    await expect(u.use(OWNER, '../x')).rejects.toBeInstanceOf(SourceError);
   });
 });
 
@@ -337,16 +337,16 @@ describe('网址导入', () => {
   const publicOnly = { allowPrivate: false, allowLoopback: false };
 
   it('downloads through redirects and keeps no query string in the credit', async () => {
-    const w = await importFromUrl(store, `${base}/hop`, lan);
+    const w = await importFromUrl(store, OWNER, `${base}/hop`, lan);
     expect(w).toMatchObject({ source: 'url', name: 'pic', credit: { sourceUrl: `${base}/pic.jpg` } });
   });
 
   it('refuses private and loopback targets, non-images and junk', async () => {
-    await expect(importFromUrl(store, `${base}/pic.jpg`, publicOnly)).rejects.toMatchObject({ code: 'blocked' });
-    await expect(importFromUrl(store, 'http://169.254.169.254/latest/meta-data', publicOnly)).rejects.toMatchObject({ code: 'blocked' });
-    await expect(importFromUrl(store, `${base}/page`, lan)).rejects.toMatchObject({ code: 'invalid' });
-    await expect(importFromUrl(store, 'file:///etc/passwd', lan)).rejects.toMatchObject({ code: 'invalid' });
-    await expect(importFromUrl(store, 'not a url', lan)).rejects.toMatchObject({ code: 'invalid' });
-    expect(store.list()).toEqual([]);
+    await expect(importFromUrl(store, OWNER, `${base}/pic.jpg`, publicOnly)).rejects.toMatchObject({ code: 'blocked' });
+    await expect(importFromUrl(store, OWNER, 'http://169.254.169.254/latest/meta-data', publicOnly)).rejects.toMatchObject({ code: 'blocked' });
+    await expect(importFromUrl(store, OWNER, `${base}/page`, lan)).rejects.toMatchObject({ code: 'invalid' });
+    await expect(importFromUrl(store, OWNER, 'file:///etc/passwd', lan)).rejects.toMatchObject({ code: 'invalid' });
+    await expect(importFromUrl(store, OWNER, 'not a url', lan)).rejects.toMatchObject({ code: 'invalid' });
+    expect(await store.list(OWNER)).toEqual([]);
   });
 });

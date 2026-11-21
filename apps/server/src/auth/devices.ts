@@ -1,4 +1,4 @@
-import { PAIR_CODE_ALPHABET, type DeviceInfo, type PairingRequest, type PairPollResponse, type PairStartResponse } from '@nexus/shared';
+import { isDeviceScope, PAIR_CODE_ALPHABET, type DeviceInfo, type DeviceScope, type PairingRequest, type PairPollResponse, type PairStartResponse } from '@nexus/shared';
 import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import type { DB } from '../db';
 
@@ -16,16 +16,28 @@ const iso = (t: number | null) => (t === null ? null : new Date(t).toISOString()
 
 interface Row {
   id: string;
+  owner_id: string;
   name: string;
+  scopes: string;
   created_at: number;
   last_used_at: number | null;
 }
 
-const info = (r: Row): DeviceInfo => ({ id: r.id, name: r.name, createdAt: iso(r.created_at)!, lastUsedAt: iso(r.last_used_at) });
+/** Comma list from the database → known scopes only (an unknown word grants nothing). */
+export const parseScopes = (text: string): DeviceScope[] => [...new Set(text.split(',').map((s) => s.trim()))].filter(isDeviceScope);
+
+const info = (r: Row): DeviceInfo => ({ id: r.id, name: r.name, createdAt: iso(Number(r.created_at))!, lastUsedAt: iso(r.last_used_at === null ? null : Number(r.last_used_at)), scopes: parseScopes(r.scopes) });
+
+/** The device behind a request: whose data it reads, and what it may do. */
+export interface DeviceAuth extends DeviceInfo {
+  ownerId: string;
+  scopes: DeviceScope[];
+}
 
 /**
- * Read-only device tokens (the Chrome extension). Like sessions, only the SHA-256 is stored, so
- * the database cannot be replayed; deleting the row revokes the device.
+ * Device tokens (the browser extension). Only the SHA-256 is stored, so the database cannot be
+ * replayed; deleting the row revokes the device. Every device belongs to one account and holds
+ * only the scopes that account approved.
  */
 export class Devices {
   constructor(
@@ -33,36 +45,44 @@ export class Devices {
     private now: () => number = Date.now,
   ) {}
 
-  list(): DeviceInfo[] {
-    return (this.db.prepare('select id, name, created_at, last_used_at from devices order by created_at').all() as Row[]).map(info);
+  async list(ownerId: string): Promise<DeviceInfo[]> {
+    return (await this.db.all<Row>('select id, owner_id, name, scopes, created_at, last_used_at from devices where owner_id = ? order by created_at', [ownerId])).map(info);
   }
 
-  create(name: string, userAgent: string): { device: DeviceInfo; token: string } {
+  async create(ownerId: string, name: string, userAgent: string, scopes: readonly DeviceScope[] = ['config:read']): Promise<{ device: DeviceInfo; token: string }> {
     const token = `nxd_${randomBytes(32).toString('base64url')}`;
-    const row: Row = { id: randomBytes(9).toString('base64url'), name, created_at: this.now(), last_used_at: null };
-    this.db.prepare('insert into devices (id, name, token_hash, created_at, last_used_at, user_agent) values (?, ?, ?, ?, ?, ?)').run(row.id, row.name, sha256(token), row.created_at, null, userAgent.slice(0, 200));
+    const granted = [...new Set(scopes)].filter(isDeviceScope);
+    const row: Row = { id: randomBytes(9).toString('base64url'), owner_id: ownerId, name, scopes: (granted.length ? granted : ['config:read']).join(','), created_at: this.now(), last_used_at: null };
+    await this.db.run('insert into devices (id, owner_id, name, token_hash, scopes, created_at, last_used_at, user_agent) values (?, ?, ?, ?, ?, ?, ?, ?)', [row.id, ownerId, row.name, sha256(token), row.scopes, row.created_at, null, userAgent.slice(0, 200)]);
     return { device: info(row), token };
   }
 
   /** The device behind a token, or null. Use is recorded at most once an hour (no write per request). */
-  validate(token: string): DeviceInfo | null {
-    const hash = sha256(token);
-    const row = this.db.prepare('select id, name, created_at, last_used_at from devices where token_hash = ?').get(hash) as Row | undefined;
+  async validate(token: string): Promise<DeviceAuth | null> {
+    const row = await this.db.get<Row>('select id, owner_id, name, scopes, created_at, last_used_at from devices where token_hash = ?', [sha256(token)]);
     if (!row) return null;
     const t = this.now();
-    if ((row.last_used_at ?? row.created_at) < t - IDLE_DAYS * DAY) {
-      this.revoke(row.id);
+    const lastUsed = row.last_used_at === null ? null : Number(row.last_used_at);
+    if ((lastUsed ?? Number(row.created_at)) < t - IDLE_DAYS * DAY) {
+      await this.db.run('delete from devices where id = ?', [row.id]);
       return null;
     }
-    if (!row.last_used_at || t - row.last_used_at >= HOUR) {
-      this.db.prepare('update devices set last_used_at = ? where id = ?').run(t, row.id);
+    if (lastUsed === null || t - lastUsed >= HOUR) {
+      await this.db.run('update devices set last_used_at = ? where id = ?', [t, row.id]);
       row.last_used_at = t;
     }
-    return info(row);
+    const owner = await this.db.get<{ disabled: number }>('select disabled from users where id = ?', [row.owner_id]);
+    if (!owner || Number(owner.disabled)) return null;
+    return { ...info(row), ownerId: row.owner_id, scopes: parseScopes(row.scopes) };
   }
 
-  revoke(id: string): boolean {
-    return this.db.prepare('delete from devices where id = ?').run(id).changes > 0;
+  /** Only the account's own devices: another account's id reads as not found. */
+  async revoke(ownerId: string, id: string): Promise<boolean> {
+    return (await this.db.run('delete from devices where id = ? and owner_id = ?', [id, ownerId])).changes > 0;
+  }
+
+  async revokeAllForOwner(ownerId: string): Promise<number> {
+    return (await this.db.run('delete from devices where owner_id = ?', [ownerId])).changes;
   }
 }
 
@@ -73,9 +93,13 @@ interface Pending {
   name: string;
   ip: string;
   userAgent: string;
+  scopes: DeviceScope[];
   createdAt: number;
   expiresAt: number;
   status: 'pending' | 'approved' | 'denied';
+  /** Set by the approving account: the device will belong to it, with these scopes. */
+  ownerId?: string;
+  granted?: DeviceScope[];
 }
 
 export class PairingError extends Error {
@@ -89,9 +113,10 @@ export class PairingError extends Error {
 
 /**
  * Device pairing in the style of OAuth's device authorization grant (RFC 8628). The extension
- * starts a request and polls with a secret only it knows; the signed-in user approves the code in
- * the portal; the token is created at the moment the extension picks it up, and only then.
- * Requests live in memory for ten minutes: a restart simply means pairing again.
+ * starts a request (naming the scopes it wants) and polls with a secret only it knows; a signed-in
+ * user approves the code in the portal, which binds the device to *their* account; the token is
+ * created at the moment the extension picks it up, and only then. Requests live in memory for ten
+ * minutes: a restart simply means pairing again.
  */
 export class Pairings {
   private pending = new Map<string, Pending>();
@@ -116,7 +141,7 @@ export class Pairings {
     }
   }
 
-  start(name: string, ip: string, userAgent: string): PairStartResponse {
+  start(name: string, ip: string, userAgent: string, scopes: readonly DeviceScope[] = ['config:read']): PairStartResponse {
     this.sweep();
     const t = this.now();
     const s = this.starts.get(ip) ?? { n: 0, resetAt: t + PAIR_TTL };
@@ -125,7 +150,8 @@ export class Pairings {
     s.n++;
     this.starts.set(ip, s);
     const secret = randomBytes(32).toString('base64url');
-    const p: Pending = { id: randomBytes(12).toString('base64url'), secretHash: createHash('sha256').update(secret).digest(), code: this.newCode(), name, ip, userAgent: userAgent.slice(0, 200), createdAt: t, expiresAt: t + PAIR_TTL, status: 'pending' };
+    const wanted = [...new Set(scopes)].filter(isDeviceScope);
+    const p: Pending = { id: randomBytes(12).toString('base64url'), secretHash: createHash('sha256').update(secret).digest(), code: this.newCode(), name, ip, userAgent: userAgent.slice(0, 200), scopes: wanted.length ? wanted : ['config:read'], createdAt: t, expiresAt: t + PAIR_TTL, status: 'pending' };
     this.pending.set(p.id, p);
     return { pairId: p.id, secret, code: p.code, expiresIn: PAIR_TTL / 1000, interval: POLL_INTERVAL };
   }
@@ -138,26 +164,34 @@ export class Pairings {
   /** For the approval screen (signed-in user only). */
   peek(code: string): PairingRequest | null {
     const p = this.byCode(code);
-    return p ? { code: p.code, name: p.name, createdAt: iso(p.createdAt)!, expiresAt: iso(p.expiresAt)!, ip: p.ip, userAgent: p.userAgent } : null;
+    return p ? { code: p.code, name: p.name, createdAt: iso(p.createdAt)!, expiresAt: iso(p.expiresAt)!, ip: p.ip, userAgent: p.userAgent, scopes: p.scopes } : null;
   }
 
-  /** Signed-in user's answer. False when the code is unknown, expired or already answered. */
-  decide(code: string, approve: boolean): boolean {
+  /**
+   * The signed-in user's answer. Approving binds the device to `ownerId`; the user may grant less
+   * than was asked for, never more. False when the code is unknown, expired or already answered.
+   */
+  decide(code: string, approve: boolean, ownerId?: string, grant?: readonly DeviceScope[]): boolean {
     const p = this.byCode(code);
-    if (!p) return false;
+    if (!p || (approve && !ownerId)) return false;
     p.status = approve ? 'approved' : 'denied';
+    if (approve) {
+      p.ownerId = ownerId;
+      p.granted = grant ? p.scopes.filter((s) => grant.includes(s)) : p.scopes;
+      if (!p.granted.length) p.granted = ['config:read'];
+    }
     return true;
   }
 
-  poll(pairId: string, secret: string): PairPollResponse {
+  async poll(pairId: string, secret: string): Promise<PairPollResponse> {
     this.sweep();
     const p = this.pending.get(pairId);
     const given = createHash('sha256').update(secret).digest();
     if (!p || !timingSafeEqual(p.secretHash, given)) return { status: 'expired' };
     if (p.status === 'pending') return { status: 'pending' };
     this.pending.delete(pairId);
-    if (p.status === 'denied') return { status: 'denied' };
-    const { device, token } = this.devices.create(p.name, p.userAgent);
+    if (p.status === 'denied' || !p.ownerId) return { status: 'denied' };
+    const { device, token } = await this.devices.create(p.ownerId, p.name, p.userAgent, p.granted);
     return { status: 'approved', token, device };
   }
 }

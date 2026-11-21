@@ -69,6 +69,13 @@ export function extensionTransport(area: Area, fetchImpl: Fetch): Transport {
     decidePairing: readOnly,
     /** The new tab never opens 应用目录 itself: the link leaves for the portal (see NewTab). */
     catalog: readOnly,
+    // Accounts are managed in the portal; the new tab only reads with its device token.
+    authOptions: readOnly,
+    me: readOnly,
+    logoutAll: readOnly,
+    adminUsers: readOnly,
+    setUserDisabled: readOnly,
+    createInvite: readOnly,
     subscribe: () => () => {},
   };
 }

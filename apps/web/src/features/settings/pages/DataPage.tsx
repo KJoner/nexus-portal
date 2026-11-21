@@ -1,11 +1,13 @@
 import { ConfigSchema, defaultConfig, normalizeConfig, type Config } from '@nexus/shared';
-import { Cloud, CloudOff, Download, LogOut, Upload } from 'lucide-react';
+import { Cloud, CloudOff, Download, Upload } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from '../../../components/toast-store';
-import { logout, useConfig, useConfigStore, useSaveState } from '../../../data/config-store';
+import { useConfig, useConfigStore, useSaveState } from '../../../data/config-store';
 import { formatHm } from '../../../lib/time';
 import { apply, patch } from '../model';
 import { Button, Dialog, Group, PageHeader, Row, Switch, useCompact } from '../ui';
+import { AccountSection } from './AccountSection';
+import { AdminAccountsSection } from './AdminAccountsSection';
 import { DevicesSection } from './DevicesSection';
 
 const FORMAT = 'nexus-config';
@@ -43,7 +45,6 @@ export function DataPage() {
   const [importing, setImporting] = useState<{ name: string; config: Config } | null>(null);
   const [reset, setReset] = useState<Reset | null>(null);
   const [typed, setTyped] = useState('');
-  const [leaving, setLeaving] = useState(false);
   const pr = config.settings.privacy;
 
   const exportConfig = () => {
@@ -98,6 +99,9 @@ export function DataPage() {
   return (
     <div className="flex max-w-[880px] flex-col gap-7">
       <PageHeader title="数据、同步与安全" sub="配置保存在 Nexus 服务端，所有登录的设备共用；本设备保留一份缓存，离线时也能打开首页。" />
+      {/* v0.4: who is signed in comes first; the administration of accounts right after it. */}
+      <AccountSection />
+      <AdminAccountsSection />
       <Group title={compact ? '同步与登录' : '配置同步'}>
         {syncRow}
         <Row label="多设备同时修改" sub="按操作合并（如「固定 GitHub」「移动 Notion」），不会整份覆盖；与新状态冲突的改动会被放弃并提示" />
@@ -128,15 +132,6 @@ export function DataPage() {
         </Row>
         <Row label="本地缓存图标" sub="由 Nexus 服务端获取并缓存品牌图标，浏览器不再直接请求第三方图标服务；图标源故障时继续使用缓存">
           <Switch label="本地缓存图标" checked={pr.cacheIcons} onChange={(v) => patch('privacy', { cacheIcons: v })} />
-        </Row>
-      </Group>
-
-      <Group title="登录状态">
-        <Row label="已登录 · 本设备" sub="会话保存在本浏览器，30 天内使用会自动续期；退出后本设备的缓存会被清除">
-          <Button onClick={() => setLeaving(true)}>
-            <LogOut className="size-[15px]" />
-            退出登录
-          </Button>
         </Row>
       </Group>
 
@@ -209,22 +204,6 @@ export function DataPage() {
         )}
       </Dialog>
 
-      <Dialog
-        open={leaving}
-        onOpenChange={setLeaving}
-        title="退出登录？"
-        description={save.kind === 'offline' && save.pending ? `还有 ${save.pending} 项更改没有同步到服务端，退出后会丢失。` : '退出后需要重新输入访问密码；本设备缓存的配置与最近使用会被清除。'}
-        footer={
-          <>
-            <Button className="h-10 px-[18px]" onClick={() => setLeaving(false)}>
-              取消
-            </Button>
-            <Button variant="primary" className="h-10 px-5" onClick={() => void logout()}>
-              退出登录
-            </Button>
-          </>
-        }
-      />
     </div>
   );
 }

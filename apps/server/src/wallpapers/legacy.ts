@@ -2,7 +2,7 @@ import type { UploadedWallpaper } from '@nexus/shared';
 import { mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { ConfigRepo } from '../config/repo';
-import { backupDb, type DB } from '../db';
+import { backupDb, LEGACY_ADMIN_ID, SqliteDatabase, type DB } from '../db';
 import type { WallpaperStore } from './store';
 
 const FOLDER = 'legacy-daily-';
@@ -34,19 +34,23 @@ export interface LegacyCleanup {
  * default picture. The rest leaves the library, which is reversible for a while: the database is
  * backed up first, and the files are moved to `<data>/backups/legacy-daily-<time>/` and only
  * deleted 30 days later. Runs at every start; once nothing matches, it does nothing.
+ *
+ * Only the legacy administrator can have such rows (accounts made in v0.4 never had the old mode).
  */
 export async function cleanLegacyDaily({ db, dbFile, repo, store, now = new Date() }: { db: DB; dbFile: string; repo: ConfigRepo; store: WallpaperStore; now?: Date }): Promise<LegacyCleanup> {
   const backups = join(dirname(dbFile), 'backups');
   await purgeExpired(backups, now);
-  const legacy = store.list().filter(isLegacyDaily);
+  const owner = LEGACY_ADMIN_ID;
+  const legacy = (await store.list(owner)).filter(isLegacyDaily);
   if (!legacy.length) return { removed: 0, kept: 0, folder: null };
 
-  backupDb(db, dbFile, db.pragma('user_version', { simple: true }) as number);
-  const look = repo.snapshot().config.settings.look;
+  // PostgreSQL deployments are backed up by their own tooling before an upgrade.
+  if (db instanceof SqliteDatabase) backupDb(db, dbFile, db.pragma('user_version', { simple: true }) as number);
+  const look = (await repo.snapshot(owner)).config.settings.look;
   const owned = new Set(look.favorites);
   if (look.rotation.mode !== 'potd') owned.add(look.wallpaper);
   const doomed = legacy.filter((w) => !owned.has(w.id));
-  for (const w of legacy) if (owned.has(w.id)) store.markSaved(w.id);
+  for (const w of legacy) if (owned.has(w.id)) await store.markSaved(owner, w.id);
   if (!doomed.length) return { removed: 0, kept: legacy.length, folder: null };
 
   const gone = new Set(doomed.map((w) => w.id));
@@ -58,8 +62,8 @@ export async function cleanLegacyDaily({ db, dbFile, repo, store, now = new Date
   await mkdir(folder, { recursive: true });
   await writeFile(join(folder, 'manifest.json'), JSON.stringify(doomed, null, 2));
   // The configuration first: an interrupted run must not leave it pointing at a removed picture.
-  if (Object.keys(patch).length) repo.apply(`legacy-daily-${now.getTime()}`, 'server', [{ type: 'settings.patch', section: 'look', patch }]);
-  for (const w of doomed) await store.moveOut(w.id, folder);
-  repo.touch();
+  if (Object.keys(patch).length) await repo.apply(owner, `legacy-daily-${now.getTime()}`, 'server', [{ type: 'settings.patch', section: 'look', patch }], { admin: true });
+  for (const w of doomed) await store.moveOut(owner, w.id, folder);
+  await repo.touch(owner);
   return { removed: doomed.length, kept: legacy.length - doomed.length, folder };
 }

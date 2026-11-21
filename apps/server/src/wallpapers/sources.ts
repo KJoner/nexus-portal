@@ -184,8 +184,11 @@ export class Gallery {
     private entries: readonly GalleryEntry[] = GALLERY,
   ) {}
 
-  list(): GalleryItem[] {
-    return this.entries.map((e) => ({ id: e.id, title: e.title, category: e.category, wallpaperId: this.store.findByRef('gallery', e.id)?.id ?? null }));
+  /** The catalogue, with this account's library entry for each picture it already has. */
+  async list(ownerId: string): Promise<GalleryItem[]> {
+    const out: GalleryItem[] = [];
+    for (const e of this.entries) out.push({ id: e.id, title: e.title, category: e.category, wallpaperId: (await this.store.findByRef(ownerId, 'gallery', e.id))?.id ?? null });
+    return out;
   }
 
   private entry(id: string): GalleryEntry {
@@ -194,14 +197,17 @@ export class Gallery {
     return e;
   }
 
-  async ensure(id: string): Promise<Ensured> {
+  async ensure(ownerId: string, id: string): Promise<Ensured> {
     const e = this.entry(id);
-    const existing = this.store.findByRef('gallery', id);
-    if (existing) return Promise.resolve({ wallpaper: existing, created: false });
-    return once(this.inflight, id, async () => {
+    const existing = await this.store.findByRef(ownerId, 'gallery', id);
+    if (existing) return { wallpaper: existing, created: false };
+    return once(this.inflight, `${ownerId}:${id}`, async () => {
+      // The picture is public: when another account already has it, copy the files instead of downloading again.
+      const shared = await this.store.publicFolder('gallery', id);
+      if (shared) return { wallpaper: await this.store.addEncoded(ownerId, shared.folder, { ...shared.wallpaper, name: e.title }, { source: 'gallery', ref: id, credit: shared.wallpaper.credit, focal: e.focal ?? null }), created: true };
       const info = await this.commons.info(e.file, FULL_WIDTH);
       const body = await this.commons.download(info.url, MAX_ORIGINAL);
-      const wallpaper = await this.store.add(body, e.title, { source: 'gallery', ref: id, credit: info.credit, focal: e.focal ?? null, maxBytes: MAX_ORIGINAL });
+      const wallpaper = await this.store.add(ownerId, body, e.title, { source: 'gallery', ref: id, credit: info.credit, focal: e.focal ?? null, maxBytes: MAX_ORIGINAL });
       return { wallpaper, created: true };
     });
   }
@@ -356,12 +362,12 @@ export class Daily {
   }
 
   /** The user wants this picture for good: one library copy per picture, whatever the cache does next. */
-  async keep(id: string): Promise<Ensured> {
-    const existing = this.store.findByRef('saved', id);
+  async keep(ownerId: string, id: string): Promise<Ensured> {
+    const existing = await this.store.findByRef(ownerId, 'saved', id);
     if (existing) return { wallpaper: existing, created: false };
     const entry = this.cached.get(id);
     if (!entry) throw new SourceError('not_found', '这张每日一图已经过期，无法收藏');
-    return once(this.keeping, id, async () => ({ wallpaper: await this.store.addEncoded(join(this.dir, id), entry.wallpaper, { source: 'saved', ref: id, credit: entry.wallpaper.credit }), created: true }));
+    return once(this.keeping, `${ownerId}:${id}`, async () => ({ wallpaper: await this.store.addEncoded(ownerId, join(this.dir, id), entry.wallpaper, { source: 'saved', ref: id, credit: entry.wallpaper.credit }), created: true }));
   }
 }
 
@@ -423,9 +429,9 @@ export class Unsplash {
     return list.map((x) => ({ id: x.id, thumb: x.urls.small, color: x.color ?? '#2a2724', author: x.user.name, description: (x.alt_description ?? x.description ?? '').slice(0, 80) }));
   }
 
-  async use(id: string): Promise<Ensured> {
+  async use(ownerId: string, id: string): Promise<Ensured> {
     if (!/^[A-Za-z0-9_-]{1,32}$/.test(id)) throw new SourceError('invalid', '照片编号不正确');
-    const existing = this.store.findByRef('unsplash', id);
+    const existing = await this.store.findByRef(ownerId, 'unsplash', id);
     if (existing) return { wallpaper: existing, created: false };
     const x = await this.api<UnsplashApiPhoto>(`/photos/${id}`);
     const raw = new URL(x.urls.raw);
@@ -434,7 +440,7 @@ export class Unsplash {
     void this.api(x.links.download_location).catch(() => undefined);
     const credit: WallpaperCredit = { author: x.user.name, authorUrl: utm(x.user.links.html), sourceUrl: utm(x.links.html), provider: 'Unsplash', license: 'Unsplash License', licenseUrl: 'https://unsplash.com/license', required: true };
     const name = (x.alt_description ?? '').trim() || `Unsplash · ${x.user.name}`;
-    const wallpaper = this.store.addRemote(raw.toString(), name, { width: x.width, height: x.height }, x.color ?? '', { source: 'unsplash', ref: id, credit, focal: [50, 50] });
+    const wallpaper = await this.store.addRemote(ownerId, raw.toString(), name, { width: x.width, height: x.height }, x.color ?? '', { source: 'unsplash', ref: id, credit, focal: [50, 50] });
     return { wallpaper, created: true };
   }
 }
@@ -443,7 +449,7 @@ export class Unsplash {
  * 网址导入: the picture is downloaded once by the server (public addresses only, size and type
  * checked, re-encoded by the library), so browsers never load arbitrary third-party addresses.
  */
-export async function importFromUrl(store: WallpaperStore, raw: string, policy: NetPolicy, fetchBytes: typeof getBytes = getBytes): Promise<UploadedWallpaper> {
+export async function importFromUrl(store: WallpaperStore, ownerId: string, raw: string, policy: NetPolicy, fetchBytes: typeof getBytes = getBytes): Promise<UploadedWallpaper> {
   let url: URL;
   try {
     url = new URL(raw.trim());
@@ -466,5 +472,5 @@ export async function importFromUrl(store: WallpaperStore, raw: string, policy: 
     /* keep the host */
   }
   // Only origin + path are kept: query strings often carry access tokens.
-  return store.add(r.body, name, { source: 'url', credit: { sourceUrl: `${r.url.origin}${r.url.pathname}`, provider: r.url.host }, maxBytes: MAX_IMPORT });
+  return store.add(ownerId, r.body, name, { source: 'url', credit: { sourceUrl: `${r.url.origin}${r.url.pathname}`, provider: r.url.host }, maxBytes: MAX_IMPORT });
 }

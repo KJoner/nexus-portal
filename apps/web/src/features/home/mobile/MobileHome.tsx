@@ -5,7 +5,7 @@ import { Link, useNavigate } from 'react-router';
 import { ActionSheet, type SheetItem, type SheetState } from '../../../components/ActionSheet';
 import { Highlight } from '../../../components/Highlight';
 import { ToastHost } from '../../../components/ToastHost';
-import { dispatch, useConfig, useConfigStore } from '../../../data/config-store';
+import { dispatch, useConfig, useConfigStore, useIsAdmin } from '../../../data/config-store';
 import { useServices, type ServiceView } from '../../../data/status';
 import { AppTile } from '../../../icons/AppTile';
 import { ALL_APPS_GLYPH } from '../../../icons/glyphs';
@@ -57,7 +57,9 @@ export function MobileHome() {
   const small = h < 760;
   const tile = TILE[look.iconSize] - (w < 380 ? 4 : 0);
   const labels = home.labels.mobile;
-  const showStatus = !privacy.guest;
+  // Service status is the operator's view of the servers; other accounts have none (v0.4).
+  const isAdmin = useIsAdmin();
+  const showStatus = !privacy.guest && isAdmin;
   const statusPill = showStatus && (ui.status === 'show' || summary.level === 'error');
   const shownIds = useMemo(() => new Set(shownServices(config).map((a) => a.id)), [config]);
   const homeServices = services.filter((s) => shownIds.has(s.app.id));
@@ -255,8 +257,14 @@ export function MobileHome() {
             showStatus={showStatus}
             bind={bind}
             pressed={pressed}
-            onAdd={openApps}
+            // Nothing collected yet: 添加 goes to 应用目录, not to an empty 收藏库 (v0.4).
+            onAdd={config.apps.length ? openApps : () => navigate('/catalog')}
           />
+          {!ro && !privacy.guest && config.apps.length === 0 && (
+            <p className="m-0 mt-3 px-2 text-center text-[12.5px] leading-[1.6] text-ink/70" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.5)' }}>
+              收藏库还是空的 · 点「添加」从应用目录挑选常用网站
+            </p>
+          )}
         </div>
 
         {/* search */}

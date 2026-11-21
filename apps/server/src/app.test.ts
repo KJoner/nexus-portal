@@ -9,7 +9,9 @@ import { Devices, Pairings } from './auth/devices';
 import { LoginLimiter } from './auth/rate-limit';
 import { Auth } from './auth/sessions';
 import { ConfigRepo } from './config/repo';
-import { openDb, type DB } from './db';
+import { LEGACY_ADMIN_ID, openDb, type DB } from './db';
+import { LoginIntents } from './auth/intents';
+import { Users } from './users/users';
 import type { Env } from './env';
 import { HealthChecker } from './health/checker';
 import { IconProxy } from './icons/proxy';
@@ -52,16 +54,17 @@ beforeEach(async () => {
   auth = new Auth(db, 30);
   await auth.ensurePassword({ hash: null, plain: PASSWORD });
   const repo = new ConfigRepo(db);
-  const health = new HealthChecker(db, repo, { allowPrivate: true, allowLoopback: false }, async () => ({ reached: true, status: 200, latencyMs: 12, message: 'HTTP 200' }));
+  const health = new HealthChecker(db, repo, { allowPrivate: true, allowLoopback: false }, async () => ({ reached: true, status: 200, latencyMs: 12, message: 'HTTP 200' }), LEGACY_ADMIN_ID);
   const wallpapers = new WallpaperStore(db, dir);
   const commons = new Commons(async () => new Response(null, { status: 503 }));
   const sources = { gallery: new Gallery(wallpapers, commons, join(dir, 'previews'), []), daily: new Daily(wallpapers, commons, join(dir, 'daily-cache')), unsplash: new Unsplash(null, wallpapers), importPolicy: { allowPrivate: false, allowLoopback: false } };
   const devices = new Devices(db);
-  deps = { env, repo, auth, limiter: new LoginLimiter(), devices, pairings: new Pairings(devices), wallpapers, sources, icons: new IconStore(join(dir, 'icons')), health, iconProxy: new IconProxy(join(dir, 'icon-cache'), fakeCdn), linkwarden: new Linkwarden(db, new SecretBox(randomBytes(32)), { allowPrivate: true, allowLoopback: false }), suggestFetch: fakeSuggest };
+  const secrets = new SecretBox(randomBytes(32));
+  deps = { env, repo, auth, users: new Users(db), intents: new LoginIntents(db), secrets, limiter: new LoginLimiter(), devices, pairings: new Pairings(devices), wallpapers, sources, icons: new IconStore(db, join(dir, 'icons')), health, iconProxy: new IconProxy(join(dir, 'icon-cache'), fakeCdn), linkwarden: new Linkwarden(db, secrets, { allowPrivate: true, allowLoopback: false }, undefined, LEGACY_ADMIN_ID), suggestFetch: fakeSuggest };
   app = createApp(deps);
 });
-afterEach(() => {
-  db.close();
+afterEach(async () => {
+  await db.close();
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -258,7 +261,7 @@ describe('每日一图', () => {
     const before = await revision();
     const config = await (await app.request('/api/config', { headers: { cookie } })).json();
     let events = 0;
-    const off = deps.repo.onChange(() => events++);
+    const off = deps.repo.onChange(LEGACY_ADMIN_ID, () => events++);
     const first = await app.request('/api/daily', { headers: { cookie } });
     expect(first.status).toBe(200);
     const { date, wallpaper } = (await first.json()) as DailyResponse;
