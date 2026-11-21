@@ -69,6 +69,8 @@ OBSYNC_PEER_REVOCATION_SECRET=<与 Nexus 相同>
 | 两个 client 开启服务账号，服务账号用户只授 realm-management 的 `view-users` | client credentials 换出只读令牌，查询 `GET /admin/realms/accounts/users/{sub}` 的 `enabled`（停用）与 404（删除）（动作 D） | 不能修改用户、不能结束会话（实测都是 403）；不授 `manage-users` |
 | 两个 client 的作用域映射加 realm-management 的 `view-users` | `fullScopeAllowed=false` 时令牌只带映射里的角色，服务账号令牌要靠它带上 `view-users` | 普通用户没有这个角色，映射不会给他们任何权限（用户令牌里没有 view-users） |
 
+账号中心自带的「设备活动」页只列出、只退出**浏览器里的账号中心登录**（结束后两个产品的网页随之退出）；已连接的 Obsidian 与浏览器扩展是产品自己发的设备凭据，不在那里，点它不会断开它们。Keycloak 原文「登出所有设备 / 此操作将登出所有已登入您帐号的设备」会让人误以为连 Obsidian 也断开了（2026-11-22 预发布真机验收：点了之后 Obsidian 照常同步）。模板用 realm 本地化覆盖（`localizationTexts`，内容与 `realm/account-texts.<语言>.json` 相同）把这一页改成「网页登录 / 已登录的浏览器 / 退出所有浏览器」，并在说明与确认框里指向产品里的「退出所有产品与设备」；已部署的 realm 用 `./configure.sh texts` 补上（按键合并，可重复执行）。一次性 Keycloak 26.8.1 实测：导入与补设两条路径，账号控制台的导航、标题、按钮和确认框都显示覆盖后的文字。
+
 ## 注册开关与紧急关闭
 
 注册是两层：身份服务决定能不能创建账号，各产品决定新身份第一次进入时能不能建立产品账号。

@@ -113,6 +113,10 @@ describe('账号与登录', () => {
     open(<AccountSection />);
     expect(await screen.findByRole('link', { name: /打开账号中心/ })).toHaveAttribute('href', 'https://id.example.org/realms/accounts/account');
     expect(screen.queryByRole('button', { name: /绑定/ })).toBeNull();
+    // The account center only signs out browsers: the row must not promise devices, and says where those are (stage, 2026-11-22).
+    expect(screen.getByText(/各浏览器里的登录/)).toHaveTextContent('那里不列已连接的浏览器扩展与 Obsidian');
+    expect(screen.getByText(/各浏览器里的登录/)).toHaveTextContent('退出所有产品与设备');
+    expect(screen.queryByText(/查看并退出各设备上的登录/)).toBeNull();
   });
 
   it('退出 Nexus 的全部设备 (动作 B) asks first, says what it leaves alone, then ends everything of the account in Nexus', async () => {

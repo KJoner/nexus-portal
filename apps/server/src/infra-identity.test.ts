@@ -77,6 +77,28 @@ describe('identity realm template', () => {
     expect(configure.split('\n').filter((l) => !l.trim().startsWith('#') && /manage-users|realm-admin/.test(l))).toEqual([]);
   });
 
+  it("ADR-019: the account center's device page says what it really covers (browser sign-ins, not Obsidian or extensions)", () => {
+    // Keycloak's own wording ("sign out all devices") made a tester believe Obsidian was disconnected too
+    // (stage, 2026-11-22). The overrides are in the template and in the files ./configure.sh texts applies.
+    const texts = realm.localizationTexts as Record<string, Record<string, string>>;
+    expect(Object.keys(texts).sort()).toEqual(['en', 'zh-CN']);
+    for (const locale of ['zh-CN', 'en']) {
+      const file = JSON.parse(readFileSync(join(dir, 'realm', `account-texts.${locale}.json`), 'utf8')) as Record<string, string>;
+      expect(texts[locale], locale).toEqual(file);
+      expect(Object.keys(file).sort(), locale).toEqual(['deviceActivity', 'signOutAllDevices', 'signOutAllDevicesWarning', 'signedInDevices', 'signedInDevicesExplanation']);
+      // Both the list explanation and the confirmation name what is not covered and where to go instead.
+      for (const key of ['signedInDevicesExplanation', 'signOutAllDevicesWarning']) {
+        expect(file[key], `${locale} ${key}`).toMatch(/Obsidian/);
+        expect(file[key], `${locale} ${key}`).toContain('退出所有产品与设备');
+      }
+    }
+    expect(texts['zh-CN']!.signOutAllDevices).toBe('退出所有浏览器');
+    expect(texts['zh-CN']!.signOutAllDevices).not.toMatch(/设备/);
+    expect(configure).toMatch(/texts\)/);
+    expect(configure).toContain('realms/accounts/localization/$locale');
+    expect(configure).toContain('realm/account-texts.$locale.json');
+  });
+
   it('keeps every credential out of the files', () => {
     expect(realm.smtpServer.password).toBe('${SMTP_PASSWORD}');
     for (const line of compose.split('\n').filter((l) => /PASSWORD|SECRET/.test(l) && l.includes(':') && !l.trim().startsWith('#'))) expect(line, line).toMatch(/\$\{[A-Z_]+/);

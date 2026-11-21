@@ -32,6 +32,22 @@
   "internationalizationEnabled": true,
   "supportedLocales": ["zh-CN", "en"],
   "defaultLocale": "zh-CN",
+  "localizationTexts": {
+    "zh-CN": {
+      "deviceActivity": "网页登录",
+      "signedInDevices": "已登录的浏览器",
+      "signedInDevicesExplanation": "这里只有浏览器里的账号中心登录（LiteSync、Nexus 的网页靠它免密进入）。已连接的 Obsidian 与浏览器扩展不在这里：Obsidian 在 LiteSync「账号与设备」里管理，扩展在 Nexus「设置 › 数据、同步与安全」里管理。要一次断开全部，请在任一产品里点「退出所有产品与设备」。",
+      "signOutAllDevices": "退出所有浏览器",
+      "signOutAllDevicesWarning": "这会结束你在所有浏览器里的账号中心登录（包括现在这个），LiteSync 与 Nexus 的网页随之退出。已连接的 Obsidian 与浏览器扩展不受影响；要断开它们，请在 LiteSync 或 Nexus 里点「退出所有产品与设备」。"
+    },
+    "en": {
+      "deviceActivity": "Browser sign-ins",
+      "signedInDevices": "Signed-in browsers",
+      "signedInDevicesExplanation": "Only browser sign-ins to this account center are listed here (they let the LiteSync and Nexus web apps open without a password). Connected Obsidian devices and browser extensions are not listed: manage Obsidian in LiteSync (账号与设备) and extensions in Nexus (设置 › 数据、同步与安全). To disconnect everything at once, use 退出所有产品与设备 (sign out of all products and devices) in either product.",
+      "signOutAllDevices": "Sign out all browsers",
+      "signOutAllDevicesWarning": "This ends your account-center sign-ins in every browser, including this one, and signs you out of the LiteSync and Nexus web apps. Connected Obsidian devices and browser extensions are not affected; to disconnect them, use 退出所有产品与设备 in LiteSync or Nexus."
+    }
+  },
   "eventsEnabled": true,
   "eventsExpiration": 2592000,
   "enabledEventTypes": ["LOGIN", "LOGIN_ERROR", "REGISTER", "REGISTER_ERROR", "LOGOUT", "VERIFY_EMAIL", "SEND_VERIFY_EMAIL", "RESET_PASSWORD", "SEND_RESET_PASSWORD", "UPDATE_EMAIL", "UPDATE_PASSWORD", "REMOVE_TOTP", "UPDATE_TOTP", "DELETE_ACCOUNT"],
