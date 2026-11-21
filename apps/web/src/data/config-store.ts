@@ -31,6 +31,11 @@ interface ConfigStore {
   /** Showing built-in defaults because neither the server nor a cache was available. */
   fallback: boolean;
   lastSavedAt: number;
+  /**
+   * TN-07: changes the server refused because a limit was reached. Kept on this device (never
+   * silently dropped) until the person retries them after making room, or discards them.
+   */
+  held: HeldBatch[];
   /** v0.4: who the server says this session belongs to (null until checked this page load). */
   account: MeResponse | null;
   /**
@@ -66,6 +71,7 @@ interface Cache {
   confirmed: Snapshot | null;
   pending: Batch[];
   wallpapers: UploadedWallpaper[];
+  held?: HeldBatch[];
 }
 
 const uid = () => (crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`).replace(/-/g, '').slice(0, 24);
@@ -75,12 +81,19 @@ const clientId = (() => {
   return id;
 })();
 
+/** A batch the server refused with QUOTA_EXCEEDED, and why (shown in 设置 › 数据与安全). */
+export interface HeldBatch {
+  batch: Batch;
+  message: string;
+  at: number;
+}
+
 function readCache(account: string | null): Cache {
   const raw = account ? storage.get<Cache>(cacheKey(account)) : null;
-  if (!raw) return { confirmed: null, pending: [], wallpapers: [] };
+  if (!raw) return { confirmed: null, pending: [], wallpapers: [], held: [] };
   const parsed = raw.confirmed && ConfigSchema.safeParse(raw.confirmed.config);
   const confirmed = parsed && parsed.success ? { ...raw.confirmed!, config: normalizeConfig(parsed.data) } : null;
-  return { confirmed, pending: Array.isArray(raw.pending) ? raw.pending : [], wallpapers: Array.isArray(raw.wallpapers) ? raw.wallpapers : [] };
+  return { confirmed, pending: Array.isArray(raw.pending) ? raw.pending : [], wallpapers: Array.isArray(raw.wallpapers) ? raw.wallpapers : [], held: Array.isArray(raw.held) ? raw.held : [] };
 }
 
 /** Replays unsent batches on top of a confirmed config, dropping any the new state rejects. */
@@ -109,6 +122,7 @@ function initialState(account: string | null = cacheAccount) {
     confirmed: cache.confirmed,
     pending: r.pending,
     wallpapers: cache.wallpapers,
+    held: cache.held ?? [],
     auth: 'unknown' as AuthState,
     online: true,
     ready: !!cache.confirmed,
@@ -150,7 +164,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
 function persist() {
   if (!cacheAccount) return;
   const s = useConfigStore.getState();
-  storage.set(cacheKey(cacheAccount), { confirmed: s.confirmed, pending: s.pending, wallpapers: s.wallpapers } satisfies Cache);
+  storage.set(cacheKey(cacheAccount), { confirmed: s.confirmed, pending: s.pending, wallpapers: s.wallpapers, held: s.held } satisfies Cache);
 }
 
 /** Private images cached by the Service Worker are keyed by address, not account: they go with the account. */
@@ -229,13 +243,20 @@ async function sendPending() {
       const res = await transport.postOps({ clientId, batchId: batch.id, ops: batch.ops });
       accept(res, useConfigStore.getState().pending.filter((b) => b.id !== batch.id));
     } catch (e) {
+      if (e instanceof HttpError && e.status !== 401 && e.retryable) {
+        // Too fast (RATE_LIMITED) or a passing server error: keep everything, try again later.
+        scheduleRetry(e.retryAfter ? e.retryAfter * 1000 : undefined);
+        return;
+      }
       if (e instanceof HttpError && e.status !== 401) {
-        // Rejected by the server (validation, conflict with another device): drop it, keep the rest.
-        notifyRejected(`更改未能保存：${e.message}`);
-        const rest = useConfigStore.getState().pending.filter((b) => b.id !== batch.id);
-        const base = useConfigStore.getState().confirmed?.config ?? defaultConfig();
-        const r = rebase(base, rest);
-        useConfigStore.setState({ pending: r.pending, snapshot: { ...useConfigStore.getState().snapshot, config: r.config } });
+        const quota = e.code === 'QUOTA_EXCEEDED';
+        // Over a limit: kept on this device as a draft, never lost. Anything else the server refuses
+        // (validation, conflict with another device) is dropped; the rest of the queue continues.
+        notifyRejected(quota ? `${e.message}。这项更改已保留在本机，腾出空间后可在「设置 › 数据、同步与安全」重试` : `更改未能保存：${e.message}`);
+        const s2 = useConfigStore.getState();
+        const rest = s2.pending.filter((b) => b.id !== batch.id);
+        const r = rebase(s2.confirmed?.config ?? defaultConfig(), rest);
+        useConfigStore.setState({ pending: r.pending, snapshot: { ...s2.snapshot, config: r.config }, ...(quota ? { held: [...s2.held, { batch, message: e.message, at: Date.now() }].slice(-20) } : {}) });
         persist();
         continue;
       }
@@ -259,12 +280,36 @@ export async function refresh(): Promise<void> {
 
 let retryTimer: ReturnType<typeof setTimeout> | undefined;
 let retryDelay = 3000;
-function scheduleRetry() {
+/** Next attempt after the backoff — or exactly when the server said (Retry-After). */
+function scheduleRetry(afterMs?: number) {
   clearTimeout(retryTimer);
-  retryTimer = setTimeout(() => {
-    retryDelay = Math.min(retryDelay * 2, 60_000);
-    void refresh();
-  }, retryDelay);
+  retryTimer = setTimeout(
+    () => {
+      if (afterMs === undefined) retryDelay = Math.min(retryDelay * 2, 60_000);
+      void refresh();
+    },
+    afterMs ?? retryDelay,
+  );
+}
+
+/** 设置 › 数据与安全: send the held changes again (after making room), or let them go. */
+export function retryHeld(): DispatchResult[] {
+  const held = useConfigStore.getState().held;
+  useConfigStore.setState({ held: [] });
+  persist();
+  // Through dispatch, so a change that still does not fit is refused here, with its message.
+  const results = held.map((h) => useConfigStore.getState().dispatch(h.batch.ops));
+  const still = held.filter((_, i) => !results[i]!.ok);
+  if (still.length) {
+    useConfigStore.setState({ held: [...still, ...useConfigStore.getState().held] });
+    persist();
+  }
+  return results;
+}
+
+export function discardHeld() {
+  useConfigStore.setState({ held: [] });
+  persist();
 }
 
 let unsubscribe: (() => void) | null = null;

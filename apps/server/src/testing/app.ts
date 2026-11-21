@@ -22,6 +22,8 @@ import { LogProvider, Outbox } from '../mail/outbox';
 import { Users } from '../users/users';
 import { Commons, Daily, Gallery, Unsplash } from '../wallpapers/sources';
 import { WallpaperStore } from '../wallpapers/store';
+import { DEFAULT_LIMITS as DEFAULT_LIMITS_FOR_TESTS, RateLimiter, type BucketSpec, type LimitKind } from '../http/limits';
+import { DEFAULT_QUOTAS, Quota, type AccountQuotas } from '../quota';
 import type { FakeIdp } from './fake-idp';
 
 export const PASSWORD = 'correct horse battery';
@@ -48,7 +50,19 @@ const cookieOf = (res: Response, name: string) => (res.headers.getSetCookie?.() 
  * The whole application on either database, as the server wires it (index.ts), with fakes only at
  * the edges: the identity provider, CDNs and image sources never touch the network.
  */
-export async function buildTestApp(opts: { dialect?: Dialect; idp?: FakeIdp; registration?: 'closed' | 'invite' | 'open'; legacyPasswordLogin?: 'auto' | 'on' | 'off' } = {}): Promise<TestApp> {
+export async function buildTestApp(
+  opts: {
+    dialect?: Dialect;
+    idp?: FakeIdp;
+    registration?: 'closed' | 'invite' | 'open';
+    legacyPasswordLogin?: 'auto' | 'on' | 'off';
+    /** TN-07: limits of non-administrator accounts (default: the production defaults). */
+    quotas?: AccountQuotas;
+    /** TN-07: request allowances (default: the production defaults). */
+    limits?: Partial<Record<LimitKind, BucketSpec>>;
+    importFetch?: Deps['sources']['importFetch'];
+  } = {},
+): Promise<TestApp> {
   const dir = mkdtempSync(join(tmpdir(), 'nexus-app-'));
   const db = await testDb(opts.dialect ?? 'sqlite');
   const clock = { now: Date.now() };
@@ -74,12 +88,15 @@ export async function buildTestApp(opts: { dialect?: Dialect; idp?: FakeIdp; reg
     oidc: opts.idp ? { issuer: opts.idp.issuer, clientId: opts.idp.clientId, clientSecret: opts.idp.clientSecret } : null,
     registration: opts.registration ?? 'open',
     legacyPasswordLogin: opts.legacyPasswordLogin ?? 'auto',
+    quotas: DEFAULT_QUOTAS,
   };
   const auth = new Auth(db, 30, now);
   await auth.ensurePassword({ hash: null, plain: PASSWORD });
   const repo = new ConfigRepo(db);
   const health = new HealthChecker(db, repo, { allowPrivate: false, allowLoopback: false }, async () => ({ reached: true, status: 200, latencyMs: 5, message: 'HTTP 200' }), LEGACY_ADMIN_ID);
-  const wallpapers = new WallpaperStore(db, join(dir, 'wallpapers'));
+  const users = new Users(db, now);
+  const quota = new Quota(db, { wallpapers: join(dir, 'wallpapers'), icons: join(dir, 'icons') }, async (id) => ((await users.get(id))?.isAdmin ? null : (opts.quotas ?? env.quotas ?? null)));
+  const wallpapers = new WallpaperStore(db, join(dir, 'wallpapers'), quota);
   const commons = new Commons(async () => new Response(null, { status: 503 }));
   const devices = new Devices(db, now);
   const secrets = new SecretBox(randomBytes(32));
@@ -88,7 +105,7 @@ export async function buildTestApp(opts: { dialect?: Dialect; idp?: FakeIdp; reg
     env,
     repo,
     auth,
-    users: new Users(db, now),
+    users,
     intents: new LoginIntents(db, now),
     oidc: opts.idp ? new Oidc({ issuer: opts.idp.issuer, clientId: opts.idp.clientId, clientSecret: opts.idp.clientSecret, redirectUri: `${PUBLIC_URL}/auth/callback`, postLogoutRedirectUri: `${PUBLIC_URL}/`, fetch: opts.idp.fetch }) : null,
     secrets,
@@ -96,11 +113,12 @@ export async function buildTestApp(opts: { dialect?: Dialect; idp?: FakeIdp; reg
     devices,
     pairings: new Pairings(devices, now),
     wallpapers,
-    icons: new IconStore(db, join(dir, 'icons'), now),
+    icons: new IconStore(db, join(dir, 'icons'), now, quota),
+    limits: new RateLimiter({ ...DEFAULT_LIMITS_FOR_TESTS, ...opts.limits }, now),
     health,
     iconProxy: new IconProxy(join(dir, 'icon-cache'), (async () => new Response(null, { status: 404 })) as typeof fetch),
     linkwarden: new Linkwarden(db, secrets, { allowPrivate: false, allowLoopback: false }, undefined, LEGACY_ADMIN_ID),
-    sources: { gallery: new Gallery(wallpapers, commons, join(dir, 'previews'), []), daily: new Daily(wallpapers, commons, join(dir, 'daily-cache')), unsplash: new Unsplash(null, wallpapers), importPolicy: { allowPrivate: false, allowLoopback: false } },
+    sources: { gallery: new Gallery(wallpapers, commons, join(dir, 'previews'), []), daily: new Daily(wallpapers, commons, join(dir, 'daily-cache')), unsplash: new Unsplash(null, wallpapers), importPolicy: { allowPrivate: false, allowLoopback: false }, ...(opts.importFetch ? { importFetch: opts.importFetch } : {}) },
     mail: new Outbox(db, mail, { from: 'Nexus <no-reply@mail.example.test>', replyTo: null }, now),
     now,
   };

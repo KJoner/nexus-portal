@@ -16,6 +16,25 @@ export function v2Error(c: Context, status: V2Status, code: string, message: str
   return c.json({ code, message, retryable: opts.retryable ?? status >= 500, requestId, ...(opts.details ? { details: opts.details } : {}) }, status);
 }
 
+/**
+ * 配额与限流 (TN-07), the same two codes as LiteSync — they must stay distinguishable so clients
+ * never retry forever:
+ *  - QUOTA_EXCEEDED: permanent (counts 409, storage 413), retryable=false, details {kind, limit, used};
+ *  - RATE_LIMITED: temporary, 429 + Retry-After, retryable=true, details {kind, retryAfterSeconds}.
+ * On v1 routes the body also carries `error: {code, message}` so older clients still read it.
+ */
+export function quotaExceeded(c: Context, status: 409 | 413, details: { kind: string; limit: number; used: number }, message: string) {
+  const requestId = `req_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
+  return c.json({ code: 'QUOTA_EXCEEDED', message, retryable: false, requestId, details, error: { code: 'quota_exceeded', message } }, status);
+}
+
+export function rateLimited(c: Context, retryAfterSeconds: number, kind: string, message = '请求过于频繁，请稍后再试') {
+  const secs = Math.max(1, Math.ceil(retryAfterSeconds));
+  const requestId = `req_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
+  c.header('Retry-After', String(secs));
+  return c.json({ code: 'RATE_LIMITED', message, retryable: true, requestId, details: { kind, retryAfterSeconds: secs }, error: { code: 'rate_limited', message } }, 429);
+}
+
 export function isHttps(c: Context, env: Env): boolean {
   if (env.trustProxy) {
     const proto = c.req.header('x-forwarded-proto')?.split(',')[0]?.trim();

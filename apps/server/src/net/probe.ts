@@ -13,9 +13,14 @@ export class BlockedAddressError extends Error {
  * DNS lookup that refuses disallowed addresses. Node calls it while connecting, so the address
  * that was validated is the address that gets connected to (no DNS-rebinding window).
  */
-export function guardedLookup(policy: NetPolicy): LookupFunction {
+export type Resolver = (hostname: string, options: { all: true; family: number }, callback: (err: NodeJS.ErrnoException | null, addresses: LookupAddress[]) => void) => void;
+
+export function guardedLookup(policy: NetPolicy, resolve: Resolver = dnsLookup as unknown as Resolver): LookupFunction {
   return ((hostname: string, options: { all?: boolean; family?: number }, callback: (err: NodeJS.ErrnoException | null, address: string | LookupAddress[], family?: number) => void) => {
-    dnsLookup(hostname, { all: true, family: options.family ?? 0 }, (err, addresses) => {
+    // Every answer is checked — a name that also resolves to a private address is refused as a
+    // whole — and each new connection resolves again, so a record that changes (DNS rebinding)
+    // is judged by what it says at connect time.
+    resolve(hostname, { all: true, family: options.family ?? 0 }, (err, addresses) => {
       if (err) return callback(err, '', 0);
       const bad = addresses.find((a) => !isAllowed(a.address, policy));
       if (bad || !addresses.length) return callback(new BlockedAddressError(`blocked ${bad?.address ?? hostname}`), '', 0);

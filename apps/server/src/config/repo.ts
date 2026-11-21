@@ -1,4 +1,4 @@
-import { applyOps, ConfigSchema, defaultConfig, newUserConfig, normalizeConfig, type Config, type Op, type Snapshot } from '@nexus/shared';
+import { applyOps, ConfigSchema, defaultConfig, newUserConfig, normalizeConfig, OpError, type Config, type Op, type Snapshot } from '@nexus/shared';
 import { forUpdate, LEGACY_ADMIN_ID, type DB } from '../db';
 
 const OP_LOG_KEEP = 500;
@@ -88,6 +88,13 @@ export class ConfigRepo {
       if (seen) return { snapshot: current, changed: false, duplicate: true };
       const applied = applyOps(current.config, ops);
       if (applied === current.config) return { snapshot: current, changed: false, duplicate: false };
+      // Never store a document that would not read back: an unreadable document falls back to the
+      // template on the next read, and the next write would make that loss permanent.
+      const check = ConfigSchema.safeParse(applied);
+      if (!check.success) {
+        const issue = check.error.issues[0];
+        throw new OpError('invalid', issue ? `${issue.path.join('.') || 'config'}: ${issue.message}` : 'invalid');
+      }
       const snapshot = await this.write(ownerId, current.revision + 1, sanitizeFor(opts.admin, applied));
       await this.db.run('insert into op_log (owner_id, revision, batch_id, client_id, ops, created_at) values (?, ?, ?, ?, ?, ?)', [ownerId, snapshot.revision, batchId, clientId, JSON.stringify(ops), snapshot.updatedAt]);
       await this.db.run('delete from op_log where owner_id = ? and revision <= ?', [ownerId, snapshot.revision - OP_LOG_KEEP]);

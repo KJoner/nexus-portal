@@ -322,6 +322,7 @@ docker compose up -d
 | `NEXUS_OIDC_ISSUER` / `NEXUS_OIDC_CLIENT_ID` / `NEXUS_OIDC_CLIENT_SECRET` | 可选（v0.4）。统一身份（OIDC，授权码 + PKCE，只在服务端完成）。三者与 `NEXUS_PUBLIC_URL` 一起设置后开启多账号 |
 | `NEXUS_REGISTRATION_MODE` | `closed` / `invite`（默认）/ `open`：新身份第一次进入时能否建立 Nexus 账号 |
 | `NEXUS_LEGACY_PASSWORD_LOGIN` | `auto`（默认：管理员绑定统一账号后关闭访问密码登录）/ `on` / `off`；未配置统一身份时始终可用 |
+| `NEXUS_QUOTA_WALLPAPERS` / `NEXUS_QUOTA_ICONS` / `NEXUS_QUOTA_STORAGE_MB` | v0.4：管理员以外每个账号的上限，默认 50 张壁纸、200 个图标、200 MB。超出返回 `QUOTA_EXCEEDED`（不重试）；请求过快返回 `429 RATE_LIMITED` + `Retry-After`。配置本身的上限固定：500 个应用、50 个分类、30 个搜索引擎、36 个固定 |
 | `NEXUS_MAIL_PROVIDER` | 产品通知邮件：`log`（默认，只写日志）/ `smtp`（`NEXUS_SMTP_URL`）/ `resend`（`NEXUS_RESEND_API_KEY`）；发件人 `NEXUS_MAIL_FROM`，回复地址 `NEXUS_MAIL_REPLY_TO` |
 
 Compose 额外读取 `NEXUS_VERSION`（镜像标签）、`NEXUS_IMAGE`、`NEXUS_BIND`、`NEXUS_PORT`；`NEXUS_PUBLIC_URL` 同时传给 `NEXUS_ALLOWED_ORIGINS`。说明见 [`.env.example`](.env.example)。

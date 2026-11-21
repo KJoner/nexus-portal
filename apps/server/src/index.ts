@@ -19,6 +19,7 @@ import { Users } from './users/users';
 import { cleanLegacyDaily } from './wallpapers/legacy';
 import { Commons, Daily, Gallery, Unsplash } from './wallpapers/sources';
 import { WallpaperStore } from './wallpapers/store';
+import { DEFAULT_QUOTAS, Quota } from './quota';
 
 async function main() {
   const env = readEnv();
@@ -42,8 +43,10 @@ async function main() {
   const { box, generated } = SecretBox.fromEnv(env.secret ?? undefined, join(env.dataDir, 'secret.key'));
   if (generated) console.log('[nexus] 未设置 NEXUS_SECRET，已在数据目录生成 secret.key 用于加密服务凭据；备份时请一并保存');
   await health.start();
-  const wallpapers = new WallpaperStore(db, join(env.dataDir, 'wallpapers'));
-  const icons = new IconStore(db, join(env.dataDir, 'icons'));
+  // TN-07: storage limits for every account except the administrator (whose server it is).
+  const quota = new Quota(db, { wallpapers: join(env.dataDir, 'wallpapers'), icons: join(env.dataDir, 'icons') }, async (id) => ((await users.get(id))?.isAdmin ? null : (env.quotas ?? DEFAULT_QUOTAS)));
+  const wallpapers = new WallpaperStore(db, join(env.dataDir, 'wallpapers'), quota);
+  const icons = new IconStore(db, join(env.dataDir, 'icons'), undefined, quota);
   // Icons uploaded before accounts existed were the single user's.
   const adopted = await icons.adoptUnowned(LEGACY_ADMIN_ID);
   if (adopted) console.log(`[nexus] ${adopted} 个早于 v0.4 上传的应用图标已归属管理员账号`);

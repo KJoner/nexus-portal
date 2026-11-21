@@ -34,7 +34,7 @@ OFFICIAL_COMPOSE=(
   3eefc9640c9211f07fda7623be7157c3ec84c6f0d69fd6fe4efb61c2c2768d62 # 0.1.0
   8f7a742a2dbed83df2f769f0331fa3c04d7f5ba2c0bfbc6313f73342ac85f9d3 # 0.2.0
   b8e5479a248f2e52bd52e0565b371a90a59d9880a1535197584e367fa78065cf # 0.2.1（0.3.x 未改动）
-  0ef214f2908cefea5d3dec15a0e10ec2f595b0ab8a75924a7280640e3cdabf4f # 0.4.0
+  9c247443b67400609eca9ccca8b9402f385fd3cfae4fdda6070cfedc595e86a6 # 0.4.0
 )
 
 # ── 输出 ───────────────────────────────────────────────────────────────────

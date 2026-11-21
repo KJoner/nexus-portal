@@ -24,6 +24,12 @@ describe('readEnv (v0.4)', () => {
     expect(() => readEnv({ NODE_ENV: 'production', NEXUS_SECRET: 'x'.repeat(16), ...oidc, NEXUS_PUBLIC_URL: 'http://home.example.org' })).toThrow(/https/);
   });
 
+  it('account limits (TN-07): defaults, overrides, and nonsense refused at start', () => {
+    expect(readEnv(base).quotas).toEqual({ wallpapers: 50, icons: 200, storageBytes: 200 * 1048576 });
+    expect(readEnv({ ...base, NEXUS_QUOTA_WALLPAPERS: '10', NEXUS_QUOTA_STORAGE_MB: '1024' }).quotas).toMatchObject({ wallpapers: 10, storageBytes: 1024 * 1048576 });
+    for (const bad of ['0', '-3', '1.5', 'lots']) expect(() => readEnv({ ...base, NEXUS_QUOTA_ICONS: bad })).toThrow(/NEXUS_QUOTA_ICONS/);
+  });
+
   it('rejects unknown modes and malformed connection strings instead of guessing', () => {
     expect(() => readEnv({ ...base, NEXUS_REGISTRATION_MODE: 'everyone' })).toThrow(/REGISTRATION_MODE/);
     expect(() => readEnv({ ...base, NEXUS_LEGACY_PASSWORD_LOGIN: 'maybe' })).toThrow(/LEGACY_PASSWORD_LOGIN/);

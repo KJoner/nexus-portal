@@ -31,6 +31,12 @@ export class HttpError extends Error {
     readonly status: number,
     readonly code: string,
     message: string,
+    /** v2 / TN-07: whether trying again later can succeed (RATE_LIMITED yes, QUOTA_EXCEEDED never). */
+    readonly retryable = status === 429 || status >= 500,
+    /** Seconds to wait (Retry-After), when the server said so. */
+    readonly retryAfter: number | null = null,
+    /** v2 details, e.g. {kind, limit, used} of QUOTA_EXCEEDED. */
+    readonly details: Record<string, unknown> | null = null,
   ) {
     super(message);
     this.name = 'HttpError';
@@ -108,11 +114,15 @@ async function request<T>(path: string, init: RequestInit = {}, timeoutMs = 8000
   if (res.status === 502 || res.status === 503 || res.status === 504) throw new NetworkError();
   const body = (await res.json().catch(() => null)) as T | ApiErrorBody | null;
   if (!res.ok) {
-    // v1 answers {error:{code,message}}; the /api/v2 interfaces answer {code,message,retryable,…}.
+    // v1 answers {error:{code,message}}; the /api/v2 interfaces answer {code,message,retryable,…};
+    // quota and rate-limit answers carry both (the v2 code wins: QUOTA_EXCEEDED / RATE_LIMITED).
     const v1 = (body as ApiErrorBody | null)?.error;
-    const v2 = body as { code?: unknown; message?: unknown } | null;
-    const err = v1 ?? (typeof v2?.code === 'string' ? { code: v2.code, message: typeof v2.message === 'string' ? v2.message : '' } : null);
-    throw new HttpError(res.status, err?.code ?? 'http_error', err?.message || `请求失败（${res.status}）`);
+    const v2 = body as { code?: unknown; message?: unknown; retryable?: unknown; details?: unknown } | null;
+    const isV2 = typeof v2?.code === 'string' && typeof v2?.retryable === 'boolean';
+    const err = isV2 ? { code: v2!.code as string, message: typeof v2!.message === 'string' ? v2!.message : '' } : (v1 ?? (typeof v2?.code === 'string' ? { code: v2.code, message: typeof v2.message === 'string' ? v2.message : '' } : null));
+    const after = Number(res.headers.get('retry-after'));
+    const details = isV2 && v2!.details && typeof v2!.details === 'object' ? (v2!.details as Record<string, unknown>) : null;
+    throw new HttpError(res.status, err?.code ?? 'http_error', err?.message || `请求失败（${res.status}）`, isV2 ? (v2!.retryable as boolean) : undefined, Number.isFinite(after) && after > 0 ? after : null, details);
   }
   return body as T;
 }

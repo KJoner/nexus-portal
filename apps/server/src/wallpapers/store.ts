@@ -4,6 +4,7 @@ import { cp, mkdir, rename, rm } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import sharp, { type Metadata, type Sharp } from 'sharp';
 import type { DB } from '../db';
+import { folderBytes, type Quota } from '../quota';
 
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const FORMATS = new Set(['jpeg', 'png', 'webp', 'avif']);
@@ -138,6 +139,8 @@ export class WallpaperStore {
   constructor(
     private db: DB,
     private dir: string,
+    /** Per-account limits (TN-07); none in self-contained tests. */
+    private quota: Quota | null = null,
   ) {}
 
   async list(ownerId: string): Promise<UploadedWallpaper[]> {
@@ -202,7 +205,9 @@ export class WallpaperStore {
 
   private async insert(ownerId: string, w: { id: string; name: string; width: number; height: number; widths: number[]; placeholder: string; luma: number | null; meta: WallpaperMeta; remote?: string }): Promise<UploadedWallpaper> {
     const createdAt = new Date().toISOString();
-    await this.db.run('insert into wallpapers (id, owner_id, name, width, height, widths, placeholder, created_at, source, ref, credit, luma, focal, remote) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
+    // The files are already on disk (encoded or copied): their size is what the account spends.
+    const bytes = w.remote ? 0 : await folderBytes(join(this.dir, w.id));
+    const write = () => this.db.run('insert into wallpapers (id, owner_id, name, width, height, widths, placeholder, created_at, source, ref, credit, luma, focal, remote) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
       w.id,
       ownerId,
       w.name,
@@ -218,6 +223,7 @@ export class WallpaperStore {
       w.meta.focal ? JSON.stringify(w.meta.focal) : '',
       w.remote ?? '',
     ]);
+    await (this.quota ? this.quota.admit(ownerId, 'wallpapers', bytes, write) : write());
     return (await this.get(ownerId, w.id))!;
   }
 

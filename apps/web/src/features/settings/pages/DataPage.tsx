@@ -2,7 +2,7 @@ import { ConfigSchema, defaultConfig, normalizeConfig, type Config } from '@nexu
 import { Cloud, CloudOff, Download, Upload } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from '../../../components/toast-store';
-import { useConfig, useConfigStore, useSaveState } from '../../../data/config-store';
+import { discardHeld, retryHeld, useConfig, useConfigStore, useSaveState } from '../../../data/config-store';
 import { formatHm } from '../../../lib/time';
 import { apply, patch } from '../model';
 import { Button, Dialog, Group, PageHeader, Row, Switch, useCompact } from '../ui';
@@ -44,6 +44,8 @@ export function DataPage() {
   const revision = useConfigStore((s) => s.confirmed?.revision ?? 0);
   const [importing, setImporting] = useState<{ name: string; config: Config } | null>(null);
   const [reset, setReset] = useState<Reset | null>(null);
+  const held = useConfigStore((s) => s.held);
+  const [dropping, setDropping] = useState(false);
   const [typed, setTyped] = useState('');
   const pr = config.settings.privacy;
 
@@ -105,6 +107,23 @@ export function DataPage() {
       <Group title={compact ? '同步与登录' : '配置同步'}>
         {syncRow}
         <Row label="多设备同时修改" sub="按操作合并（如「固定 GitHub」「移动 Notion」），不会整份覆盖；与新状态冲突的改动会被放弃并提示" />
+        {held.length > 0 && (
+          <Row label={<span className="text-warn">{held.length} 项更改因超过上限没有保存</span>} sub={`${held.at(-1)!.message}。这些更改保留在本机：删除一些内容腾出空间后重试，或放弃它们。`}>
+            <div className="flex flex-none gap-2">
+              <Button
+                onClick={() => {
+                  const failed = retryHeld().filter((r) => !r.ok).length;
+                  toast(failed ? { msg: `仍有 ${failed} 项超过上限，已继续保留`, tone: 'warn' } : { msg: '已重新提交', tone: 'ok' });
+                }}
+              >
+                重试
+              </Button>
+              <Button variant="danger" onClick={() => setDropping(true)}>
+                放弃…
+              </Button>
+            </div>
+          </Row>
+        )}
       </Group>
 
       <Group title="导入与导出">
@@ -146,6 +165,30 @@ export function DataPage() {
           </Row>
         ))}
       </Group>
+
+      <Dialog
+        open={dropping}
+        onOpenChange={setDropping}
+        title="放弃未保存的更改？"
+        description={`${held.length} 项因超过上限没有保存的更改会从本机删除，无法恢复。`}
+        footer={
+          <>
+            <Button className="h-10 px-[18px]" onClick={() => setDropping(false)}>
+              取消
+            </Button>
+            <Button
+              variant="danger-solid"
+              className="h-10 px-5"
+              onClick={() => {
+                discardHeld();
+                setDropping(false);
+              }}
+            >
+              放弃
+            </Button>
+          </>
+        }
+      />
 
       <Dialog
         open={!!importing}

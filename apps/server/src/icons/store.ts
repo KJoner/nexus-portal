@@ -1,8 +1,9 @@
 import { randomBytes } from 'node:crypto';
-import { mkdir, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import type { DB } from '../db';
+import { QuotaExceededError, type Quota } from '../quota';
 
 export const MAX_ICON_BYTES = 1024 * 1024;
 const ID = /^ic-[a-z0-9]{12}$/;
@@ -35,9 +36,16 @@ export class IconStore {
     private db: DB,
     private dir: string,
     private now: () => number = Date.now,
+    /** Per-account limits (TN-07); none in self-contained tests. */
+    private quota: Quota | null = null,
   ) {}
 
-  async add(ownerId: string, input: Buffer, mime: string): Promise<string> {
+  /**
+   * `inUse`: icons the account's configuration still points at. When the account is at its icon
+   * limit, its unused icons older than a day are removed first (the editor uploads before it saves,
+   * so younger ones may belong to a form that is still open).
+   */
+  async add(ownerId: string, input: Buffer, mime: string, inUse?: () => Promise<Set<string>>): Promise<string> {
     if (input.length > MAX_ICON_BYTES) throw new IconError('too_large', `文件为 ${(input.length / 1048576).toFixed(1)} MB，超过 1 MB 上限`);
     const isSvg = mime === 'image/svg+xml' || input.subarray(0, 512).toString('utf8').includes('<svg');
     if (isSvg) assertSafeSvg(input.toString('utf8'));
@@ -54,9 +62,37 @@ export class IconStore {
     }
     const id = `ic-${randomBytes(9).toString('base64url').toLowerCase().replace(/[^a-z0-9]/g, '0').slice(0, 12)}`;
     await mkdir(this.dir, { recursive: true });
-    await writeFile(join(this.dir, `${id}.png`), png);
-    await this.db.run('insert into icons (id, owner_id, created_at) values (?, ?, ?)', [id, ownerId, this.now()]);
+    const file = join(this.dir, `${id}.png`);
+    const write = async () => {
+      await writeFile(file, png);
+      await this.db.run('insert into icons (id, owner_id, created_at) values (?, ?, ?)', [id, ownerId, this.now()]);
+    };
+    try {
+      if (!this.quota) await write();
+      else {
+        try {
+          await this.quota.admit(ownerId, 'icons', png.length, write);
+        } catch (e) {
+          if (!(e instanceof QuotaExceededError) || !inUse || !(await this.reclaim(ownerId, await inUse()))) throw e;
+          await this.quota.admit(ownerId, 'icons', png.length, write);
+        }
+      }
+    } catch (e) {
+      await rm(file, { force: true });
+      throw e;
+    }
     return id;
+  }
+
+  /** Removes the account's icons that nothing uses any more (older than a day); returns how many. */
+  async reclaim(ownerId: string, inUse: Set<string>, minAgeMs = 86_400_000): Promise<number> {
+    const old = await this.db.all<{ id: string }>('select id from icons where owner_id = ? and created_at < ?', [ownerId, this.now() - minAgeMs]);
+    let n = 0;
+    for (const { id } of old.filter((r) => !inUse.has(r.id))) {
+      n += (await this.db.run('delete from icons where id = ? and owner_id = ?', [id, ownerId])).changes;
+      await rm(join(this.dir, `${id}.png`), { force: true });
+    }
+    return n;
   }
 
   /** The file of one of the account's own icons, or null (unknown, malformed or someone else's). */

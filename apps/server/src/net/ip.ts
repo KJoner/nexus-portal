@@ -7,10 +7,12 @@ function v4(ip: string): number[] | null {
   return p.length === 4 && p.every((n) => Number.isInteger(n) && n >= 0 && n <= 255) ? p : null;
 }
 
-function classifyV4([a, b]: number[]): IpClass {
+function classifyV4([a, b, c, d]: number[]): IpClass {
   if (a === 0) return 'unspecified';
   if (a === 127) return 'loopback';
   if (a === 169 && b === 254) return 'linklocal'; // includes cloud metadata 169.254.169.254
+  // Alibaba Cloud's metadata service sits inside CGNAT space: refuse it like link-local, never "private".
+  if (a === 100 && b === 100 && c === 100 && d === 200) return 'linklocal';
   if (a === 10 || (a === 172 && b! >= 16 && b! <= 31) || (a === 192 && b === 168)) return 'private';
   if (a === 100 && b! >= 64 && b! <= 127) return 'private'; // CGNAT — Tailscale / carrier NAT
   // Benchmarking range, used as "fake IPs" by local proxies (Clash / Mihomo / Surge TUN): every
@@ -53,6 +55,14 @@ export function classifyIp(ip: string): IpClass {
   }
   if (h.every((x) => x === 0)) return 'unspecified';
   if (h.slice(0, 7).every((x) => x === 0) && h[7] === 1) return 'loopback';
+  // Deprecated IPv4-compatible (::a.b.c.d) and 6to4 (2002:AABB:CCDD::) addresses embed an IPv4
+  // address that some stacks and relays still reach: judge the embedded address.
+  if (h.slice(0, 6).every((x) => x === 0)) return classifyV4([h[6]! >> 8, h[6]! & 0xff, h[7]! >> 8, h[7]! & 0xff]);
+  if (h[0] === 0x2002) return classifyV4([h[1]! >> 8, h[1]! & 0xff, h[2]! >> 8, h[2]! & 0xff]);
+  // Teredo (2001:0::/32) tunnels to an obfuscated IPv4 address: never a legitimate target here.
+  if (h[0] === 0x2001 && h[1] === 0) return 'reserved';
+  // Deprecated site-local fec0::/10 is still routed inside some networks.
+  if ((h[0]! & 0xffc0) === 0xfec0) return 'private';
   if ((h[0]! & 0xffc0) === 0xfe80) return 'linklocal';
   if ((h[0]! & 0xff00) === 0xff00) return 'multicast';
   // AWS IPv6 instance metadata lives inside the ULA range: always refuse it.

@@ -32,7 +32,14 @@ interface Meta {
   fetchedAt: number;
 }
 
-export const isValidIconKey = (source: IconSource, key: string) => KEY[source].test(key);
+/**
+ * Names that only exist inside a home or company network. Their favicon would be looked up at a
+ * third-party service, which tells it the private name: such keys are refused (a private address
+ * may be a bookmark, but never makes this server ask anyone about it).
+ */
+const PRIVATE_SUFFIX = /.(?:local|lan|home|internal|intranet|corp|private|localdomain|localhost|test|invalid|example|home.arpa|onion)$/i;
+
+export const isValidIconKey = (source: IconSource, key: string) => KEY[source].test(key) && !(source === 'fav' && PRIVATE_SUFFIX.test(key));
 
 /**
  * Brand icons fetched by Nexus from a fixed set of CDNs and kept on disk, so browsers never call

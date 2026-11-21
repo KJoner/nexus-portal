@@ -1,6 +1,13 @@
 import { z } from 'zod';
 
 export const MAX_PINS = 36;
+/**
+ * Per-account limits of the configuration document (TN-07). Enforced by the ops themselves — on the
+ * server inside the account's transaction and, identically, in the browser before anything is sent —
+ * so going over is a clear error, never a document that no longer validates.
+ */
+export const CONFIG_LIMITS = { apps: 500, categories: 50, engines: 30, pins: MAX_PINS } as const;
+export type ConfigQuotaKind = keyof typeof CONFIG_LIMITS;
 export const DOCK_SIZE_MIN = 3;
 export const DOCK_SIZE_MAX = 7;
 export const PAGE_ROWS_MIN = 1;
@@ -213,15 +220,15 @@ export const SettingsSchema = z.object({
 
 export const ConfigSchema = z.object({
   /** Array order is the manual order inside each category (drawer, settings); it is never re-sorted. */
-  apps: z.array(AppSchema).max(500),
+  apps: z.array(AppSchema).max(CONFIG_LIMITS.apps),
   /** Array order is the order of the category groups. */
-  categories: z.array(CategorySchema).max(50),
+  categories: z.array(CategorySchema).max(CONFIG_LIMITS.categories),
   /**
    * Ordered ids of pinned sites. The Dock shows the first `dockSize`, mobile the first
    * `rows × 4 − services`; the rest fill the extension pages. Independent of `apps` order.
    */
   pins: z.array(Id).max(MAX_PINS),
-  engines: z.array(EngineSchema).max(30),
+  engines: z.array(EngineSchema).max(CONFIG_LIMITS.engines),
   settings: SettingsSchema,
 });
 

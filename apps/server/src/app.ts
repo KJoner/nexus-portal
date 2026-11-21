@@ -20,7 +20,9 @@ import type { ConfigRepo } from './config/repo';
 import { LEGACY_ADMIN_ID } from './db';
 import type { Env } from './env';
 import type { HealthChecker } from './health/checker';
-import { apiError, csrf, headers, isHttps, v2Error } from './http/security';
+import { apiError, csrf, headers, isHttps, quotaExceeded, rateLimited, v2Error } from './http/security';
+import { RateLimiter, type LimitKind } from './http/limits';
+import { QuotaExceededError } from './quota-types';
 import { isValidIconKey, type IconProxy, type IconSource } from './icons/proxy';
 import { IconError, MAX_ICON_BYTES, type IconStore } from './icons/store';
 import { LinkwardenError, type Linkwarden } from './integrations/linkwarden';
@@ -54,6 +56,8 @@ export interface Deps {
   iconProxy: IconProxy;
   linkwarden: Linkwarden;
   suggestFetch?: typeof fetch;
+  /** TN-07 request limits (per account / device / client address). */
+  limits?: RateLimiter;
   sources: WallpaperSources;
   /** Public 应用目录; built from the bundled catalog and the deployment's LiteSync address when omitted. */
   catalog?: CatalogService;
@@ -93,6 +97,7 @@ function etagMatches(header: string | undefined, etag: string): boolean {
 
 export function createApp(deps: Deps) {
   const { env, repo, auth, users, intents, oidc = null, secrets, limiter, devices, pairings, wallpapers, icons, health, iconProxy, linkwarden, suggestFetch, sources, mail = null } = deps;
+  const limits = deps.limits ?? new RateLimiter();
   const catalog = deps.catalog ?? new CatalogService({ litesyncUrl: env.litesyncUrl ?? null });
   const now = deps.now ?? Date.now;
   const app = new Hono<{ Variables: Vars }>();
@@ -235,6 +240,21 @@ export function createApp(deps: Deps) {
   });
   app.use('/api/*', csrf(env));
 
+  // ── TN-07: what anyone may call without an account is limited per client address ──
+  const byClient =
+    (kind: LimitKind): MiddlewareHandler =>
+    async (c, next) => {
+      const wait = limits.take(kind, clientKey(c));
+      if (!wait) return next();
+      // Sign-in pages are browser navigations: answer with the login page and a reason, not JSON.
+      return kind === 'auth' ? c.redirect('/?auth_error=rate_limited', 302) : rateLimited(c, wait, kind);
+    };
+  app.use('/api/v2/catalog', byClient('public'));
+  app.use('/api/v2/auth/options', byClient('public'));
+  app.use('/api/pair/poll', byClient('public'));
+  app.use('/auth/login', byClient('auth'));
+  app.use('/auth/link/start', byClient('auth'));
+
   app.get('/api/healthz', (c) => c.json({ ok: true }));
 
   // ── 应用目录 (v0.4): public templates, the same for every visitor ─────────
@@ -273,7 +293,7 @@ export function createApp(deps: Deps) {
     const wait = limiter.retryAfter(key);
     if (wait) {
       c.header('Retry-After', String(wait));
-      return apiError(c, 429, 'rate_limited', `尝试次数过多，请 ${Math.ceil(wait / 60)} 分钟后再试`);
+      return rateLimited(c, wait, 'login', `尝试次数过多，请 ${Math.ceil(wait / 60)} 分钟后再试`);
     }
     if (!(await legacyPasswordAvailable())) return apiError(c, 403, 'legacy_login_disabled', '此部署已改用统一账号登录');
     const body = LoginSchema.safeParse(await c.req.json().catch(() => null));
@@ -389,7 +409,10 @@ export function createApp(deps: Deps) {
     try {
       return c.json(pairings.start(body.data.name, clientKey(c), c.req.header('user-agent') ?? '', scopes), 201);
     } catch (e) {
-      if (e instanceof PairingError) return apiError(c, 429, e.code, e.message);
+      if (e instanceof PairingError) {
+        c.header('Retry-After', '60');
+        return apiError(c, 429, e.code, e.message);
+      }
       throw e;
     }
   });
@@ -405,7 +428,10 @@ export function createApp(deps: Deps) {
     const device = token && DEVICE_TOKEN.test(token) ? await devices.validate(token) : null;
     if (!device) return apiError(c, 401, 'device_unauthorized', '此设备的授权已失效或已被撤销');
     c.set('device', device);
-    return next();
+    // TN-07: each paired device has its own allowance.
+    const kind: LimitKind = c.req.path === '/api/sync/suggest' || c.req.path === '/api/sync/bookmarks' ? 'suggest' : 'read';
+    const wait = limits.take(kind, `device:${device.id}`);
+    return wait ? rateLimited(c, wait, kind) : next();
   });
   /** Every /api/sync read needs config:read; tokens without it (none exist yet) get nothing here. */
   const syncScope = (c: Context<{ Variables: Vars }>, scope: DeviceScope) => c.get('device').scopes.includes(scope);
@@ -474,6 +500,39 @@ export function createApp(deps: Deps) {
     c.set('session', s);
     return next();
   });
+
+  // ── TN-07: per-account request limits ─────────────────────────────────────
+  // Separate allowances per account, so one account's flood or slow upstream never slows another.
+  const UPLOADS: [string, RegExp][] = [
+    ['POST', /^\/api\/wallpapers$/],
+    ['POST', /^\/api\/icons$/],
+  ];
+  /** Requests that make this server fetch from elsewhere: a `fetch` token and an in-flight slot. */
+  const FETCHING: [string, RegExp][] = [
+    ['POST', /^\/api\/wallpapers\/import$/],
+    ['POST', /^\/api\/gallery\/[^/]+$/],
+    ['POST', /^\/api\/daily\/[^/]+\/keep$/],
+    ['POST', /^\/api\/unsplash\/[^/]+$/],
+    ['POST', /^\/api\/health\/test$/],
+    ['POST', /^\/api\/status\/[^/]+\/check$/],
+    ['PUT', /^\/api\/integrations\/linkwarden$/],
+  ];
+  app.use('/api/*', async (c, next) => {
+    const who = `acct:${c.get('user').id}`;
+    const { method, path } = c.req;
+    const is = (list: [string, RegExp][]) => list.some(([m, re]) => m === method && re.test(path));
+    const kind: LimitKind = is(UPLOADS) ? 'upload' : is(FETCHING) ? 'fetch' : path === '/api/suggest' || path === '/api/bookmarks' ? 'suggest' : method === 'GET' || method === 'HEAD' ? 'read' : 'write';
+    const wait = limits.take(kind, who);
+    if (wait) return rateLimited(c, wait, kind);
+    if (kind !== 'fetch') return next();
+    const release = limits.enter(who);
+    if (!release) return rateLimited(c, 2, 'concurrent', '同时进行的下载过多，请等前面的完成后再试');
+    try {
+      await next();
+    } finally {
+      release();
+    }
+  });
   const me = (c: Context<{ Variables: Vars }>) => c.get('user');
   const adminOnly: MiddlewareHandler<{ Variables: Vars }> = async (c, next) => (c.get('user').isAdmin ? next() : apiError(c, 403, 'admin_only', '仅管理员可用'));
 
@@ -537,7 +596,8 @@ export function createApp(deps: Deps) {
       if (r.changed) repo.emit(u.id, r.snapshot.revision);
       return c.json({ ...r.snapshot, wallpapers: await wallpapers.list(u.id) } satisfies ConfigResponse);
     } catch (e) {
-      if (e instanceof OpError) return apiError(c, 422, e.code, e.message);
+      // A per-account limit is permanent until something is removed: QUOTA_EXCEEDED, never retried.
+      if (e instanceof OpError) return e.quota ? quotaExceeded(c, 409, e.quota, e.message) : apiError(c, 422, e.code, e.message);
       throw e;
     }
   });
@@ -735,7 +795,10 @@ export function createApp(deps: Deps) {
       const file = form?.get('file');
       if (!(file instanceof File)) return apiError(c, 400, 'invalid', '没有收到图片文件');
       try {
-        return c.json({ id: await icons.add(me(c).id, Buffer.from(await file.arrayBuffer()), file.type) }, 201);
+        const owner = me(c).id;
+        // At the icon limit, icons that no app uses any more make room (see IconStore.add).
+        const inUse = async () => new Set((await repo.snapshot(owner)).config.apps.filter((a) => a.icon.source === 'upload').map((a) => a.icon.ref));
+        return c.json({ id: await icons.add(owner, Buffer.from(await file.arrayBuffer()), file.type, inUse) }, 201);
       } catch (e) {
         if (e instanceof IconError) return apiError(c, e.code === 'too_large' ? 413 : e.code === 'unsafe' ? 422 : 415, e.code, e.message);
         throw e;
@@ -781,6 +844,8 @@ export function createApp(deps: Deps) {
   }
 
   app.onError((err, c) => {
+    // Storage limits are reached deep inside the stores; every route answers them the same way.
+    if (err instanceof QuotaExceededError) return quotaExceeded(c, err.status, err.details, err.message);
     console.error('[nexus]', err);
     return apiError(c, 500, 'internal', '服务器内部错误');
   });

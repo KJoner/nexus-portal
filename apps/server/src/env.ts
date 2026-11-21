@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { isArgon2Hash } from './auth/password';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { DEFAULT_QUOTAS, type AccountQuotas } from './quota-types';
 
 export interface Env {
   production: boolean;
@@ -49,9 +50,20 @@ export interface Env {
   legacyPasswordLogin?: 'auto' | 'on' | 'off';
   /** v0.4 product notification mail (ADR-018). Identity mail is sent by the identity service. */
   mail?: { provider: 'log' | 'smtp' | 'resend'; from: string; replyTo: string | null; smtpUrl: string | null; resendKey: string | null } | null;
+  /** TN-07: limits of every account except the administrator (`NEXUS_QUOTA_*`). */
+  quotas?: AccountQuotas;
 }
 
 export class EnvError extends Error {}
+
+/** A positive whole number from the environment, or the default. */
+function positiveInt(source: NodeJS.ProcessEnv, name: string, fallback: number): number {
+  const raw = source[name]?.trim();
+  if (!raw) return fallback;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1) throw new EnvError(`${name} 必须是正整数`);
+  return n;
+}
 
 const httpsUrl = (v: string) => /^https:\/\/[^\s/?#]+/i.test(v);
 
@@ -100,6 +112,12 @@ export function readEnv(source: NodeJS.ProcessEnv = process.env): Env {
   if (provider === 'smtp' && !mail.smtpUrl) throw new EnvError('NEXUS_MAIL_PROVIDER=smtp 需要 NEXUS_SMTP_URL');
   if (provider === 'resend' && !mail.resendKey) throw new EnvError('NEXUS_MAIL_PROVIDER=resend 需要 NEXUS_RESEND_API_KEY');
 
+  const quotas: AccountQuotas = {
+    wallpapers: positiveInt(source, 'NEXUS_QUOTA_WALLPAPERS', DEFAULT_QUOTAS.wallpapers),
+    icons: positiveInt(source, 'NEXUS_QUOTA_ICONS', DEFAULT_QUOTAS.icons),
+    storageBytes: positiveInt(source, 'NEXUS_QUOTA_STORAGE_MB', DEFAULT_QUOTAS.storageBytes / 1048576) * 1048576,
+  };
+
   const dist = source.NEXUS_WEB_DIST ?? resolve(import.meta.dirname, '../../web/dist');
   const cookie = source.NEXUS_COOKIE_SECURE ?? 'auto';
   if (!['auto', 'always', 'never'].includes(cookie)) throw new EnvError('NEXUS_COOKIE_SECURE 只能是 auto / always / never');
@@ -132,5 +150,6 @@ export function readEnv(source: NodeJS.ProcessEnv = process.env): Env {
     registration,
     legacyPasswordLogin: legacy,
     mail,
+    quotas,
   };
 }

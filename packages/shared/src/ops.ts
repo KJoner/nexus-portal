@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   AppSchema,
   CategorySchema,
+  CONFIG_LIMITS,
   ConfigSchema,
   EngineSchema,
   LOCKED_CATEGORY,
@@ -10,6 +11,7 @@ import {
   type AppEntry,
   type Category,
   type Config,
+  type ConfigQuotaKind,
   type Engine,
   type Settings,
   type SettingsSection,
@@ -72,16 +74,37 @@ export const OpBatchSchema = z.object({
 });
 export type OpBatch = { clientId: string; batchId: string; ops: Op[] };
 
-export type OpErrorCode = 'not_found' | 'pins_full' | 'not_pinnable' | 'invalid' | 'locked';
+export type OpErrorCode = 'not_found' | 'pins_full' | 'not_pinnable' | 'invalid' | 'locked' | 'quota_exceeded';
+
+/** What a quota error says about the limit (same shape as the server's QUOTA_EXCEEDED details). */
+export interface QuotaDetails {
+  kind: string;
+  limit: number;
+  used: number;
+}
 
 export class OpError extends Error {
   constructor(
     readonly code: OpErrorCode,
     message: string,
+    /** Present when a per-account limit refused the op (`pins_full` and `quota_exceeded`). */
+    readonly quota?: QuotaDetails,
   ) {
     super(message);
     this.name = 'OpError';
   }
+}
+
+const QUOTA_TEXT: Record<ConfigQuotaKind, (limit: number) => string> = {
+  apps: (n) => `收藏库最多 ${n} 个应用，请先删除一些`,
+  categories: (n) => `最多 ${n} 个分类`,
+  engines: (n) => `最多 ${n} 个搜索引擎`,
+  pins: (n) => `首页最多固定 ${n} 个网站`,
+};
+
+function quota(kind: ConfigQuotaKind, used: number): OpError {
+  const limit = CONFIG_LIMITS[kind];
+  return new OpError(kind === 'pins' ? 'pins_full' : 'quota_exceeded', QUOTA_TEXT[kind](limit), { kind, limit, used });
 }
 
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
@@ -145,7 +168,7 @@ export function applyOp(c: Config, op: Op): Config {
       const app = findApp(c, op.appId);
       if (app.kind !== 'site' || app.hidden) throw new OpError('not_pinnable', `${app.name} 不能固定到首页`);
       if (c.pins.includes(app.id)) return c;
-      if (c.pins.length >= MAX_PINS) throw new OpError('pins_full', `首页最多固定 ${MAX_PINS} 个网站`);
+      if (c.pins.length >= MAX_PINS) throw quota('pins', c.pins.length);
       return { ...c, pins: insertAt(c.pins, app.id, op.index) };
     }
     case 'pin.remove':
@@ -183,6 +206,7 @@ export function applyOp(c: Config, op: Op): Config {
       const app = parse(AppSchema, op.app);
       if (!c.categories.some((k) => k.id === app.categoryId)) app.categoryId = LOCKED_CATEGORY.none;
       const prev = c.apps.find((a) => a.id === app.id);
+      if (!prev && c.apps.length >= CONFIG_LIMITS.apps) throw quota('apps', c.apps.length);
       let apps: AppEntry[];
       if (prev && prev.categoryId === app.categoryId) apps = c.apps.map((a) => (a.id === app.id ? app : a));
       // An explicit index is an exact array position (undo of a delete).
@@ -224,6 +248,7 @@ export function applyOp(c: Config, op: Op): Config {
       return { ...c, categories, apps: groupByCategory(c.apps, categories) };
     }
     case 'categories.replace': {
+      if (op.categories.length > CONFIG_LIMITS.categories) throw quota('categories', c.categories.length);
       const categories = op.categories.map((k) => parse(CategorySchema, k));
       for (const locked of Object.values(LOCKED_CATEGORY)) {
         if (!categories.some((k) => k.id === locked)) throw new OpError('locked', '「我的服务」与「未分类」不能删除');
@@ -235,6 +260,7 @@ export function applyOp(c: Config, op: Op): Config {
     case 'engine.upsert': {
       const engine = parse(EngineSchema, op.engine);
       const exists = c.engines.some((e) => e.id === engine.id);
+      if (!exists && c.engines.length >= CONFIG_LIMITS.engines) throw quota('engines', c.engines.length);
       const engines = exists ? c.engines.map((e) => (e.id === engine.id ? engine : e)) : insertAt(c.engines, engine, op.index);
       return { ...c, engines };
     }
@@ -266,8 +292,15 @@ export function applyOp(c: Config, op: Op): Config {
       }
       return { ...c, settings: { ...c.settings, [op.section]: next } };
     }
-    case 'config.replace':
+    case 'config.replace': {
+      // An import over a limit says which one, instead of a schema message.
+      const raw = (op.config ?? {}) as Partial<Record<ConfigQuotaKind, unknown>>;
+      for (const kind of ['apps', 'categories', 'engines', 'pins'] as const) {
+        const list = raw[kind];
+        if (Array.isArray(list) && list.length > CONFIG_LIMITS[kind]) throw new OpError('quota_exceeded', `导入的配置超过上限：${QUOTA_TEXT[kind](CONFIG_LIMITS[kind])}`, { kind, limit: CONFIG_LIMITS[kind], used: list.length });
+      }
       return normalizeConfig(parse(ConfigSchema, op.config));
+    }
   }
 }
 

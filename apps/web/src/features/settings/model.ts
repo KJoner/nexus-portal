@@ -102,7 +102,8 @@ export function attention(c: Config): Attention[] {
 export function apply(ops: Op | Op[], msg?: string, undoable = true): boolean {
   const r = dispatch(ops);
   if (!r.ok) {
-    toast({ msg: r.error.message, tone: r.error.code === 'pins_full' ? 'warn' : 'error' });
+    // A limit reached is a warning (the form stays open with its draft), not a failure.
+    toast({ msg: r.error.message, tone: r.error.quota ? 'warn' : 'error' });
     return false;
   }
   if (msg && r.changed) toast(undoable ? { msg, tone: 'undo', undo: r.undo } : { msg, tone: 'ok' });
