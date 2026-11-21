@@ -9,7 +9,7 @@ name: Chrome extension
 # 「加载已解压的扩展程序」. The Chrome Web Store needs it without manifest.key (docs/extension.md).
 on:
   push:
-    branches: [main]
+    branches: [main, "feat/**"]
     # Path filters do not apply to tag pushes: a tag always runs.
     tags: ['ext-v[0-9]+.[0-9]+.[0-9]+']
     paths:

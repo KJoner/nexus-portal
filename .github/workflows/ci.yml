@@ -4,7 +4,8 @@ name: CI
 # The release workflow calls this one too, so a tag only ships after the same checks pass.
 on:
   push:
-    branches: [main]
+    # 功能分支也跑（复审 R-E：CI 要覆盖当前交付的分支，不只 main）
+    branches: [main, "feat/**"]
     # The Chrome extension has its own workflow (extension.yml); changes only there skip this one.
     paths-ignore: ['docs/**', '**/*.md', 'LICENSE', 'apps/chrome-extension/**', '.github/workflows/extension.yml']
   pull_request:
