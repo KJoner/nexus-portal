@@ -2,7 +2,9 @@ import { canonicalUrl, hostOf, ITEM_LIMITS, LOCKED_CATEGORY, type Item } from '@
 import { Check, CloudOff, ExternalLink, LibraryBig, Pin, TriangleAlert } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { ApiError, deviceApi } from '../lib/api';
-import { adoptDrafts, dropEntry, enqueue, readQueue, type QueueEntry } from '../lib/collect';
+import { adoptable, readQueue, type QueueEntry } from '../lib/collect';
+import { queueCommand, saveThroughBackground } from '../lib/queue-client';
+import { idbQueueStore } from '../lib/queue-store';
 import { canSave, KEYS, readServer, type Area, type ServerRecord } from '../lib/storage';
 import { ext } from '../lib/ext';
 
@@ -10,17 +12,22 @@ import { ext } from '../lib/ext';
  * 工具栏按钮 (需求 §9.1 · EX-01): the current page, prefilled; title, folder, tags and 固定到首页
  * (off by default) can be changed before saving. The save is written to this device first; the
  * popup says 已同步 only after the server confirmed it, otherwise 已保存在此设备，待同步.
+ *
+ * NEX-05: saving, confirming drafts and dropping go through the background's queue commands (one
+ * writer, IndexedDB transactions); the popup only reads the queue itself. 「已保存」 is shown only
+ * for a save that is in the store — also when the background was stopped before it answered.
  */
 declare const __NEXUS_TEST__: boolean;
 const area = ext.storage.local as unknown as Area;
+const queue = idbQueueStore();
 type Folder = { id: string; label: string };
 type Phase = 'loading' | 'ready' | 'saving' | 'done';
 
-const askFlush = () => ext.runtime.sendMessage({ type: 'flush' }).catch(() => undefined);
+const askFlush = () => queueCommand({ type: 'flush' });
 
 function Status({ entry }: { entry: QueueEntry }) {
   const map: Record<QueueEntry['state'], { icon: typeof Check; text: string; tone: string }> = {
-    saved: { icon: Check, text: '已同步到收藏库', tone: 'text-ok' },
+    saved: { icon: Check, text: entry.message ? `已同步到收藏库；${entry.message}` : '已同步到收藏库', tone: entry.message ? 'text-warn' : 'text-ok' },
     pending: { icon: CloudOff, text: '已保存在此设备，联网后同步', tone: 'text-warn' },
     duplicate: { icon: LibraryBig, text: '这个网址已在收藏库中', tone: 'text-ink/80' },
     held: { icon: TriangleAlert, text: entry.message ?? '没有保存', tone: 'text-danger-ink' },
@@ -60,7 +67,7 @@ export function Popup() {
       const page = { title: (t?.title ?? '').slice(0, ITEM_LIMITS.title), url: t?.url ?? '' };
       setTab(page);
       setTitle(page.title || hostOf(page.url));
-      setDrafts((await readQueue(area)).filter((e) => e.state === 'draft'));
+      setDrafts((await readQueue(queue)).filter((e) => adoptable(e, s)));
       void askFlush();
       if (canSave(s) && canonicalUrl(page.url)) {
         const api = deviceApi(s!.origin);
@@ -83,22 +90,26 @@ export function Popup() {
   const save = async () => {
     if (!tab) return;
     setPhase('saving');
-    const entry = await enqueue(area, server, { title: title.trim() || hostOf(tab.url), url: tab.url, folderId, tags: [...new Set(tags.split(/[,，\s]+/).map((x) => x.trim()).filter(Boolean))], pinToHome: pin });
-    if (entry.state === 'draft') {
-      setResult(entry);
-      setPhase('done');
+    setError('');
+    const r = await saveThroughBackground({ title: title.trim() || hostOf(tab.url), url: tab.url, folderId, tags: [...new Set(tags.split(/[,，\s]+/).map((x) => x.trim()).filter(Boolean))], pinToHome: pin }, { store: queue });
+    if (!r.persisted || !r.entry) {
+      setError(r.message ?? '没有保存，请再试一次');
+      setPhase('ready');
       return;
     }
-    await askFlush();
-    setResult((await readQueue(area)).find((e) => e.opId === entry.opId) ?? entry);
+    setResult(r.entry);
+    // Revoked just now (401): kept as a draft — say so at once, with what to do.
+    if (r.revoked) {
+      setServer((s) => (s ? { ...s, revoked: true } : s));
+      setError(`${r.message ?? '授权已被撤销，请重新连接'}。这条收藏已保存在扩展里，重新连接并确认账号后再发送。`);
+    }
     setPhase('done');
   };
 
   const adopt = async () => {
     if (!server) return;
-    await adoptDrafts(area, server);
-    await askFlush();
-    setDrafts((await readQueue(area)).filter((e) => e.state === 'draft'));
+    await queueCommand({ type: 'queue:adopt' });
+    setDrafts((await readQueue(queue)).filter((e) => adoptable(e, server)));
   };
 
   const shell = (children: React.ReactNode) => (
@@ -185,7 +196,7 @@ export function Popup() {
         <div className="flex flex-col gap-2">
           <Status entry={result} />
           {result.state === 'duplicate' && (
-            <button type="button" onClick={() => void dropEntry(area, result.opId).then(() => window.close())} className="h-9 rounded-lg border-0 bg-ink/9 text-[13px] text-ink">
+            <button type="button" onClick={() => void queueCommand({ type: 'queue:drop', opId: result.opId }).then(() => window.close())} className="h-9 rounded-lg border-0 bg-ink/9 text-[13px] text-ink">
               知道了
             </button>
           )}

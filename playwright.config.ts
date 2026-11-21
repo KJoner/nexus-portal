@@ -1,6 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const PORT = 8790;
+// E2E_PORT picks another port (a machine where 8790 is taken or reserved); 8790 otherwise.
+const PORT = Number(process.env.E2E_PORT) || 8790;
 const desktop = { viewport: { width: 1440, height: 900 } };
 
 /**
@@ -25,10 +26,11 @@ export default defineConfig({
     env: { E2E_PORT: String(PORT) },
   },
   projects: [
-    { name: 'chrome', testIgnore: /extension\.spec/, use: { ...devices['Desktop Chrome'], ...desktop } },
-    { name: 'edge', testIgnore: /extension\.spec/, use: { ...devices['Desktop Edge'], channel: 'msedge', ...desktop } },
-    { name: 'iphone', testIgnore: /extension\.spec/, use: { ...devices['iPhone 13'] } },
+    { name: 'chrome', testIgnore: /extension(-release)?\.spec/, use: { ...devices['Desktop Chrome'], ...desktop } },
+    { name: 'edge', testIgnore: /extension(-release)?\.spec/, use: { ...devices['Desktop Edge'], channel: 'msedge', ...desktop } },
+    { name: 'iphone', testIgnore: /extension(-release)?\.spec/, use: { ...devices['iPhone 13'] } },
     // The Chrome extension (apps/chrome-extension) in a persistent Chromium profile it launches itself.
+    // (The release-package tests have their own configuration: playwright.release.config.ts.)
     { name: 'extension', testMatch: /extension\.spec/ },
   ],
 });

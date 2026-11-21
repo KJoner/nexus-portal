@@ -3,7 +3,6 @@ import { useConfigStore } from '@web/data/config-store';
 import { useStatusStore } from '@web/data/status-store';
 import { create } from 'zustand';
 import { ApiError, deviceApi, type Fetch } from './api';
-import { forgetSent } from './collect';
 import { KEYS, readCache, readServer, readSync, type Area, type CacheRecord, type ServerRecord, type SyncRecord } from './storage';
 import { ext } from './ext';
 
@@ -20,6 +19,11 @@ export interface Engine {
   lock<T>(mode: 'try' | 'wait', fn: () => Promise<T>): Promise<T | 'busy'>;
   /** Forget everything this browser cached about the portal (images, UI preferences). */
   wipe(): Promise<void>;
+  /**
+   * NEX-05: the authorization is gone — unsent saves become drafts, nothing unsent is deleted
+   * (lib/queue-client.ts forgetQueue: the background's queue:forget command). Optional in tests.
+   */
+  forgetQueue?(): Promise<void>;
 }
 
 /** Web Locks are shared by every page of the extension (one origin). */
@@ -82,6 +86,9 @@ export async function load(): Promise<ExtState> {
   // A cache that does not read back is dropped, so the next sync downloads a fresh copy.
   if (raw[KEYS.cache] !== undefined && !cache) await eng().area.remove(KEYS.cache);
   const state: ExtState = { loaded: true, server, cache, sync: readSync(raw[KEYS.sync], server), syncing: useExt.getState().syncing };
+  // Revoked (perhaps found by the background while sending saves, NEX-05 / ADR-019): what this
+  // browser cached about the account goes here too — images and UI preferences of the pages.
+  if (server?.revoked && !useExt.getState().server?.revoked) await eng().wipe();
   useExt.setState(state);
   present(state);
   return state;
@@ -132,8 +139,10 @@ export async function sync({ force = false }: { force?: boolean } = {}): Promise
         await e.area.set({ [KEYS.server]: { ...server, token: '-', revoked: true } });
         // Saves not sent yet stay (they are the person's), as drafts to confirm after reconnecting;
         // the record of finished ones goes with the rest of this account's data.
-        await forgetSent(e.area);
+        await e.forgetQueue?.();
         await e.wipe();
+        // Already wiped here: load() must not do it a second time.
+        useExt.setState({ server: { ...server, token: '-', revoked: true } });
         return 'revoked';
       }
       const kind = err instanceof ApiError && err.kind === 'offline' ? 'offline' : 'server';

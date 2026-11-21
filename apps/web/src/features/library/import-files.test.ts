@@ -1,6 +1,6 @@
 import { itemUrlKey } from '@nexus/shared';
 import { describe, expect, it } from 'vitest';
-import { parseBookmarksHtml, previewImport, toInputs } from './import-files';
+import { isBackupFile, parseBookmarksHtml, previewImport, readBackup, toInputs } from './import-files';
 
 /** EX-05 · 书签 HTML / 产品 JSON 导入预览：深层链接与分类保留，不支持的地址不导入。 */
 const BOOKMARKS = `<!DOCTYPE NETSCAPE-Bookmark-file-1>
@@ -45,8 +45,32 @@ describe('bookmark import (EX-05)', () => {
   it('reads Nexus’s own export, and refuses other JSON', () => {
     const json = JSON.stringify({ format: 'nexus-collection', version: 1, items: [{ title: '文章', url: 'https://a.example.org/x?y=1#z', tags: ['读'], note: '备注', folderId: 'work' }, { title: '坏的', url: 'data:text/html,x' }] });
     const p = previewImport('nexus-collection-2026-11-21.json', json, new Set());
-    expect(p.items).toEqual([{ title: '文章', url: 'https://a.example.org/x?y=1#z', path: [], tags: ['读'], note: '备注', folderId: 'work' }]);
+    expect(p.items).toEqual([{ title: '文章', url: 'https://a.example.org/x?y=1#z', path: [], tags: ['读'], note: '备注', folderId: 'work', kind: 'page' }]);
     expect(p.unsupported).toBe(1);
     expect(() => previewImport('x.json', '{"apps":[]}', new Set())).toThrow('不是 Nexus 收藏库导出的文件');
+  });
+});
+
+/** NEX-06：产品 JSON 是「恢复」而不是「导入网页」；客户端先做能做的检查。 */
+describe('Nexus backups (NEX-06)', () => {
+  const backup = { format: 'nexus-collection', version: 2, folders: [{ id: 'work-folder', label: 'Work' }], pins: ['exported-app'], items: [{ id: 'exported-app', kind: 'app', title: 'Original app', url: 'https://audit.example.org/export', folderId: 'work-folder', tags: ['keep'], note: 'keep', catalogId: 'github', pinned: true }] };
+
+  it('is told apart from a bookmark file, read as it is, and a newer format is refused with a reason', () => {
+    expect(isBackupFile('nexus-collection-2026-11-21.json', '')).toBe(true);
+    expect(isBackupFile('bookmarks.html', '<!DOCTYPE NETSCAPE-Bookmark-file-1>')).toBe(false);
+    expect(readBackup(JSON.stringify(backup))).toMatchObject({ version: 2, items: 1, file: backup });
+    expect(() => readBackup(JSON.stringify({ ...backup, version: 3 }))).toThrow('更新版本');
+    expect(() => readBackup('{"format":"nexus-config"}')).toThrow('不是 Nexus 收藏库导出的文件');
+    expect(() => readBackup('{')).toThrow('不是有效的 JSON');
+  });
+
+  it('the old import path no longer flattens kind and catalog link (审查反例: kind app → page, catalogId → null)', () => {
+    const p = previewImport('x.json', JSON.stringify(backup), new Set());
+    expect(toInputs(p.items, true)).toEqual([{ kind: 'app', title: 'Original app', url: 'https://audit.example.org/export', tags: ['keep'], note: 'keep', folderId: 'work-folder', catalogId: 'github' }]);
+  });
+
+  it('the preview counts what is already saved by canonical address (host case, default port)', () => {
+    const p = previewImport('x.json', JSON.stringify(backup), new Set([itemUrlKey('HTTPS://AUDIT.example.org:443/export')]));
+    expect(p.existing).toBe(1);
   });
 });

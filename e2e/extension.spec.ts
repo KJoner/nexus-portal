@@ -11,7 +11,8 @@ import { join, resolve } from 'node:path';
  * test server pre-granted, because automation cannot click Chrome's permission prompt; the release
  * build is otherwise identical.
  */
-const PORT = 8790;
+// E2E_PORT picks another port (a machine where 8790 is taken or reserved); 8790 otherwise.
+const PORT = Number(process.env.E2E_PORT) || 8790;
 const ORIGIN = `http://127.0.0.1:${PORT}`;
 const EXT_DIR = resolve(import.meta.dirname, '../apps/chrome-extension');
 const BUILD = join(EXT_DIR, 'dist-test');
@@ -88,7 +89,7 @@ test('installs, opens the setup page, and pairs with the portal’s approval', a
 
   // The extension picks up its token, closes the approval tab and syncs.
   await expect(options.getByText('已同步', { exact: true })).toBeVisible({ timeout: 15_000 });
-  await expect(options.getByText('127.0.0.1:8790')).toBeVisible();
+  await expect(options.getByText(`127.0.0.1:${PORT}`)).toBeVisible();
   await options.screenshot({ path: 'test-results/extension-options.png', fullPage: true });
   const devices = (await (await api.get('/api/devices')).json()) as { name: string }[];
   expect(devices.map((d) => d.name)).toEqual([expect.stringContaining(process.env.E2E_EXT_CHANNEL === 'msedge' ? 'Edge' : 'Chrome')]);

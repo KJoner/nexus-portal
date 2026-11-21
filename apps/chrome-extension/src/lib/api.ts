@@ -61,7 +61,13 @@ export async function call(fetchImpl: Fetch, origin: string, path: string, init:
     clearTimeout(timer);
   }
   if (res.ok || res.status === 304) return res;
-  if (res.status === 502 || res.status === 503 || res.status === 504) throw new ApiError('offline', `Nexus Portal 暂时不可用（${res.status}）`, res.status);
+  if (res.status === 502 || res.status === 503 || res.status === 504) {
+    // Temporary — kept and sent again later. Nexus' own 503 says why (IDENTITY_UNAVAILABLE: the
+    // account service cannot be asked right now, ADR-019) and when to try again; a proxy's says nothing.
+    const busy = (await res.json().catch(() => null)) as { code?: string; message?: string } | null;
+    const after = Number(res.headers.get('retry-after'));
+    throw new ApiError('offline', busy?.message ?? `Nexus Portal 暂时不可用（${res.status}）`, res.status, busy?.code ?? '', Number.isFinite(after) && after > 0 ? { retryAfterSeconds: after } : null);
+  }
   // v1 answers {error:{code,message}}; the /api/v2 interfaces answer {code,message,retryable,details}.
   const body = (await res.json().catch(() => null)) as (ApiErrorBody & { code?: string; message?: string; details?: Record<string, unknown> }) | null;
   const code = body?.code ?? body?.error?.code ?? '';

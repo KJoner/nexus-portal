@@ -1,10 +1,11 @@
 import type { APIRequestContext } from '@playwright/test';
-import { expect, ops, serverConfig, test } from './fixtures';
+import { expect, freshTag, ops, serverConfig, test } from './fixtures';
 
 async function addApps(api: APIRequestContext) {
   const cfg = (await serverConfig(api)) as unknown as { apps: Record<string, unknown>[] };
   const gh = cfg.apps.find((a) => a.id === 'github')!;
-  const make = (id: string, name: string, url: string) => ({ ...gh, id, name, url, aliases: [], icon: { source: 'letter', ref: '', letter: '', tone: 0 } });
+  const tag = freshTag();
+  const make = (id: string, name: string, url: string) => ({ ...gh, id: `${id}-${tag}`, name, url, aliases: [], icon: { source: 'letter', ref: '', letter: '', tone: 0 } });
   await ops(api, [
     { type: 'app.upsert', app: make('tdocs', '腾讯文档', 'https://docs.qq.com') },
     { type: 'app.upsert', app: make('qqmail', 'QQ邮箱', 'https://mail.qq.com') },

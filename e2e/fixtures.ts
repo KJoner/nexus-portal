@@ -16,6 +16,13 @@ export async function ops(api: APIRequestContext, list: unknown[]) {
   return r.json();
 }
 
+/**
+ * Ids for apps a test creates. Each test resets the configuration, which moves the apps it made to
+ * 回收站; since v0.4.1 (NEX-04) an ordinary upsert never brings a deleted id back, so every call
+ * makes new ones.
+ */
+export const freshTag = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+
 export async function serverConfig(api: APIRequestContext) {
   return (await (await api.get('/api/config')).json()).config as { pins: string[]; apps: { id: string; name: string }[] };
 }

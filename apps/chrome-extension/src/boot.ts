@@ -2,6 +2,7 @@ import { setTransport } from '@web/data/config-store';
 import { configureHost } from '@web/lib/host';
 import type { Fetch } from './lib/api';
 import { clearAssets, loadAssets, prefetchWallpaper, useImage, useWallpaperFile } from './lib/assets';
+import { forgetQueue } from './lib/queue-client';
 import { initEngine, load, onStorageChange, useExt, webLock, type ExtState } from './lib/sync';
 import { extensionTransport } from './lib/transport';
 import { ext } from './lib/ext';
@@ -20,6 +21,7 @@ export async function boot(): Promise<ExtState> {
     fetch: fetchImpl,
     now: Date.now,
     lock: webLock,
+    forgetQueue,
     async wipe() {
       await clearAssets();
       try {

@@ -1,4 +1,4 @@
-import { applyOps, ConfigSchema, defaultConfig, invertOp, normalizeConfig, OpError, applyOp, type AppEntry, type Config, type ConfigResponse, type LogoutAllResponse, type MeResponse, type Op, type RevokeEverywhereResponse, type Snapshot, type UploadedWallpaper } from '@nexus/shared';
+import { applyOps, ConfigSchema, defaultConfig, invertOp, normalizeConfig, OpError, applyOp, type AppEntry, type Config, type ConfigResponse, type LogoutAllResponse, type MeResponse, type Op, type RevokeEverywhereResponse, type Snapshot, type UploadedWallpaper, changedFields, CONFLICT_CODES, CONFLICT_HTTP_CODE, newAppId, withBase } from '@nexus/shared';
 import { create } from 'zustand';
 import { storage } from '../lib/storage';
 import { useStatusStore } from './status-store';
@@ -81,12 +81,27 @@ const clientId = (() => {
   return id;
 })();
 
-/** A batch the server refused with QUOTA_EXCEEDED, and why (shown in 设置 › 数据与安全). */
+/**
+ * A batch kept on this device instead of being sent or dropped (shown in 设置 › 数据与安全):
+ *  - quota     the server refused it with QUOTA_EXCEEDED; retried after making room;
+ *  - conflict  (v0.4.1, NEX-04) another device got there first — the app was deleted (ITEM_DELETED),
+ *              the same field was changed (FIELD_CONFLICT), or what this deletes / restores changed
+ *              meanwhile (REVISION_CONFLICT). Never forced and never lost: the person decides.
+ * Entries written before v0.4.1 have no reason: they are quota entries.
+ */
 export interface HeldBatch {
   batch: Batch;
   message: string;
   at: number;
+  reason?: 'quota' | 'conflict';
+  code?: string;
+  /** What the server (or a newer snapshot) says is there now. */
+  details?: Record<string, unknown> | null;
 }
+
+const CONFLICT_HTTP: readonly string[] = Object.values(CONFLICT_HTTP_CODE);
+const isConflictError = (e: unknown): e is OpError => e instanceof OpError && CONFLICT_CODES.includes(e.code);
+const conflictOf = (batch: Batch, e: OpError): HeldBatch => ({ batch, message: e.message, at: Date.now(), reason: 'conflict', code: CONFLICT_HTTP_CODE[e.code as keyof typeof CONFLICT_HTTP_CODE], details: e.details ?? null });
 
 function readCache(account: string | null): Cache {
   const raw = account ? storage.get<Cache>(cacheKey(account)) : null;
@@ -96,21 +111,27 @@ function readCache(account: string | null): Cache {
   return { confirmed, pending: Array.isArray(raw.pending) ? raw.pending : [], wallpapers: Array.isArray(raw.wallpapers) ? raw.wallpapers : [], held: Array.isArray(raw.held) ? raw.held : [] };
 }
 
-/** Replays unsent batches on top of a confirmed config, dropping any the new state rejects. */
-function rebase(base: Config, pending: Batch[]): { config: Config; pending: Batch[]; dropped: OpError[] } {
+/**
+ * Replays unsent batches on top of a confirmed config. A batch the new state rejects is dropped —
+ * unless the rejection is a conflict with another device (NEX-04: the app it edits was deleted, the
+ * same field changed): that one is kept aside for the person to decide, never re-applied over it.
+ */
+function rebase(base: Config, pending: Batch[]): { config: Config; pending: Batch[]; dropped: OpError[]; conflicts: HeldBatch[] } {
   let config = base;
   const kept: Batch[] = [];
   const dropped: OpError[] = [];
+  const conflicts: HeldBatch[] = [];
   for (const b of pending) {
     try {
       config = applyOps(config, b.ops);
       kept.push(b);
     } catch (e) {
-      if (e instanceof OpError) dropped.push(e);
+      if (isConflictError(e)) conflicts.push(conflictOf(b, e));
+      else if (e instanceof OpError) dropped.push(e);
       else throw e;
     }
   }
-  return { config, pending: kept, dropped };
+  return { config, pending: kept, dropped, conflicts };
 }
 
 function initialState(account: string | null = cacheAccount) {
@@ -122,7 +143,7 @@ function initialState(account: string | null = cacheAccount) {
     confirmed: cache.confirmed,
     pending: r.pending,
     wallpapers: cache.wallpapers,
-    held: cache.held ?? [],
+    held: [...(cache.held ?? []), ...r.conflicts],
     auth: 'unknown' as AuthState,
     online: true,
     ready: !!cache.confirmed,
@@ -145,17 +166,22 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     const before = get().snapshot.config;
     let config = before;
     const undo: Op[] = [];
+    const sent: Op[] = [];
     try {
-      for (const op of ops) {
+      for (const raw of ops) {
+        // What this device saw goes along (NEX-04): edits merge with changes made elsewhere and a
+        // deleted app is never brought back by an edit that started before the deletion.
+        const op = withBase(config, raw);
         undo.unshift(...invertOp(config, op));
         config = applyOp(config, op);
+        sent.push(op);
       }
     } catch (e) {
       if (e instanceof OpError) return { ok: false, error: e };
       throw e;
     }
     if (config === before) return { ok: true, changed: false, undo: [] };
-    const pending = [...get().pending, { id: uid(), ops }];
+    const pending = [...get().pending, { id: uid(), ops: sent }];
     set({ snapshot: { ...get().snapshot, config }, pending });
     persist();
     void flush();
@@ -210,7 +236,8 @@ function accept(res: ConfigResponse, pending = useConfigStore.getState().pending
   const { wallpapers, ...snap } = res;
   const r = rebase(snap.config, pending);
   r.dropped.forEach((e) => notifyRejected(`一项更改未能同步：${e.message}`));
-  useConfigStore.setState({ confirmed: snap, snapshot: { ...snap, config: r.config }, pending: r.pending, wallpapers, online: true, auth: 'authenticated', ready: true, fallback: false, lastSavedAt: Date.parse(snap.updatedAt) });
+  r.conflicts.forEach((h) => notifyRejected(`${h.message}。这项更改已保留在本机，可在「设置 › 数据、同步与安全」处理`));
+  useConfigStore.setState({ confirmed: snap, snapshot: { ...snap, config: r.config }, pending: r.pending, wallpapers, online: true, auth: 'authenticated', ready: true, fallback: false, lastSavedAt: Date.parse(snap.updatedAt), ...(r.conflicts.length ? { held: [...s.held, ...r.conflicts].slice(-40) } : {}) });
   persist();
 }
 
@@ -252,13 +279,17 @@ async function sendPending() {
       }
       if (e instanceof HttpError && e.status !== 401) {
         const quota = e.code === 'QUOTA_EXCEEDED';
+        // NEX-04: another device got there first (deleted it, changed the same field). Kept for the
+        // person to decide — never dropped, never retried over the other change.
+        const conflict = e.status === 409 && CONFLICT_HTTP.includes(e.code);
         // Over a limit: kept on this device as a draft, never lost. Anything else the server refuses
-        // (validation, conflict with another device) is dropped; the rest of the queue continues.
-        notifyRejected(quota ? `${e.message}。这项更改已保留在本机，腾出空间后可在「设置 › 数据、同步与安全」重试` : `更改未能保存：${e.message}`);
+        // (validation) is dropped; the rest of the queue continues.
+        notifyRejected(quota ? `${e.message}。这项更改已保留在本机，腾出空间后可在「设置 › 数据、同步与安全」重试` : conflict ? `${e.message}。这项更改已保留在本机，可在「设置 › 数据、同步与安全」处理` : `更改未能保存：${e.message}`);
         const s2 = useConfigStore.getState();
         const rest = s2.pending.filter((b) => b.id !== batch.id);
         const r = rebase(s2.confirmed?.config ?? defaultConfig(), rest);
-        useConfigStore.setState({ pending: r.pending, snapshot: { ...s2.snapshot, config: r.config }, ...(quota ? { held: [...s2.held, { batch, message: e.message, at: Date.now() }].slice(-20) } : {}) });
+        const keep: HeldBatch[] = quota ? [{ batch, message: e.message, at: Date.now(), reason: 'quota' }] : conflict ? [{ batch, message: e.message, at: Date.now(), reason: 'conflict', code: e.code, details: e.details }] : [];
+        useConfigStore.setState({ pending: r.pending, snapshot: { ...s2.snapshot, config: r.config }, held: [...s2.held, ...keep, ...r.conflicts].slice(-40) });
         persist();
         continue;
       }
@@ -294,10 +325,13 @@ function scheduleRetry(afterMs?: number) {
   );
 }
 
-/** 设置 › 数据与安全: send the held changes again (after making room), or let them go. */
+const isQuotaHeld = (h: HeldBatch) => h.reason !== 'conflict';
+
+/** 设置 › 数据与安全: send the changes held over a limit again (after making room), or let them go. */
 export function retryHeld(): DispatchResult[] {
-  const held = useConfigStore.getState().held;
-  useConfigStore.setState({ held: [] });
+  const all = useConfigStore.getState().held;
+  const held = all.filter(isQuotaHeld);
+  useConfigStore.setState({ held: all.filter((h) => !isQuotaHeld(h)) });
   persist();
   // Through dispatch, so a change that still does not fit is refused here, with its message.
   const results = held.map((h) => useConfigStore.getState().dispatch(h.batch.ops));
@@ -309,9 +343,68 @@ export function retryHeld(): DispatchResult[] {
   return results;
 }
 
+/** 放弃 the changes held over a limit (conflicts are decided one by one, see resolveHeld). */
 export function discardHeld() {
-  useConfigStore.setState({ held: [] });
+  useConfigStore.setState({ held: useConfigStore.getState().held.filter((h) => !isQuotaHeld(h)) });
   persist();
+}
+
+export type ConflictChoice = 'mine' | 'copy' | 'discard';
+
+/**
+ * NEX-04: what the person decided about a change another device got ahead of.
+ *  - mine     apply it after all: an app deleted elsewhere is first restored (explicitly, the copy
+ *             in 回收站), a field changed elsewhere takes my value — only the fields I changed;
+ *             a delete or restore goes ahead against what is there now;
+ *  - copy     keep my version as a new app, next to (or instead of) the one deleted elsewhere;
+ *  - discard  keep what is there now.
+ * Goes out as an ordinary change (dispatch): it syncs, and can itself conflict again.
+ */
+export function resolveHeld(index: number, choice: ConflictChoice): DispatchResult | { ok: true; changed: false; undo: [] } {
+  const s = useConfigStore.getState();
+  const h = s.held[index];
+  if (!h) return { ok: true, changed: false, undo: [] };
+  const drop = () => {
+    useConfigStore.setState({ held: useConfigStore.getState().held.filter((x) => x !== h) });
+    persist();
+  };
+  if (choice === 'discard') {
+    drop();
+    return { ok: true, changed: false, undo: [] };
+  }
+  const now = s.snapshot.config;
+  const current = (h.details?.current ?? null) as AppEntry | null;
+  const item = (h.details?.item ?? null) as { version?: number } | null;
+  const ops: Op[] = [];
+  const ids = new Map<string, string>();
+  for (const op of h.batch.ops) {
+    if (choice === 'copy' && op.type === 'app.upsert') {
+      // My version as a new app (its own id), whatever happened to the original.
+      const id = newAppId(op.app.name, [...now.apps, ...ops.flatMap((o) => (o.type === 'app.upsert' ? [o.app] : []))]);
+      ids.set(op.app.id, id);
+      ops.push({ type: 'app.upsert', app: { ...op.app, id, version: undefined }, base: null });
+    } else if (op.type === 'app.upsert') {
+      const here = now.apps.find((a) => a.id === op.app.id);
+      if (here) {
+        // My changes (against what I started from) on top of what is there now; a change made by an
+        // older version of this page (no base) meant the whole entry.
+        const mine: Record<string, unknown> = { ...here };
+        for (const k of op.base ? changedFields(op.base, op.app) : Object.keys(op.app)) mine[k] = (op.app as Record<string, unknown>)[k];
+        ops.push({ type: 'app.upsert', app: { ...(mine as AppEntry), id: here.id }, base: here, ...(op.index !== undefined ? { index: op.index } : {}) });
+      } else {
+        // Deleted elsewhere: bring back the copy in 回收站 (an explicit restore), then apply my edit to it.
+        const restorable = !!current && current.id === op.app.id;
+        if (restorable) ops.push({ type: 'app.restore', app: current, ...(item?.version !== undefined ? { baseVersion: item.version } : {}) });
+        ops.push({ ...op, base: op.base ?? (restorable ? current : null) });
+      }
+    } else if (op.type === 'app.delete') ops.push({ type: 'app.delete', appId: op.appId });
+    else if (op.type === 'app.restore') ops.push({ ...op, ...(item?.version !== undefined ? { baseVersion: item.version } : {}) });
+    else if ('appId' in op && ids.has(op.appId)) ops.push({ ...op, appId: ids.get(op.appId)! });
+    else ops.push(op);
+  }
+  const r = s.dispatch(ops);
+  if (r.ok) drop();
+  return r;
 }
 
 let unsubscribe: (() => void) | null = null;

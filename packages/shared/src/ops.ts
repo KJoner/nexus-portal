@@ -5,6 +5,7 @@ import {
   CONFIG_LIMITS,
   ConfigSchema,
   EngineSchema,
+  isPinnable,
   LOCKED_CATEGORY,
   MAX_PINS,
   SettingsSchema,
@@ -29,8 +30,21 @@ export type Op =
   | { type: 'pin.reorder'; order: string[] }
   | { type: 'app.setHidden'; appId: string; hidden: boolean }
   | { type: 'service.setShown'; appId: string; shown: boolean }
-  | { type: 'app.upsert'; app: AppEntry; index?: number }
-  | { type: 'app.delete'; appId: string }
+  /**
+   * `base` (v0.4.1, NEX-04) is the entry as the sending client saw it before this change: `null` for
+   * a new app, the old entry for an edit. With it, an edit merges field by field with changes made
+   * elsewhere (same field changed on both sides → `conflict`) and never brings back a deleted app.
+   * Without it (older clients) an edit of a deleted app is refused as well.
+   */
+  | { type: 'app.upsert'; app: AppEntry; index?: number; base?: AppEntry | null }
+  /** `base`: the entry the client deleted; deleting what was changed elsewhere since is `stale`. */
+  | { type: 'app.delete'; appId: string; base?: AppEntry }
+  /**
+   * The only way back from 回收站 through the home page (撤销删除): explicit, and only for a deletion
+   * that happened after `baseVersion` (the version the client saw) and has not been undone since.
+   * The server restores its own copy of the entry; `app` places it in the client's optimistic view.
+   */
+  | { type: 'app.restore'; app: AppEntry; index?: number; baseVersion?: number }
   /** Moves an app to `toIndex` among the apps of `categoryId` (default: its own category). */
   | { type: 'app.move'; appId: string; toIndex: number; categoryId?: string }
   | { type: 'categories.replace'; categories: Category[] }
@@ -55,8 +69,9 @@ export const OpSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('pin.reorder'), order: z.array(IdRef).max(200) }),
   z.object({ type: z.literal('app.setHidden'), appId: IdRef, hidden: z.boolean() }),
   z.object({ type: z.literal('service.setShown'), appId: IdRef, shown: z.boolean() }),
-  z.object({ type: z.literal('app.upsert'), app: z.unknown(), index: Index.optional() }),
-  z.object({ type: z.literal('app.delete'), appId: IdRef }),
+  z.object({ type: z.literal('app.upsert'), app: z.unknown(), index: Index.optional(), base: z.unknown().optional() }),
+  z.object({ type: z.literal('app.delete'), appId: IdRef, base: z.unknown().optional() }),
+  z.object({ type: z.literal('app.restore'), app: z.unknown(), index: Index.optional(), baseVersion: z.number().int().min(0).optional() }),
   z.object({ type: z.literal('app.move'), appId: IdRef, toIndex: Index, categoryId: IdRef.optional() }),
   z.object({ type: z.literal('categories.replace'), categories: z.array(z.unknown()).max(50) }),
   z.object({ type: z.literal('category.move'), categoryId: IdRef, toIndex: Index }),
@@ -74,7 +89,19 @@ export const OpBatchSchema = z.object({
 });
 export type OpBatch = { clientId: string; batchId: string; ops: Op[] };
 
-export type OpErrorCode = 'not_found' | 'pins_full' | 'not_pinnable' | 'invalid' | 'locked' | 'quota_exceeded';
+/**
+ * `deleted`, `conflict` and `stale` (v0.4.1, NEX-04) mean another device got there first: the change
+ * is not applied, and the client keeps it for the person to decide (never dropped, never forced).
+ *  - deleted   an edit of an app deleted elsewhere (it stays in 回收站)
+ *  - conflict  a field this edit changes was changed elsewhere too
+ *  - stale     a delete of something changed elsewhere since, or a restore of a deletion already undone
+ */
+export type OpErrorCode = 'not_found' | 'pins_full' | 'not_pinnable' | 'invalid' | 'locked' | 'quota_exceeded' | 'deleted' | 'conflict' | 'stale';
+
+/** The codes above that are a disagreement with another device rather than a bad request. */
+export const CONFLICT_CODES: readonly OpErrorCode[] = ['deleted', 'conflict', 'stale'];
+/** How the server reports them (the same codes as the 我的收藏 v2 interfaces). */
+export const CONFLICT_HTTP_CODE = { deleted: 'ITEM_DELETED', conflict: 'FIELD_CONFLICT', stale: 'REVISION_CONFLICT' } as const;
 
 /** What a quota error says about the limit (same shape as the server's QUOTA_EXCEEDED details). */
 export interface QuotaDetails {
@@ -89,10 +116,73 @@ export class OpError extends Error {
     message: string,
     /** Present when a per-account limit refused the op (`pins_full` and `quota_exceeded`). */
     readonly quota?: QuotaDetails,
+    /** Conflicts: which app, which fields, and what it looks like now (shown to the person). */
+    readonly details?: Record<string, unknown>,
   ) {
     super(message);
     this.name = 'OpError';
   }
+}
+
+/** Deep equality of plain JSON values, key order ignored. */
+export function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a === undefined || b === undefined || a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a)) return a.length === (b as unknown[]).length && a.every((x, i) => sameValue(x, (b as unknown[])[i]));
+  const ka = Object.keys(a).filter((k) => (a as Record<string, unknown>)[k] !== undefined);
+  const kb = Object.keys(b).filter((k) => (b as Record<string, unknown>)[k] !== undefined);
+  return ka.length === kb.length && ka.every((k) => sameValue((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
+}
+
+/** Every field of an entry except its identity and the version it was read at. */
+const contentKeys = (...entries: AppEntry[]) => [...new Set(entries.flatMap((e) => Object.keys(e)))].filter((k) => k !== 'id' && k !== 'version') as (keyof AppEntry)[];
+
+/** Same content (the version an entry was read at does not count). */
+export function sameContent(a: AppEntry, b: AppEntry): boolean {
+  return contentKeys(a, b).every((k) => sameValue(a[k], b[k]));
+}
+
+/** Fields whose value differs between two entries. */
+export function changedFields(a: AppEntry, b: AppEntry): string[] {
+  return contentKeys(a, b).filter((k) => !sameValue(a[k], b[k]));
+}
+
+/** People read these, not the field names. */
+export const APP_FIELD_LABELS: Record<string, string> = {
+  name: '名称',
+  url: '地址',
+  categoryId: '分类',
+  description: '描述',
+  icon: '图标',
+  lanUrl: '内网地址',
+  prefer: '默认打开方式',
+  hidden: '隐藏',
+  showInServices: '服务区显示',
+  aliases: '别名',
+  openIn: '打开位置',
+  health: '健康检查',
+  kind: '类型',
+  catalogId: '目录来源',
+  catalogVersion: '目录版本',
+};
+export const fieldLabels = (fields: readonly string[]) => fields.map((f) => APP_FIELD_LABELS[f] ?? f).join('、');
+
+/**
+ * Three-way merge of an edit (NEX-04): `mine` was made from `base`; `current` is what is there now.
+ * A field I did not touch keeps the current value; a field I changed takes mine unless it was
+ * changed elsewhere to something else too — then it is a conflict and nothing is merged.
+ */
+export function mergeApp(base: AppEntry, current: AppEntry, mine: AppEntry): { app: AppEntry; conflicts: string[] } {
+  const out: Record<string, unknown> = { ...current };
+  const conflicts: string[] = [];
+  for (const k of contentKeys(base, current, mine)) {
+    if (sameValue(mine[k], base[k])) continue;
+    if (sameValue(current[k], base[k]) || sameValue(current[k], mine[k])) out[k] = mine[k];
+    else conflicts.push(k);
+  }
+  for (const k of Object.keys(out)) if (out[k] === undefined) delete out[k];
+  return { app: { ...(out as AppEntry), id: current.id, ...(current.version !== undefined ? { version: current.version } : {}) }, conflicts };
 }
 
 const QUOTA_TEXT: Record<ConfigQuotaKind, (limit: number) => string> = {
@@ -166,7 +256,7 @@ export function applyOp(c: Config, op: Op): Config {
   switch (op.type) {
     case 'pin.add': {
       const app = findApp(c, op.appId);
-      if (app.kind !== 'site' || app.hidden) throw new OpError('not_pinnable', `${app.name} 不能固定到首页`);
+      if (!isPinnable(app)) throw new OpError('not_pinnable', `${app.name} 不能固定到首页`);
       if (c.pins.includes(app.id)) return c;
       if (c.pins.length >= MAX_PINS) throw quota('pins', c.pins.length);
       return { ...c, pins: insertAt(c.pins, app.id, op.index) };
@@ -203,9 +293,20 @@ export function applyOp(c: Config, op: Op): Config {
       return { ...c, apps: c.apps.map((a) => (a.id === app.id ? { ...a, showInServices: op.shown } : a)) };
     }
     case 'app.upsert': {
-      const app = parse(AppSchema, op.app);
-      if (!c.categories.some((k) => k.id === app.categoryId)) app.categoryId = LOCKED_CATEGORY.none;
+      let app = parse(AppSchema, op.app);
+      const base = op.base === undefined || op.base === null ? op.base : parse(AppSchema, op.base);
       const prev = c.apps.find((a) => a.id === app.id);
+      if (base && !prev) {
+        // An edit of something no longer here: deleted elsewhere. Re-adding it would bring it back.
+        throw new OpError('deleted', `「${base.name}」已在别处删除，这次修改没有应用`, undefined, { appId: app.id, name: base.name });
+      }
+      if (base && prev) {
+        const merged = mergeApp(base, prev, app);
+        if (merged.conflicts.length) throw new OpError('conflict', `「${prev.name}」的${fieldLabels(merged.conflicts)}在别处也被修改了，这次修改没有应用`, undefined, { appId: app.id, name: prev.name, conflictFields: merged.conflicts, current: prev });
+        app = merged.app;
+        if (sameContent(app, prev)) return c;
+      }
+      if (!c.categories.some((k) => k.id === app.categoryId)) app.categoryId = LOCKED_CATEGORY.none;
       if (!prev && c.apps.length >= CONFIG_LIMITS.apps) throw quota('apps', c.apps.length);
       let apps: AppEntry[];
       if (prev && prev.categoryId === app.categoryId) apps = c.apps.map((a) => (a.id === app.id ? app : a));
@@ -217,8 +318,24 @@ export function applyOp(c: Config, op: Op): Config {
       return { ...c, apps, pins: unpin ? c.pins.filter((x) => x !== app.id) : c.pins };
     }
     case 'app.delete': {
-      if (!c.apps.some((a) => a.id === op.appId)) return c;
+      const prev = c.apps.find((a) => a.id === op.appId);
+      if (!prev) return c;
+      if (op.base !== undefined) {
+        const base = parse(AppSchema, op.base);
+        // Deleting what someone changed after I last saw it: ask first (it is not deleted).
+        if (!sameContent(base, prev)) throw new OpError('stale', `「${prev.name}」在别处被修改过（${fieldLabels(changedFields(base, prev))}），没有删除`, undefined, { appId: op.appId, name: prev.name, changedFields: changedFields(base, prev), current: prev });
+      }
       return { ...c, apps: c.apps.filter((a) => a.id !== op.appId), pins: c.pins.filter((x) => x !== op.appId) };
+    }
+    case 'app.restore': {
+      const app = parse(AppSchema, op.app);
+      // Already back (restored elsewhere, or this is a retry): nothing to do.
+      if (c.apps.some((a) => a.id === app.id)) return c;
+      if (!c.categories.some((k) => k.id === app.categoryId)) app.categoryId = LOCKED_CATEGORY.none;
+      if (c.apps.length >= CONFIG_LIMITS.apps) throw quota('apps', c.apps.length);
+      // An explicit index is the exact array position it had (undo of a delete).
+      const apps = op.index !== undefined ? insertAt(c.apps, app, op.index) : placeIn(c.apps, app, Infinity, c.categories);
+      return { ...c, apps };
     }
     case 'app.move': {
       const app = findApp(c, op.appId);
@@ -308,6 +425,20 @@ export function applyOps(c: Config, ops: readonly Op[]): Config {
   return ops.reduce(applyOp, c);
 }
 
+/**
+ * Records what the client saw (NEX-04) on an op it is about to apply: the entry an edit or a delete
+ * starts from (`null` for a new app). Ops that already carry a base keep it (a retried or resolved
+ * change keeps the base it was made from).
+ */
+export function withBase(c: Config, op: Op): Op {
+  if (op.type === 'app.upsert' && op.base === undefined) return { ...op, base: c.apps.find((a) => a.id === op.app.id) ?? null };
+  if (op.type === 'app.delete' && op.base === undefined) {
+    const prev = c.apps.find((a) => a.id === op.appId);
+    return prev ? { ...op, base: prev } : op;
+  }
+  return op;
+}
+
 /** Repairs cross references that the schema alone cannot express. */
 export function normalizeConfig(c: Config): Config {
   const ids = new Set(c.apps.map((a) => a.id));
@@ -320,7 +451,7 @@ export function normalizeConfig(c: Config): Config {
     c.apps.map((a) => (allCats.has(a.categoryId) ? a : { ...a, categoryId: LOCKED_CATEGORY.none })),
     categories,
   );
-  const pinnable = new Set(apps.filter((a) => a.kind === 'site' && !a.hidden).map((a) => a.id));
+  const pinnable = new Set(apps.filter(isPinnable).map((a) => a.id));
   const pins = [...new Set(c.pins)].filter((id) => ids.has(id) && pinnable.has(id)).slice(0, MAX_PINS);
   const engines = c.engines.length ? c.engines : [];
   const defaultEngine = engines.some((e) => e.id === c.settings.search.defaultEngine) ? c.settings.search.defaultEngine : (engines[0]?.id ?? 'google');
@@ -385,11 +516,15 @@ export function invertOp(before: Config, op: Op): Op[] {
     case 'app.delete': {
       const i = before.apps.findIndex((a) => a.id === op.appId);
       if (i < 0) return [];
-      const out: Op[] = [{ type: 'app.upsert', app: before.apps[i]!, index: i }];
+      const prev = before.apps[i]!;
+      // 撤销删除 is an explicit restore of this deletion (NEX-04), never an upsert of the old entry.
+      const out: Op[] = [{ type: 'app.restore', app: prev, index: i, ...(prev.version !== undefined ? { baseVersion: prev.version } : {}) }];
       const p = before.pins.indexOf(op.appId);
       if (p >= 0) out.push({ type: 'pin.add', appId: op.appId, index: p });
       return out;
     }
+    case 'app.restore':
+      return before.apps.some((a) => a.id === op.app.id) ? [] : [{ type: 'app.delete', appId: op.app.id }];
     case 'categories.replace': {
       const ids = new Set(op.categories.map((k) => k.id));
       const moved = before.apps.filter((a) => !ids.has(a.categoryId));

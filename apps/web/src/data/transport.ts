@@ -1,6 +1,8 @@
 import {
   applyOps,
   CLIENT_HEADER,
+  CONFLICT_CODES,
+  CONFLICT_HTTP_CODE,
   defaultConfig,
   OpError,
   type ApiErrorBody,
@@ -115,17 +117,36 @@ export interface Transport {
   subscribe(h: { onOpen(): void; onRevision(revision: number): void; onStatus(s: ServiceStatus | { appId: string; removed: true }): void; onClosed(): void }): () => void;
 }
 
+export type RestoreDuplicates = 'skip' | 'update' | 'keep-both';
+/** What a restore (or its preview) reports — see apps/server/src/items/restore.ts. */
+export interface RestoreAnswer {
+  dryRun?: boolean;
+  importId: string | null;
+  basis?: number;
+  summary: {
+    folders: { create: { id: string; label: string }[]; map: { from: string; to: string; label: string }[]; overLimit: number };
+    items: { create: number; update: number; skip: number; repeated: number; unsupported: number; kinds: { app: number; page: number } };
+    duplicates: { fileId: string | null; title: string; url: string; existingId: string; existingTitle: string }[];
+    duplicateCount: number;
+    pins: { restore: number; notPinned: number; limit: number };
+    icons: { upload: number; missing: number };
+  };
+}
+
 export interface ItemsTransport {
   snapshot(page?: string): Promise<SnapshotResponse>;
   changes(cursor: string): Promise<ChangesResponse & { pins?: string[]; folders?: SnapshotResponse['folders'] }>;
   create(body: { opId: string; source?: 'manual' | 'catalog' | 'import'; item: ItemInput; pinToHome?: boolean; duplicatePolicy?: 'prompt' | 'update' | 'create' }): Promise<ItemWriteResult>;
   patch(id: string, body: { opId: string; baseVersion: number; patch: ItemPatch }): Promise<ItemWriteResult>;
-  remove(id: string, opId: string): Promise<ItemWriteResult>;
-  restore(id: string, opId: string): Promise<ItemWriteResult>;
+  /** baseVersion (NEX-04): the version the client saw; a delete of what was changed since, or a restore of a deletion undone since, is REVISION_CONFLICT. */
+  remove(id: string, opId: string, baseVersion?: number): Promise<ItemWriteResult>;
+  restore(id: string, opId: string, baseVersion?: number): Promise<ItemWriteResult>;
   pin(id: string, opId: string, position?: number): Promise<{ pins: string[] }>;
   unpin(id: string, opId: string): Promise<{ pins: string[] }>;
   importItems(body: { opId: string; folderId?: string; items: ItemInput[]; skipDuplicates?: boolean }): Promise<{ importId: string; imported: number; skipped: number }>;
-  undoImport(importId: string, opId: string): Promise<{ removed: number; kept: number }>;
+  undoImport(importId: string, opId: string): Promise<{ removed: number; kept: number; unpinned?: number; removedFolders?: number; keptFolders?: number }>;
+  /** NEX-06: 恢复 a Nexus collection backup (dryRun = the preview; basis = the preview's revision). */
+  restoreCollection(body: { opId: string; file: unknown; duplicates: RestoreDuplicates; dryRun: boolean; basis?: number }): Promise<RestoreAnswer>;
   exportAll(): Promise<unknown>;
 }
 
@@ -217,12 +238,13 @@ export const httpTransport: Transport = {
     changes: (cursor) => request(`/api/v2/changes?cursor=${encodeURIComponent(cursor)}`),
     create: (body) => request('/api/v2/items', { method: 'POST', body: JSON.stringify(body) }),
     patch: (id, body) => request(`/api/v2/items/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
-    remove: (id, opId) => request(`/api/v2/items/${encodeURIComponent(id)}?opId=${encodeURIComponent(opId)}`, { method: 'DELETE' }),
-    restore: (id, opId) => request(`/api/v2/items/${encodeURIComponent(id)}/restore`, { method: 'POST', body: JSON.stringify({ opId }) }),
+    remove: (id, opId, baseVersion) => request(`/api/v2/items/${encodeURIComponent(id)}?opId=${encodeURIComponent(opId)}${baseVersion === undefined ? '' : `&baseVersion=${baseVersion}`}`, { method: 'DELETE' }),
+    restore: (id, opId, baseVersion) => request(`/api/v2/items/${encodeURIComponent(id)}/restore`, { method: 'POST', body: JSON.stringify(baseVersion === undefined ? { opId } : { opId, baseVersion }) }),
     pin: (id, opId, position) => request(`/api/v2/pins/${encodeURIComponent(id)}`, { method: 'POST', body: JSON.stringify(position === undefined ? { opId } : { opId, position }) }),
     unpin: (id, opId) => request(`/api/v2/pins/${encodeURIComponent(id)}?opId=${encodeURIComponent(opId)}`, { method: 'DELETE' }),
     importItems: (body) => request('/api/v2/import', { method: 'POST', body: JSON.stringify(body) }, 60_000),
     undoImport: (importId, opId) => request(`/api/v2/import/${encodeURIComponent(importId)}/undo`, { method: 'POST', body: JSON.stringify({ opId }) }),
+    restoreCollection: (body) => request('/api/v2/import/collection', { method: 'POST', body: JSON.stringify(body) }, 120_000),
     exportAll: () => request('/api/v2/export', {}, 60_000),
   },
   adminUsers: async () => (await request<{ users: AdminUser[] }>('/api/v2/admin/users')).users,
@@ -292,7 +314,19 @@ export class MemoryTransport implements Transport {
     this.calls.push(batch);
     if (this.seen.has(batch.batchId)) return this.response();
     try {
-      const next = applyOps(this.config, batch.ops);
+      // Like the real server (NEX-04): a deleted app stays deleted until an explicit restore, which
+      // brings back the server's own copy.
+      const restored = new Set<string>();
+      const ops = batch.ops.map((op) => {
+        if (op.type === 'app.restore' && this.deleted.has(op.app.id)) {
+          restored.add(op.app.id);
+          return { ...op, app: this.deleted.get(op.app.id)! };
+        }
+        if (op.type === 'app.upsert' && this.deleted.has(op.app.id) && op.base !== null && !restored.has(op.app.id)) throw new OpError('deleted', `「${op.app.name}」已被删除（在回收站中），这次修改没有应用`, undefined, { appId: op.app.id, current: this.deleted.get(op.app.id) });
+        return op;
+      });
+      const next = applyOps(this.config, ops);
+      this.track(this.config, next);
       this.seen.add(batch.batchId);
       if (next !== this.config) {
         this.config = next;
@@ -300,6 +334,8 @@ export class MemoryTransport implements Transport {
         this.listeners.forEach((fn) => fn(this.revision));
       }
     } catch (e) {
+      // As the real server answers (NEX-04): conflicts are 409 with the v2 code and what is there now.
+      if (e instanceof OpError && CONFLICT_CODES.includes(e.code)) throw new HttpError(409, CONFLICT_HTTP_CODE[e.code as keyof typeof CONFLICT_HTTP_CODE], e.message, false, null, { ...e.details, ...(this.deleted.has(String(e.details?.appId)) ? { current: this.deleted.get(String(e.details?.appId)) } : {}) });
       if (e instanceof OpError) throw new HttpError(422, e.code, e.message);
       throw e;
     }
@@ -450,8 +486,16 @@ export class MemoryTransport implements Transport {
     return () => this.listeners.delete(onRevision);
   }
   /** Simulates another device changing the configuration. */
+  /** Deleted apps (this fake server's 回收站). */
+  deleted = new Map<string, AppEntry>();
+  private track(before: ReturnType<typeof defaultConfig>, after: ReturnType<typeof defaultConfig>) {
+    for (const a of before.apps) if (!after.apps.some((x) => x.id === a.id)) this.deleted.set(a.id, a);
+    for (const a of after.apps) this.deleted.delete(a.id);
+  }
   remoteChange(ops: Parameters<typeof applyOps>[1]) {
-    this.config = applyOps(this.config, ops);
+    const next = applyOps(this.config, ops);
+    this.track(this.config, next);
+    this.config = next;
     this.revision++;
     this.listeners.forEach((fn) => fn(this.revision));
   }

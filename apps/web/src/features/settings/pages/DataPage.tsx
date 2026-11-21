@@ -2,7 +2,7 @@ import { ConfigSchema, defaultConfig, normalizeConfig, type Config } from '@nexu
 import { Cloud, CloudOff, Download, Upload } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from '../../../components/toast-store';
-import { discardHeld, retryHeld, useConfig, useConfigStore, useSaveState } from '../../../data/config-store';
+import { discardHeld, resolveHeld, retryHeld, useConfig, useConfigStore, useSaveState, type ConflictChoice, type HeldBatch } from '../../../data/config-store';
 import { formatHm } from '../../../lib/time';
 import { apply, patch } from '../model';
 import { Button, Dialog, Group, PageHeader, Row, Switch, useCompact } from '../ui';
@@ -44,7 +44,9 @@ export function DataPage() {
   const revision = useConfigStore((s) => s.confirmed?.revision ?? 0);
   const [importing, setImporting] = useState<{ name: string; config: Config } | null>(null);
   const [reset, setReset] = useState<Reset | null>(null);
-  const held = useConfigStore((s) => s.held);
+  const allHeld = useConfigStore((s) => s.held);
+  const held = allHeld.filter((h) => h.reason !== 'conflict');
+  const conflicts = allHeld.map((h, index) => ({ h, index })).filter((x) => x.h.reason === 'conflict');
   const [dropping, setDropping] = useState(false);
   const [typed, setTyped] = useState('');
   const pr = config.settings.privacy;
@@ -106,7 +108,10 @@ export function DataPage() {
       <AdminAccountsSection />
       <Group title={compact ? '同步与登录' : '配置同步'}>
         {syncRow}
-        <Row label="多设备同时修改" sub="按操作合并（如「固定 GitHub」「移动 Notion」），不会整份覆盖；与新状态冲突的改动会被放弃并提示" />
+        <Row label="多设备同时修改" sub="按操作合并（如「固定 GitHub」「移动 Notion」），同一应用的不同字段逐项合并；同一字段在别处也改了、或应用已在别处删除时，这项更改保留在本机由你决定，不会覆盖别处的修改，也不会让删除的应用自动回来" />
+        {conflicts.map(({ h, index }) => (
+          <ConflictRow key={`${h.batch.id}-${index}`} held={h} index={index} />
+        ))}
         {held.length > 0 && (
           <Row label={<span className="text-warn">{held.length} 项更改因超过上限没有保存</span>} sub={`${held.at(-1)!.message}。这些更改保留在本机：删除一些内容腾出空间后重试，或放弃它们。`}>
             <div className="flex flex-none gap-2">
@@ -248,5 +253,46 @@ export function DataPage() {
       </Dialog>
 
     </div>
+  );
+}
+
+/** What each kind of conflict lets the person do (NEX-04); every choice is an ordinary, synced change. */
+const CHOICES: Record<string, { choice: ConflictChoice; label: string; tone?: 'primary' | 'danger' }[]> = {
+  ITEM_DELETED: [
+    { choice: 'mine', label: '恢复并应用我的修改', tone: 'primary' },
+    { choice: 'copy', label: '另存为新应用' },
+    { choice: 'discard', label: '放弃我的修改', tone: 'danger' },
+  ],
+  FIELD_CONFLICT: [
+    { choice: 'mine', label: '用我的修改', tone: 'primary' },
+    { choice: 'copy', label: '另存为新应用' },
+    { choice: 'discard', label: '保留别处的修改', tone: 'danger' },
+  ],
+  REVISION_CONFLICT: [
+    { choice: 'mine', label: '仍然执行', tone: 'primary' },
+    { choice: 'discard', label: '保持现状', tone: 'danger' },
+  ],
+};
+
+const DONE: Record<ConflictChoice, string> = { mine: '已按你的选择重新提交', copy: '已另存为新应用', discard: '已放弃这项更改' };
+
+/** One change another device got ahead of: what happened, and what to do with it. */
+function ConflictRow({ held, index }: { held: HeldBatch; index: number }) {
+  const hasEdit = held.batch.ops.some((o) => o.type === 'app.upsert');
+  const choices = (CHOICES[held.code ?? ''] ?? CHOICES.REVISION_CONFLICT!).filter((c) => c.choice !== 'copy' || hasEdit);
+  const decide = (choice: ConflictChoice) => {
+    const r = resolveHeld(index, choice);
+    toast(r.ok ? { msg: DONE[choice], tone: 'ok' } : { msg: `没有完成：${r.error.message}`, tone: 'warn' });
+  };
+  return (
+    <Row label={<span className="text-warn">有一项更改与别处的修改冲突</span>} sub={`${held.message}。这项更改保留在本机，直到你决定。`}>
+      <div className="flex flex-none flex-wrap gap-2">
+        {choices.map((c) => (
+          <Button key={c.choice} variant={c.tone === 'danger' ? 'danger' : c.tone === 'primary' ? 'primary' : 'secondary'} onClick={() => decide(c.choice)}>
+            {c.label}
+          </Button>
+        ))}
+      </div>
+    </Row>
   );
 }

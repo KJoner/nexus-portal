@@ -1,5 +1,5 @@
 import type { APIRequestContext, Page } from '@playwright/test';
-import { expect, ops, serverConfig, signIn, test } from './fixtures';
+import { expect, freshTag, ops, serverConfig, signIn, test } from './fixtures';
 
 type App = Record<string, unknown> & { id: string; name: string; categoryId: string };
 const dock = (id: string) => `[data-dock="${id}"]`;
@@ -8,7 +8,8 @@ const dock = (id: string) => `[data-dock="${id}"]`;
 async function addPinnedSites(api: APIRequestContext, n: number) {
   const cfg = (await serverConfig(api)) as unknown as { apps: App[] };
   const gh = cfg.apps.find((a) => a.id === 'github')!;
-  const sites = Array.from({ length: n }, (_, i) => ({ ...gh, id: `site-${i}`, name: `站点 ${i}`, url: `https://s${i}.example.com`, icon: { source: 'letter', ref: '', letter: 'S', tone: 0 } }));
+  const tag = freshTag();
+  const sites = Array.from({ length: n }, (_, i) => ({ ...gh, id: `site-${tag}-${i}`, name: `站点 ${i}`, url: `https://s${i}.example.com`, icon: { source: 'letter', ref: '', letter: 'S', tone: 0 } }));
   await ops(api, sites.map((app) => ({ type: 'app.upsert', app })));
   await ops(api, sites.map((s) => ({ type: 'pin.add', appId: s.id })));
   return (await serverConfig(api)).pins;
@@ -501,7 +502,8 @@ test.describe('mobile', () => {
     await expect(sheet.getByRole('button', { name: '移到最前' })).toBeVisible();
     expect(new URL(page.url()).pathname).toBe('/');
     await sheet.getByRole('button', { name: '移到最前' }).tap();
-    await expect.poll(async () => (await serverConfig(page.context().request)).pins[0]).toBe('site-2');
+    const site2 = (await serverConfig(page.context().request)).apps.find((a) => a.name === '站点 2')!.id;
+    await expect.poll(async () => (await serverConfig(page.context().request)).pins[0]).toBe(site2);
   });
 
   test('sort mode on a phone offers the non-drag menu', async ({ home: page }) => {

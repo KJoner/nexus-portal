@@ -16,6 +16,7 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test:e2e": "npm run build && playwright test",
     "test:e2e:auth": "npm run build && playwright test -c playwright.auth.config.ts",
+    "test:e2e:release": "npm run build && npm run package -w @nexus/chrome-extension && playwright test -c playwright.release.config.ts",
     "catalog:check": "npm run catalog:check -w @nexus/server",
     "catalog:verify": "node scripts/catalog-verify.mjs"
   },
