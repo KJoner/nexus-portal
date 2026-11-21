@@ -5,9 +5,19 @@ import { useSearchParams } from 'react-router';
 import { toast } from '../../../components/toast-store';
 import { devicesApi } from '../../../data/config-store';
 import { formatAgo } from '../../../lib/time';
-import { Button, Dialog, Group, Row, Spinner, Switch } from '../ui';
+import { Button, Dialog, Group, Row, Spinner, Switch, Tag } from '../ui';
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : '操作失败');
+
+/** Why an account-wide revocation ended a device (server reason codes, ADR-019). */
+const REVOKED_REASON: Record<string, string> = {
+  'logout-all': '已在「退出 Nexus 的全部设备」时撤销',
+  'all-products': '已在「退出所有产品与设备」时撤销',
+  'peer-request': '已在另一个产品中「退出所有产品与设备」时撤销',
+  'admin-disabled': '账号被管理员停用时撤销',
+  'central-disabled': '账号在账号中心被停用时撤销',
+  'account-deleted': '账号在账号中心被删除时撤销',
+};
 
 /** What a device may do, in words; an old pairing without scopes is read-only (v0.4 never widens it). */
 export function describeScopes(scopes: readonly DeviceScope[] | undefined): string {
@@ -98,19 +108,28 @@ export function DevicesSection() {
         {devices === null ? (
           <Row label={<span className="flex items-center gap-2.5"><Spinner />正在读取…</span>} />
         ) : devices.length ? (
-          devices.map((d) => (
-            <Row
-              key={d.id}
-              label={<span className="flex items-center gap-2.5"><Puzzle className="size-[18px] text-ink/60" />{d.name}</span>}
-              sub={`${describeScopes(d.scopes)} · 授权于 ${formatAgo(Date.parse(d.createdAt))} · ${d.lastUsedAt ? `最近同步 ${formatAgo(Date.parse(d.lastUsedAt))}` : '尚未同步'}`}
-            >
-              <Button onClick={() => setRevoking(d)}>撤销</Button>
-            </Row>
-          ))
+          devices.map((d) =>
+            d.revokedAt ? (
+              // Revoked by an account-wide revocation (ADR-019): listed for a while, nothing left to do.
+              <Row
+                key={d.id}
+                label={<span className="flex items-center gap-2.5 text-ink/50"><Puzzle className="size-[18px]" />{d.name}<Tag tone="warn">已撤销</Tag></span>}
+                sub={`${REVOKED_REASON[d.revokedReason ?? ''] ?? '授权已被撤销'} · ${formatAgo(Date.parse(d.revokedAt))}；扩展下次联网时会提示重新连接`}
+              />
+            ) : (
+              <Row
+                key={d.id}
+                label={<span className="flex items-center gap-2.5"><Puzzle className="size-[18px] text-ink/60" />{d.name}</span>}
+                sub={`${describeScopes(d.scopes)} · 授权于 ${formatAgo(Date.parse(d.createdAt))} · ${d.lastUsedAt ? `最近同步 ${formatAgo(Date.parse(d.lastUsedAt))}` : '尚未同步'}`}
+              >
+                <Button onClick={() => setRevoking(d)}>撤销</Button>
+              </Row>
+            ),
+          )
         ) : (
           <Row label="还没有连接的扩展" sub="在 Chrome 新标签页扩展中填写本门户的地址，再回到这里确认连接。扩展只能读取导航配置，不能修改设置。" />
         )}
-        <Row label="访问范围" sub="每个扩展只能做连接时你批准的事（默认只读：应用、分类、首页设置、图标和壁纸）；拿不到你的登录凭据。「退出全部设备」、更改访问密码或停用账号都会撤销所有扩展。" />
+        <Row label="访问范围" sub="每个扩展只能做连接时你批准的事（默认只读：应用、分类、首页设置、图标和壁纸）；拿不到你的登录凭据。「退出 Nexus 的全部设备」「退出所有产品与设备」、更改访问密码或停用账号都会撤销所有扩展，连同已批准但还没领取的授权。" />
       </Group>
 
       <Dialog

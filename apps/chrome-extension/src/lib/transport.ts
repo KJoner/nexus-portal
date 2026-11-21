@@ -73,6 +73,7 @@ export function extensionTransport(area: Area, fetchImpl: Fetch): Transport {
     authOptions: readOnly,
     me: readOnly,
     logoutAll: readOnly,
+    revokeEverywhere: readOnly,
     adminUsers: readOnly,
     setUserDisabled: readOnly,
     createInvite: readOnly,

@@ -19,6 +19,19 @@ export interface FakeIdp {
   signWithForeignKey: boolean;
   /** Refresh tokens of this subject are refused from now on (account disabled, signed out everywhere). */
   revokeRefresh(sub: string): void;
+  /**
+   * Keycloak Account REST API `DELETE {issuer}/account/sessions?current=true` (ADR-019 动作 C): how it
+   * answers. `ok` ends every session of the token's user (its refresh tokens stop working, as in
+   * Keycloak) and calls `onSessionsEnded`; `forbidden` is a token without `manage-account` (403);
+   * `down` an unreachable provider.
+   */
+  accountApi: 'ok' | 'forbidden' | 'down';
+  /** Subjects whose sessions the Account REST API ended, in order. */
+  accountLogouts: string[];
+  /** Called with the session ids the Account REST API ended (tests send the back-channel logouts). */
+  onSessionsEnded: ((sub: string, sids: string[]) => Promise<void>) | null;
+  /** Session ids of the subject's live sessions (one per sign-in). */
+  sessionsOf(sub: string): string[];
   logoutToken(claims: { sub?: string; sid?: string; events?: unknown; nonce?: string }): Promise<string>;
   tokenRequests: URLSearchParams[];
 }
@@ -33,6 +46,14 @@ export async function fakeIdp(opts: { issuer?: string; clientId?: string; client
   const codes = new Map<string, { nonce: string; challenge: string; redirectUri: string; user: Parameters<FakeIdp['authorize']>[1] }>();
   const refresh = new Map<string, string>();
   const revoked = new Set<string>();
+  /** refresh token → its session; access token → whose (user tokens carry manage-account). */
+  const sessionOf = new Map<string, { sub: string; sid: string }>();
+  const accessTokens = new Map<string, { sub: string }>();
+  const userAccess = (sub: string) => {
+    const at = randomBytes(12).toString('hex');
+    accessTokens.set(at, { sub });
+    return at;
+  };
 
   const sign = async (payload: JWTPayload, idp: FakeIdp): Promise<string> => {
     const header = { alg: 'RS256', kid: 'k1' };
@@ -64,6 +85,12 @@ export async function fakeIdp(opts: { issuer?: string; clientId?: string; client
     revokeRefresh(sub) {
       revoked.add(sub);
     },
+    accountApi: 'ok',
+    accountLogouts: [],
+    onSessionsEnded: null,
+    sessionsOf(sub) {
+      return [...new Set([...sessionOf.entries()].filter(([rt, v]) => v.sub === sub && refresh.has(rt)).map(([, v]) => v.sid))];
+    },
     async logoutToken(claims) {
       const now = Math.floor(Date.now() / 1000);
       return new SignJWT({ iss: issuer, aud: clientId, iat: now, jti: randomBytes(8).toString('hex'), events: claims.events ?? { 'http://schemas.openid.net/event/backchannel-logout': {} }, ...(claims.sub ? { sub: claims.sub } : {}), ...(claims.sid ? { sid: claims.sid } : {}), ...(claims.nonce ? { nonce: claims.nonce } : {}) })
@@ -91,6 +118,20 @@ export async function fakeIdp(opts: { issuer?: string; clientId?: string; client
         });
       }
       if (path === `${base}/protocol/openid-connect/certs`) return Response.json({ keys: [jwk] });
+      if (path === `${base}/account/sessions`) {
+        const method = (input instanceof Request ? input.method : init?.method) ?? 'GET';
+        const headers = new Headers(input instanceof Request ? input.headers : init?.headers);
+        if (idp.accountApi === 'down') return new Response('unavailable', { status: 503 });
+        const who = accessTokens.get(/^Bearer (.+)$/.exec(headers.get('authorization') ?? '')?.[1] ?? '');
+        if (!who) return Response.json({ error: 'invalid_token' }, { status: 401 });
+        if (idp.accountApi === 'forbidden') return Response.json({ error: 'HTTP 403 Forbidden' }, { status: 403 });
+        if (method !== 'DELETE' || url.searchParams.get('current') !== 'true' || headers.get('accept') !== 'application/json') return Response.json({ error: 'bad request' }, { status: 400 });
+        const sids = idp.sessionsOf(who.sub);
+        for (const [rt, v] of sessionOf) if (v.sub === who.sub) refresh.delete(rt);
+        idp.accountLogouts.push(who.sub);
+        await idp.onSessionsEnded?.(who.sub, sids);
+        return new Response(null, { status: 204 });
+      }
       if (path === `${base}/protocol/openid-connect/token`) {
         const raw = input instanceof Request ? await input.text() : init?.body;
         const form = raw instanceof URLSearchParams ? raw : new URLSearchParams(String(raw ?? ''));
@@ -104,7 +145,7 @@ export async function fakeIdp(opts: { issuer?: string; clientId?: string; client
         if (form.get('grant_type') === 'refresh_token') {
           const sub = refresh.get(form.get('refresh_token') ?? '');
           if (!sub || revoked.has(sub)) return Response.json({ error: 'invalid_grant', error_description: 'Session not active' }, { status: 400 });
-          return Response.json({ access_token: randomBytes(8).toString('hex'), token_type: 'Bearer', expires_in: 300 });
+          return Response.json({ access_token: userAccess(sub), token_type: 'Bearer', expires_in: 300 });
         }
         const grant = codes.get(form.get('code') ?? '');
         codes.delete(form.get('code') ?? '');
@@ -115,11 +156,12 @@ export async function fakeIdp(opts: { issuer?: string; clientId?: string; client
         const sid = grant.user.sid ?? randomBytes(8).toString('hex');
         const rt = randomBytes(16).toString('hex');
         refresh.set(rt, grant.user.sub);
+        sessionOf.set(rt, { sub: grant.user.sub, sid });
         const id_token = await sign(
           { iss: issuer, aud: clientId, azp: clientId, sub: grant.user.sub, iat: now, exp: now + 300, nonce: grant.nonce, sid, email: grant.user.email, email_verified: grant.user.emailVerified ?? true, name: grant.user.name },
           idp,
         );
-        return Response.json({ access_token: randomBytes(8).toString('hex'), token_type: 'Bearer', expires_in: 300, refresh_token: rt, id_token, scope: 'openid email profile' });
+        return Response.json({ access_token: userAccess(grant.user.sub), token_type: 'Bearer', expires_in: 300, refresh_token: rt, id_token, scope: 'openid email profile' });
       }
       return new Response('not found', { status: 404 });
     }) as typeof fetch,

@@ -16,6 +16,7 @@ import {
   type LinkwardenStatus,
   type LogoutAllResponse,
   type MeResponse,
+  type RevokeEverywhereResponse,
   type OpBatch,
   type PairingRequest,
   type ServiceStatus,
@@ -86,10 +87,13 @@ export interface Transport {
   revokeDevice(id: string): Promise<DeviceInfo[]>;
   pairingRequest(code: string): Promise<PairingRequest>;
   decidePairing(code: string, approve: boolean, scopes?: string[]): Promise<void>;
-  /** v0.4 accounts: sign-in options (public), who this session is, 退出所有设备. */
+  /** v0.4 accounts: sign-in options (public), who this session is. */
   authOptions(): Promise<AuthOptions>;
   me(): Promise<MeResponse>;
+  /** ADR-019 动作 B · 退出 Nexus 的全部设备. */
   logoutAll(): Promise<LogoutAllResponse>;
+  /** ADR-019 动作 C · 退出所有产品与设备: what happened to each part. */
+  revokeEverywhere(): Promise<RevokeEverywhereResponse>;
   /** v0.4 administration (administrators only; the server answers 403 otherwise). */
   adminUsers(): Promise<AdminUser[]>;
   setUserDisabled(id: string, disabled: boolean): Promise<void>;
@@ -194,6 +198,8 @@ export const httpTransport: Transport = {
   authOptions: () => request('/api/v2/auth/options'),
   me: () => request('/api/v2/me'),
   logoutAll: () => request('/api/v2/account/logout-all', { method: 'POST' }),
+  // The identity service and the other product are asked too: allow time for both.
+  revokeEverywhere: () => request('/api/v2/account/revoke-everywhere', { method: 'POST' }, 30_000),
   items: {
     snapshot: (page) => request(`/api/v2/snapshot${page ? `?page=${encodeURIComponent(page)}` : ''}`, {}, 20_000),
     changes: (cursor) => request(`/api/v2/changes?cursor=${encodeURIComponent(cursor)}`),
@@ -252,6 +258,9 @@ export class MemoryTransport implements Transport {
   account: { id: string; role: 'admin' | 'user'; session: 'password' | 'oidc'; canLinkIdentity: boolean } = { id: 'legacy-admin', role: 'admin', session: 'password', canLinkIdentity: false };
   options: AuthOptions = { oidc: false, legacyPassword: true, registration: 'closed', accountUrl: null };
   loggedOutAll = 0;
+  revokedEverywhere = 0;
+  /** What 动作 C answers in tests. */
+  everywhere: RevokeEverywhereResponse = { ok: true, local: { state: 'done', revokedSessions: 1, revokedDevices: 0, revokedGrants: 0 }, identityCenter: { state: 'done' }, peers: [{ product: 'litesync', state: 'delivered', eventId: '0'.repeat(32), attempts: 1, nextAttemptAt: null, error: null, result: 'applied' }] };
   catalogCalls = 0;
   private listeners = new Set<(r: number) => void>();
 
@@ -374,7 +383,13 @@ export class MemoryTransport implements Transport {
     this.guard();
     this.loggedOutAll++;
     this.authenticated = false;
-    return { sessions: 1, devices: 0, endSessionUrl: null };
+    return { sessions: 1, devices: 0, grants: 0, endSessionUrl: null };
+  }
+  async revokeEverywhere(): Promise<RevokeEverywhereResponse> {
+    this.guard();
+    this.revokedEverywhere++;
+    this.authenticated = false;
+    return this.everywhere;
   }
   items: ItemsTransport = new Proxy({} as ItemsTransport, { get: () => async () => { throw new HttpError(501, 'not_in_tests', '收藏库接口在单元测试中不可用'); } });
   users: AdminUser[] = [];

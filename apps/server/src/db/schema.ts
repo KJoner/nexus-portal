@@ -360,6 +360,54 @@ export const MIGRATIONS: readonly string[] = [
   alter table user_config add column items_migrated integer not null default 0;
   alter table user_config add column item_seq integer not null default 0;
   `,
+  `
+  -- v9 (v0.4.1 · ADR-019 账号撤销): every account has an authorization epoch that only grows. Sessions,
+  -- devices and approved pairings remember the epoch they were issued under; a different epoch means
+  -- revoked, whatever raced with the revocation. Existing rows start at 0, so nothing changes on upgrade.
+  alter table users add column auth_epoch integer not null default 0;
+  -- When the identity service last confirmed the account is still enabled (中心停用检查, §2.5).
+  alter table users add column identity_checked_at integer;
+  alter table sessions add column auth_epoch integer not null default 0;
+  alter table devices add column auth_epoch integer not null default 0;
+  -- A device revoked by 退出全部设备 stays listed for a while; its token hash is replaced at the same
+  -- moment, so even an older release (which only looks the hash up) can never use it again.
+  alter table devices add column revoked_at integer;
+  alter table devices add column revoked_reason text;
+  -- Cross-product revocation (§2.4): events this product sends to the other one (an outbox: stored
+  -- in the same transaction as the local revocation, delivered once at once, then retried)…
+  create table revocation_outbox (
+    id text primary key,
+    user_id text not null references users (id),
+    peer text not null,
+    body text not null,
+    reason text not null,
+    state text not null,
+    result text,
+    attempts integer not null default 0,
+    next_attempt_at integer,
+    last_error text,
+    created_at integer not null,
+    expires_at integer not null,
+    delivered_at integer,
+    updated_at integer not null
+  );
+  create index revocation_outbox_due on revocation_outbox (state, next_attempt_at);
+  create index revocation_outbox_user on revocation_outbox (user_id, created_at);
+  -- …and events it received: deduplicated by event id, and the audit of who signed whom out.
+  create table revocation_inbox (
+    event_id text primary key,
+    origin text not null,
+    issuer text not null,
+    subject text not null,
+    scope text not null,
+    reason text not null,
+    occurred_at text not null,
+    user_id text,
+    result text not null,
+    received_at integer not null
+  );
+  create index revocation_inbox_user on revocation_inbox (user_id, received_at);
+  `,
 ];
 
 /**
@@ -610,4 +658,45 @@ export const PG_MIGRATIONS: readonly string[] = [
   alter table user_config add column items_migrated integer not null default 0;
   alter table user_config add column item_seq bigint not null default 0;
   `,
+  `
+  -- v3 (v0.4.1 · ADR-019 账号撤销): see SQLite v9.
+  alter table users add column auth_epoch bigint not null default 0;
+  alter table users add column identity_checked_at bigint;
+  alter table sessions add column auth_epoch bigint not null default 0;
+  alter table devices add column auth_epoch bigint not null default 0;
+  alter table devices add column revoked_at bigint;
+  alter table devices add column revoked_reason text;
+  create table revocation_outbox (
+    id text primary key,
+    user_id text not null references users (id),
+    peer text not null,
+    body text not null,
+    reason text not null,
+    state text not null,
+    result text,
+    attempts integer not null default 0,
+    next_attempt_at bigint,
+    last_error text,
+    created_at bigint not null,
+    expires_at bigint not null,
+    delivered_at bigint,
+    updated_at bigint not null
+  );
+  create index revocation_outbox_due on revocation_outbox (state, next_attempt_at);
+  create index revocation_outbox_user on revocation_outbox (user_id, created_at);
+  create table revocation_inbox (
+    event_id text primary key,
+    origin text not null,
+    issuer text not null,
+    subject text not null,
+    scope text not null,
+    reason text not null,
+    occurred_at text not null,
+    user_id text,
+    result text not null,
+    received_at bigint not null
+  );
+  create index revocation_inbox_user on revocation_inbox (user_id, received_at);
+  `,
 ];
+

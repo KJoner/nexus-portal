@@ -1,12 +1,13 @@
 import { defaultConfig, type AuthOptions } from '@nexus/shared';
 import { ArrowRight, KeyRound, LogIn } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { authOptions, login } from '../../data/config-store';
+import { authOptions, dismissEverywhere, lastEverywhere, login } from '../../data/config-store';
 import { HttpError, NetworkError } from '../../data/transport';
 import { cn } from '../../lib/cn';
 import { useNow, useViewport } from '../../lib/hooks';
 import { formatClock, formatDate } from '../../lib/time';
 import { Wallpaper } from '../home/Wallpaper';
+import { RevocationResult } from './RevocationResult';
 
 const LOOK = defaultConfig().settings.look;
 
@@ -51,6 +52,8 @@ export function LoginPage() {
   const [invite, setInvite] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(() => AUTH_ERRORS[new URLSearchParams(location.search).get('auth_error') ?? ''] ?? '');
+  // 退出所有产品与设备 just signed this browser out: what happened to each part stays on screen.
+  const [everywhere, setEverywhere] = useState(lastEverywhere);
   const input = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -126,6 +129,16 @@ export function LoginPage() {
             Nexus
             <span className="text-[13px] font-normal text-ink/50">{options?.oidc ? '登录或注册以继续' : '输入访问密码以继续'}</span>
           </div>
+
+          {everywhere && (
+            <div className="flex flex-col gap-2 rounded-[18px] px-3.5 py-3" style={{ background: 'rgba(239,234,225,0.06)' }}>
+              <RevocationResult result={everywhere.result} at={everywhere.at} />
+              <p className="m-0 text-[12px] text-ink/50">登录后可以在「设置 › 数据、同步与安全」查看最新状态，并重新发送没有送达的通知。</p>
+              <button type="button" onClick={() => (dismissEverywhere(), setEverywhere(null))} className="h-8 self-start rounded-[10px] border-0 bg-ink/9 px-3 text-[12.5px] text-ink hover:bg-ink/15">
+                知道了
+              </button>
+            </div>
+          )}
 
           {optionsError && <p className="m-0 px-1 text-[13px] text-ink/70">无法连接 Nexus 服务端，请检查网络后刷新页面。</p>}
 

@@ -1,6 +1,6 @@
 import { getConnInfo } from '@hono/node-server/conninfo';
 import { serveStatic } from '@hono/node-server/serve-static';
-import { AppSchema, DEVICE_SCOPE_LABELS, DEVICE_TOKEN, isDeviceScope, OpBatchSchema, OpError, PAIR_CODE, validateApp, type CatalogResponse, type ConfigResponse, type DeviceScope, type WallpaperSourcesResponse } from '@nexus/shared';
+import { AppSchema, DEVICE_SCOPE_LABELS, DEVICE_TOKEN, isDeviceScope, OpBatchSchema, OpError, PAIR_CODE, validateApp, type CatalogResponse, type ConfigResponse, type DeviceScope, type LogoutAllResponse, type RevokeEverywhereResponse, type WallpaperSourcesResponse } from '@nexus/shared';
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { PairingError, type DeviceAuth, type Devices, type Pairings } from './auth/devices';
 import { LoginIntents, safeReturnTo } from './auth/intents';
 import { OidcError, type Oidc } from './auth/oidc';
+import { Revocations } from './auth/revocation';
 import type { LoginLimiter } from './auth/rate-limit';
 import type { Auth, Session } from './auth/sessions';
 import { CatalogCursorError, CatalogService } from './catalog/service';
@@ -64,6 +65,8 @@ export interface Deps {
   catalog?: CatalogService;
   /** Product notification mail (null: none sent). */
   mail?: Outbox | null;
+  /** ADR-019 account revocation (built from the other parts when omitted). */
+  revocations?: Revocations;
   now?: () => number;
 }
 
@@ -101,6 +104,7 @@ export function createApp(deps: Deps) {
   const limits = deps.limits ?? new RateLimiter();
   const catalog = deps.catalog ?? new CatalogService({ litesyncUrl: env.litesyncUrl ?? null });
   const now = deps.now ?? Date.now;
+  const revocations = deps.revocations ?? new Revocations({ db: repo.db, users, devices, pairings, oidc, secrets, now });
   const app = new Hono<{ Variables: Vars }>();
 
   const clientKey = (c: Context) => {
@@ -132,7 +136,7 @@ export function createApp(deps: Deps) {
   };
 
   const configResponse = async (ownerId: string): Promise<ConfigResponse> => ({ ...(await repo.snapshot(ownerId)), wallpapers: await wallpapers.list(ownerId) });
-  const notify = async (user: User, key: string, template: 'device-authorized' | 'signed-out-everywhere', data: Record<string, string> = {}) => {
+  const notify = async (user: User, key: string, template: 'device-authorized' | 'signed-out-everywhere' | 'signed-out-all-products', data: Record<string, string> = {}) => {
     if (!mail || !user.email || !user.emailVerified) return;
     await mail.enqueue(key, template, user.email, data).catch((e) => console.error('[nexus] 邮件入队失败', e));
   };
@@ -507,7 +511,11 @@ export function createApp(deps: Deps) {
     if (s.kind === 'oidc' && oidc && s.revalidateAt !== null && s.revalidateAt <= now()) {
       const refresh = s.refreshEnc ? safeOpen(secrets, s.refreshEnc) : null;
       const r = refresh ? await oidc.refresh(refresh) : ({ ok: false, reason: 'invalid' } as const);
-      if (r.ok) await auth.markRevalidated(s.idHash, now() + REVALIDATE_MS, r.refreshToken ? secrets.seal(r.refreshToken) : undefined);
+      if (r.ok) {
+        await auth.markRevalidated(s.idHash, now() + REVALIDATE_MS, r.refreshToken ? secrets.seal(r.refreshToken) : undefined);
+        // The provider honoured the refresh: the account is enabled there right now.
+        await users.markIdentityChecked(user.id, now());
+      }
       else if (r.reason === 'invalid' || now() - s.revalidateAt > REVALIDATE_GRACE_MS) {
         await auth.revokeById(s.idHash);
         deleteCookie(c, COOKIE, { path: '/' });
@@ -580,16 +588,31 @@ export function createApp(deps: Deps) {
     });
   });
 
-  /** 退出所有设备: every browser session and every paired device of this account. */
+  /**
+   * ADR-019 动作 B · 退出本产品的全部设备: every browser session, paired device and approved-but-
+   * unclaimed pairing of this account in Nexus — in one transaction (a new epoch). The identity
+   * service and LiteSync are not touched (that is 动作 C below), so there is no end-session hop.
+   */
   app.post('/api/v2/account/logout-all', async (c) => {
     const u = me(c);
-    const idToken = c.get('session').idTokenEnc ? safeOpen(secrets, c.get('session').idTokenEnc!) : null;
-    const sessions = await auth.revokeAllForUser(u.id);
-    const removed = await devices.revokeAllForOwner(u.id);
+    const r = await revocations.revokeProduct(u.id, 'logout-all');
     deleteCookie(c, COOKIE, { path: '/' });
     await notify(u, `signed-out:${u.id}:${now()}`, 'signed-out-everywhere');
-    const endSession = oidc ? await oidc.endSessionUrl(idToken) : null;
-    return c.json({ sessions, devices: removed, endSessionUrl: endSession?.toString() ?? null });
+    return c.json({ sessions: r?.sessions ?? 0, devices: r?.devices ?? 0, grants: r?.grants ?? 0, endSessionUrl: null } satisfies LogoutAllResponse);
+  });
+
+  /**
+   * ADR-019 动作 C · 退出所有产品与设备: 动作 B here, then every identity-service session of the user
+   * (all browsers), then the other product. The answer reports each part as it really is.
+   */
+  app.post('/api/v2/account/revoke-everywhere', async (c) => {
+    const u = me(c);
+    if (!oidc || !u.issuer) return v2Error(c, 409, 'NO_UNIFIED_IDENTITY', '这个账号没有使用统一账号：请改用「退出 Nexus 的全部设备」');
+    const r = await revocations.revokeEverywhere(u.id, c.get('session'));
+    deleteCookie(c, COOKIE, { path: '/' });
+    if (!r) return v2Error(c, 404, 'NOT_FOUND', '账号不存在');
+    await notify(u, `signed-out-all:${u.id}:${now()}`, 'signed-out-all-products');
+    return c.json(r satisfies RevokeEverywhereResponse);
   });
 
   // ── Administration (v2): accounts and invitations ──────────────────────
@@ -598,12 +621,11 @@ export function createApp(deps: Deps) {
     const id = c.req.param('id');
     if (id === me(c).id) return v2Error(c, 409, 'SELF_LOCKOUT', '不能停用自己的账号');
     const disable = c.req.param('action') === 'disable';
-    if (!(await users.setDisabled(id, disable))) return v2Error(c, 404, 'NOT_FOUND', '账号不存在');
-    // Disabling ends access now: sessions and paired devices go (offline caches cannot be wiped remotely).
-    if (disable) {
-      await auth.revokeAllForUser(id);
-      await devices.revokeAllForOwner(id);
-    }
+    // Disabling is 动作 B in the same transaction: sessions, devices and approved pairings end now
+    // (offline caches cannot be wiped remotely). Enabling again only lets the person sign in again:
+    // nothing issued before comes back (the epoch never goes down).
+    const done = disable ? !!(await revocations.disable(id)) : await users.setDisabled(id, false);
+    if (!done) return v2Error(c, 404, 'NOT_FOUND', '账号不存在');
     return c.json({ id, disabled: disable });
   });
   app.post('/api/v2/admin/invites', adminOnly, bodyLimit({ maxSize: 1024 }), async (c) => {
@@ -673,7 +695,9 @@ export function createApp(deps: Deps) {
     const u = me(c);
     const request = PAIR_CODE.test(code) ? pairings.peek(code) : null;
     const grant = body.data.scopes?.filter(isDeviceScope);
-    if (!request || !pairings.decide(code, body.data.approve, u.id, grant)) return apiError(c, 404, 'not_found', '连接请求不存在或已过期');
+    // The grant remembers the epoch this request was authenticated under (ADR-019): a revocation
+    // that lands before the extension picks the token up makes the pick-up fail.
+    if (!request || !pairings.decide(code, body.data.approve, u.id, grant, u.authEpoch)) return apiError(c, 404, 'not_found', '连接请求不存在或已过期');
     if (body.data.approve) {
       const granted = (request.scopes ?? ['config:read']).filter((s) => !grant || grant.includes(s));
       await notify(u, `device-authorized:${code}:${u.id}`, 'device-authorized', { device: request.name, scopes: granted.map((s) => DEVICE_SCOPE_LABELS[s]).join('、') });

@@ -216,25 +216,54 @@ describe('ending sessions (ID-07)', () => {
     expect((await me(t.app, b.cookie)).status).toBe(401);
   });
 
-  it('退出所有设备 ends every session and device of the account and says so by mail', async () => {
-    const { t } = await setup();
+  // 复审 NEX-02 指出：这条用例原来只建了两个网页会话，却声称「设备也全部结束」。现在真的建一台扩展
+  // 设备和一个已批准未领取的配对，逐项断言动作 B 的范围（ADR-019）。
+  it('退出 Nexus 的全部设备 (动作 B) ends every session, device and approved pairing of the account, says so by mail, and leaves the identity service alone', async () => {
+    const { t, idp } = await setup();
     const a = await t.loginOidc({ sub: 'dave', email: 'dave@example.org' });
     const b = await t.loginOidc({ sub: 'dave', email: 'dave@example.org' });
+    const id = ((await (await me(t.app, a.cookie)).json()) as { account: { id: string } }).account.id;
+    const device = await t.deps.devices.create(id, 'Chrome 扩展', '', ['config:read', 'items:read', 'items:write']);
+    const bearer = { ...write, authorization: `Bearer ${device.token}` };
+    expect((await t.app.request('/api/sync/config', { headers: bearer })).status).toBe(200);
+    const pending = t.deps.pairings.start('Edge 扩展', 'ip', '', ['config:read']);
+    expect((await t.app.request(`/api/devices/pairing/${pending.code}`, { method: 'POST', headers: { ...write, cookie: a.cookie }, body: JSON.stringify({ approve: true }) })).status).toBe(200);
+
     const res = await t.app.request('/api/v2/account/logout-all', { method: 'POST', headers: { ...write, cookie: a.cookie } });
-    expect(await res.json()).toMatchObject({ sessions: 2, endSessionUrl: expect.stringContaining('/protocol/openid-connect/logout') });
+    expect(await res.json()).toEqual({ sessions: 2, devices: 1, grants: 1, endSessionUrl: null });
+    expect((await me(t.app, a.cookie)).status).toBe(401);
     expect((await me(t.app, b.cookie)).status).toBe(401);
+    expect((await t.app.request('/api/sync/config', { headers: bearer })).status).toBe(401);
+    expect((await t.app.request('/api/v2/items', { method: 'POST', headers: bearer, body: JSON.stringify({ opId: 'after-b', item: { title: 'x', url: 'https://after.example.org/' } }) })).status).toBe(401);
+    expect(await t.deps.pairings.poll(pending.pairId, pending.secret)).toEqual({ status: 'denied' });
+    // Not 动作 C: the identity service was not asked to end anything.
+    expect(idp.accountLogouts).toEqual([]);
     await t.deps.mail!.runDue();
-    expect(t.mail.sent.map((m) => [m.to, m.subject])).toEqual([['dave@example.org', '你的 Nexus 账号已在所有设备上退出']]);
+    expect(t.mail.sent.map((m) => [m.to, m.subject])).toEqual([
+      ['dave@example.org', '新的浏览器扩展已连接到你的 Nexus 账号'],
+      ['dave@example.org', '你的 Nexus 账号已在所有设备上退出'],
+    ]);
   });
 
-  it('an administrator disabling an account ends its sessions now; a disabled identity cannot sign in', async () => {
+  it('an administrator disabling an account is 动作 B: sessions, devices and approved pairings end; enabling again revives none of them', async () => {
     const { t } = await setup();
     const user = await t.loginOidc({ sub: 'erin' });
     const id = ((await (await me(t.app, user.cookie)).json()) as { account: { id: string } }).account.id;
+    const device = await t.deps.devices.create(id, 'Chrome 扩展', '');
+    const pending = t.deps.pairings.start('Edge 扩展', 'ip', '');
+    expect((await t.app.request(`/api/devices/pairing/${pending.code}`, { method: 'POST', headers: { ...write, cookie: user.cookie }, body: JSON.stringify({ approve: true }) })).status).toBe(200);
     const admin = await t.loginLegacy();
     expect((await t.app.request(`/api/v2/admin/users/${LEGACY_ADMIN_ID}/disable`, { method: 'POST', headers: { ...write, cookie: admin } })).status).toBe(409);
     expect((await t.app.request(`/api/v2/admin/users/${id}/disable`, { method: 'POST', headers: { ...write, cookie: admin } })).status).toBe(200);
     expect((await me(t.app, user.cookie)).status).toBe(401);
+    expect((await t.app.request('/api/sync/config', { headers: { authorization: `Bearer ${device.token}` } })).status).toBe(401);
     expect((await t.loginOidc({ sub: 'erin' })).location).toBe('/?auth_error=disabled');
+    // Enabled again: signing in works; nothing issued before does (the epoch never goes down).
+    expect((await t.app.request(`/api/v2/admin/users/${id}/enable`, { method: 'POST', headers: { ...write, cookie: admin } })).status).toBe(200);
+    expect((await me(t.app, user.cookie)).status).toBe(401);
+    expect((await t.app.request('/api/sync/config', { headers: { authorization: `Bearer ${device.token}` } })).status).toBe(401);
+    expect(await t.deps.pairings.poll(pending.pairId, pending.secret)).toEqual({ status: 'denied' });
+    const again = await t.loginOidc({ sub: 'erin' });
+    expect((await me(t.app, again.cookie)).status).toBe(200);
   });
 });

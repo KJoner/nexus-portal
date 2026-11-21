@@ -149,12 +149,37 @@ export interface InviteResponse {
   expiresAt: number;
 }
 
-/** POST /api/v2/account/logout-all (v0.4). */
+/**
+ * POST /api/v2/account/logout-all — ADR-019 动作 B「退出 Nexus 的全部设备」: every browser session,
+ * paired device and approved-but-unclaimed pairing of the account in Nexus. The identity service and
+ * LiteSync are not affected.
+ */
 export interface LogoutAllResponse {
   sessions: number;
   devices: number;
-  /** Where to send the browser to end the identity-service session too (absent without OIDC). */
+  /** v0.4.1: approved pairings the extension had not picked up yet (they can no longer be). */
+  grants?: number;
+  /** Always null since v0.4.1 (B leaves the identity service alone); v0.4.0 sent the end-session address. */
   endSessionUrl: string | null;
+}
+
+/** Why the identity-service part of 动作 C did not happen. */
+export type IdentityCenterError = 'not_configured' | 'no_identity' | 'no_identity_session' | 'session_expired' | 'forbidden' | 'not_supported' | 'unavailable';
+
+/** One part of 动作 C sent to another product (ADR-019 §2.4). */
+export type PeerRevocationState =
+  | { product: string; state: 'not_configured' }
+  | { product: string; state: 'pending' | 'delivered' | 'failed'; eventId: string; attempts: number; nextAttemptAt: string | null; error: string | null; result: string | null };
+
+/**
+ * POST /api/v2/account/revoke-everywhere — ADR-019 动作 C「退出所有产品与设备」. `ok` only when every
+ * part is done / delivered; otherwise each part says what really happened.
+ */
+export interface RevokeEverywhereResponse {
+  ok: boolean;
+  local: { state: 'done'; revokedSessions: number; revokedDevices: number; revokedGrants: number };
+  identityCenter: { state: 'done' } | { state: 'failed'; error: IdentityCenterError; accountUrl: string | null };
+  peers: PeerRevocationState[];
 }
 
 export interface LinkwardenStatus {

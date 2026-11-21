@@ -94,7 +94,8 @@ describe('one browser, several accounts', () => {
     server.authenticated = true; // signs in again
     resetSync(server);
     await refresh();
-    expect(await logoutEverywhere()).toBeNull();
+    // 动作 B: nothing to do at the identity service (no end-session hop any more).
+    expect(await logoutEverywhere()).toMatchObject({ endSessionUrl: null });
     expect(server.loggedOutAll).toBe(1);
     expect(state().auth).toBe('anonymous');
     expect(state().snapshot.config.apps.length).toBeGreaterThan(0); // built-in defaults, nothing private

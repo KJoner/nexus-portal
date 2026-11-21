@@ -37,7 +37,7 @@ export interface MailProvider {
 export const recipientHash = (address: string) => createHash('sha256').update(address.trim().toLowerCase()).digest('hex');
 const short = (hash: string) => hash.slice(0, 10);
 
-export type Template = 'device-authorized' | 'signed-out-everywhere';
+export type Template = 'device-authorized' | 'signed-out-everywhere' | 'signed-out-all-products';
 
 export function render(template: Template, data: Record<string, string>): { subject: string; text: string } {
   switch (template) {
@@ -49,7 +49,12 @@ export function render(template: Template, data: Record<string, string>): { subj
     case 'signed-out-everywhere':
       return {
         subject: '你的 Nexus 账号已在所有设备上退出',
-        text: '刚才有人在你的 Nexus 账号中选择了「退出所有设备」：所有浏览器会话和已连接的扩展都已失效，需要重新登录或重新连接。\n\n如果这不是你本人的操作，请立即修改账号密码。\n\n这封邮件由系统自动发送，请勿直接回复。',
+        text: '刚才有人在你的 Nexus 账号中选择了「退出 Nexus 的全部设备」：Nexus 在所有浏览器的登录、已连接的扩展和尚未领取的扩展授权都已失效，需要重新登录或重新连接。账号中心与 LiteSync 的登录不受影响。\n\n如果这不是你本人的操作，请立即修改账号密码。\n\n这封邮件由系统自动发送，请勿直接回复。',
+      };
+    case 'signed-out-all-products':
+      return {
+        subject: '你的账号已在所有产品与设备上退出',
+        text: '刚才有人在 Nexus 中选择了「退出所有产品与设备」：Nexus 的全部登录与已连接的扩展已失效，账号中心在所有浏览器的登录已结束，LiteSync 也会收到撤销通知（它的网页登录、Obsidian 设备与待领取授权随之失效；LiteSync 暂时连不上时 Nexus 会继续重试，状态可在「设置 › 数据、同步与安全」查看）。\n\n如果这不是你本人的操作，请立即修改账号密码。\n\n这封邮件由系统自动发送，请勿直接回复。',
       };
   }
 }

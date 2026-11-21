@@ -1,11 +1,12 @@
 import type { PairingRequest } from '@nexus/shared';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useToastStore } from '../../../components/toast-store';
 import { refresh, resetSync, useConfigStore } from '../../../data/config-store';
 import { MemoryTransport } from '../../../data/transport';
+import { LoginPage } from '../../auth/LoginPage';
 import { AccountSection } from './AccountSection';
 import { AppEditor } from './AppEditor';
 import { DevicesSection } from './DevicesSection';
@@ -31,6 +32,7 @@ async function signInAs(role: 'admin' | 'user', session: 'password' | 'oidc' = r
 
 beforeEach(() => {
   localStorage.clear();
+  sessionStorage.clear();
   server = new MemoryTransport();
   useToastStore.setState({ current: null });
 });
@@ -112,16 +114,57 @@ describe('账号与登录', () => {
     expect(screen.queryByRole('button', { name: /绑定/ })).toBeNull();
   });
 
-  it('退出全部设备 asks first, explains the limit, then ends everything of the account', async () => {
+  it('退出 Nexus 的全部设备 (动作 B) asks first, says what it leaves alone, then ends everything of the account in Nexus', async () => {
     server.options = { oidc: true, legacyPassword: false, registration: 'open', accountUrl: 'https://id.example.org/realms/accounts/account' };
     await signInAs('user');
     const user = open(<AccountSection />);
     await user.click(await screen.findByRole('button', { name: /全部退出/ }));
-    const dialog = await screen.findByRole('dialog', { name: '退出全部设备？' });
-    expect(dialog).toHaveTextContent('其他浏览器如果仍登录着账号中心');
+    const dialog = await screen.findByRole('dialog', { name: '退出 Nexus 的全部设备？' });
+    expect(dialog).toHaveTextContent('已批准但扩展还没领取的授权');
+    expect(dialog).toHaveTextContent('账号中心与 LiteSync 不受影响');
     expect(server.loggedOutAll).toBe(0);
     await user.click(within(dialog).getByRole('button', { name: '全部退出' }));
     await waitFor(() => expect(server.loggedOutAll).toBe(1));
+    expect(server.revokedEverywhere).toBe(0);
     expect(useConfigStore.getState().auth).toBe('anonymous');
+  });
+
+  it('退出所有产品与设备 (动作 C) is a separate action, lists its three steps, and the login page shows each part as it really ended', async () => {
+    server.options = { oidc: true, legacyPassword: false, registration: 'open', accountUrl: 'https://id.example.org/realms/accounts/account' };
+    server.everywhere = {
+      ok: false,
+      local: { state: 'done', revokedSessions: 2, revokedDevices: 1, revokedGrants: 1 },
+      identityCenter: { state: 'failed', error: 'forbidden', accountUrl: 'https://id.example.org/realms/accounts/account' },
+      peers: [{ product: 'litesync', state: 'pending', eventId: 'e'.repeat(32), attempts: 1, nextAttemptAt: new Date(Date.now() + 5000).toISOString(), error: 'network', result: null }],
+    };
+    await signInAs('user');
+    const user = open(<AccountSection />);
+    await user.click(await screen.findByRole('button', { name: /退出所有产品/ }));
+    const dialog = await screen.findByRole('dialog', { name: '退出所有产品与设备？' });
+    expect(dialog).toHaveTextContent('账号中心：结束你在所有浏览器的账号中心登录');
+    expect(dialog).toHaveTextContent('LiteSync：通知它撤销你的网页登录、Obsidian 设备');
+    await user.click(within(dialog).getByRole('button', { name: '退出所有产品' }));
+    await waitFor(() => expect(server.revokedEverywhere).toBe(1));
+    expect(server.loggedOutAll).toBe(0);
+    expect(useConfigStore.getState().auth).toBe('anonymous');
+    cleanup();
+    render(<LoginPage />);
+    const result = await screen.findByRole('region', { name: '退出所有产品与设备的结果' });
+    expect(result).toHaveTextContent('已退出 Nexus；其余部分见下方');
+    expect(result).not.toHaveTextContent('已退出所有产品与设备');
+    expect(result).toHaveTextContent('Nexus：已完成，结束 2 个网页登录，撤销 1 台已连接的扩展和 1 个尚未领取的扩展授权');
+    expect(result).toHaveTextContent('账号中心：没有完成');
+    expect(result).toHaveTextContent('LiteSync：还没有确认（已尝试 1 次，连不上对方的服务端）');
+    expect(within(result).getByRole('link', { name: /账号中心/ })).toHaveAttribute('href', 'https://id.example.org/realms/accounts/account');
+    await userEvent.setup().click(screen.getByRole('button', { name: '知道了' }));
+    expect(screen.queryByRole('region', { name: '退出所有产品与设备的结果' })).toBeNull();
+  });
+
+  it('only a unified account is offered 退出所有产品与设备', async () => {
+    server.options = { oidc: true, legacyPassword: true, registration: 'invite', accountUrl: 'https://id.example.org/realms/accounts/account' };
+    await signInAs('admin', 'password');
+    open(<AccountSection />);
+    expect(await screen.findByRole('button', { name: /全部退出/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /退出所有产品/ })).toBeNull();
   });
 });

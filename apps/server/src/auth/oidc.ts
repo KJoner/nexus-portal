@@ -106,7 +106,7 @@ export class Oidc {
    * honours it (signed out everywhere, account disabled or deleted); `unavailable` is a network or
    * provider failure, which callers tolerate for a limited time.
    */
-  async refresh(refreshToken: string): Promise<{ ok: true; refreshToken: string | null } | { ok: false; reason: 'invalid' | 'unavailable' }> {
+  async refresh(refreshToken: string): Promise<{ ok: true; refreshToken: string | null; accessToken: string } | { ok: false; reason: 'invalid' | 'unavailable' }> {
     let config: client.Configuration;
     try {
       config = await this.cfg();
@@ -115,11 +115,32 @@ export class Oidc {
     }
     try {
       const t = await client.refreshTokenGrant(config, refreshToken);
-      return { ok: true, refreshToken: t.refresh_token ?? null };
+      return { ok: true, refreshToken: t.refresh_token ?? null, accessToken: t.access_token };
     } catch (e) {
       if (e instanceof client.ResponseBodyError) return { ok: false, reason: 'invalid' };
       return { ok: false, reason: 'unavailable' };
     }
+  }
+
+  /**
+   * ADR-019 动作 C 第 2 步: ends every session of the user at the identity service — all browsers,
+   * both products — with the user's own access token and their own `manage-account` right (Keycloak
+   * Account REST API; the realm template maps that role into this client's tokens). Never an
+   * administrator credential, and the browser never sees the token.
+   */
+  async endAllSessions(accessToken: string): Promise<{ ok: true } | { ok: false; reason: 'forbidden' | 'not_supported' | 'unavailable' }> {
+    const url = `${this.settings.issuer.replace(/\/+$/, '')}/account/sessions?current=true`;
+    let res: Response;
+    try {
+      res = await (this.settings.fetch ?? fetch)(url, { method: 'DELETE', headers: { authorization: `Bearer ${accessToken}`, accept: 'application/json' }, signal: AbortSignal.timeout(5_000) });
+    } catch {
+      return { ok: false, reason: 'unavailable' };
+    }
+    if (res.ok) return { ok: true };
+    // 401/403: the token lacks `manage-account` (the realm has not been updated) or was refused.
+    if (res.status === 401 || res.status === 403) return { ok: false, reason: 'forbidden' };
+    if (res.status === 404 || res.status === 405) return { ok: false, reason: 'not_supported' };
+    return { ok: false, reason: 'unavailable' };
   }
 
   async endSessionUrl(idTokenHint: string | null): Promise<URL | null> {

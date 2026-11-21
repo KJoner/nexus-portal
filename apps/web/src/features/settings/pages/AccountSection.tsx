@@ -1,8 +1,9 @@
 import type { AuthOptions } from '@nexus/shared';
-import { ExternalLink, KeyRound, LogOut, MonitorX } from 'lucide-react';
+import { ExternalLink, KeyRound, LogOut, MonitorX, ShieldOff } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from '../../../components/toast-store';
-import { authOptions, logout, logoutEverywhere, useAccount, useSaveState } from '../../../data/config-store';
+import { authOptions, logout, logoutEverywhere, revokeAllProducts, useAccount, useSaveState } from '../../../data/config-store';
+import { HttpError } from '../../../data/transport';
 import { AUTH_ERRORS, AUTH_OFFLINE } from '../../auth/LoginPage';
 import { Button, Dialog, Group, Row, Tag } from '../ui';
 
@@ -12,15 +13,20 @@ const LINK_ERRORS: Record<string, string> = {
   already_linked: '这个账号已经绑定了统一账号。',
 };
 
+type Leaving = 'here' | 'product' | 'everywhere';
+
 /**
- * 账号与登录 (v0.4): who is signed in, the identity service's account console, 旧管理员认领, and
- * the two ways out — this browser only, or every session and device of the account.
+ * 账号与登录: who is signed in, the identity service's account console, 旧管理员认领, and the three
+ * ways out of ADR-019, each saying exactly what it ends:
+ *  A 退出此设备 — this browser's Nexus session only;
+ *  B 退出 Nexus 的全部设备 — every Nexus session, extension and approved pairing; nothing else;
+ *  C 退出所有产品与设备 — B, plus the identity service in every browser, plus LiteSync's B.
  */
 export function AccountSection() {
   const me = useAccount();
   const save = useSaveState();
   const [options, setOptions] = useState<AuthOptions | null>(null);
-  const [leaving, setLeaving] = useState<'here' | 'everywhere' | null>(null);
+  const [leaving, setLeaving] = useState<Leaving | null>(null);
   const [linking, setLinking] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -39,16 +45,17 @@ export function AccountSection() {
 
   const oidc = me?.session === 'oidc';
   const accountUrl = options?.accountUrl ?? null;
+  // 动作 C needs a unified identity: the other product and the identity service know the person by it.
+  const allProducts = !!options?.oidc && !!me?.identityLinked;
   const unsent = save.kind === 'offline' && save.pending ? `还有 ${save.pending} 项更改没有同步到服务端，退出后会丢失。` : '';
 
-  const everywhere = async () => {
+  const run = async (fn: () => Promise<unknown>) => {
     setBusy(true);
     try {
-      const end = await logoutEverywhere();
-      // Unified sign-in: end this browser's identity-service session too.
-      if (end) location.assign(end);
-    } catch {
-      toast({ msg: '没有完成，请检查网络后重试', tone: 'error' });
+      await fn();
+      // Signed out now: the login page takes over (and shows what 动作 C did).
+    } catch (e) {
+      toast({ msg: e instanceof HttpError ? e.message : '没有完成，请检查网络后重试', tone: 'error' });
       setBusy(false);
     }
   };
@@ -84,18 +91,26 @@ export function AccountSection() {
             </Button>
           </Row>
         )}
-        <Row label="退出此设备" sub="只退出这个浏览器；本设备缓存的配置与最近使用会被清除">
+        <Row label="退出此设备" sub="只退出这个浏览器的 Nexus；本设备缓存的配置与最近使用会被清除。账号中心、LiteSync 和已连接的扩展不受影响">
           <Button onClick={() => setLeaving('here')}>
             <LogOut className="size-[15px]" />
             退出
           </Button>
         </Row>
-        <Row label="退出全部设备" sub="结束这个账号在所有浏览器的 Nexus 登录，并撤销已连接的浏览器扩展">
-          <Button variant="danger" onClick={() => setLeaving('everywhere')}>
+        <Row label="退出 Nexus 的全部设备" sub="结束这个账号在所有浏览器的 Nexus 登录，撤销已连接的浏览器扩展和尚未领取的扩展授权。账号中心与 LiteSync 不受影响">
+          <Button variant="danger" onClick={() => setLeaving('product')}>
             <MonitorX className="size-[15px]" />
             全部退出…
           </Button>
         </Row>
+        {allProducts && (
+          <Row label="退出所有产品与设备" sub="在上一项的基础上，再结束账号中心在所有浏览器的登录，并通知 LiteSync 撤销它的网页登录、Obsidian 设备和待领取授权">
+            <Button variant="danger" onClick={() => setLeaving('everywhere')}>
+              <ShieldOff className="size-[15px]" />
+              退出所有产品…
+            </Button>
+          </Row>
+        )}
       </Group>
 
       <Dialog
@@ -116,17 +131,17 @@ export function AccountSection() {
       />
 
       <Dialog
-        open={leaving === 'everywhere'}
+        open={leaving === 'product'}
         onOpenChange={(o) => !o && !busy && setLeaving(null)}
         width={480}
-        title="退出全部设备？"
-        description={unsent || '这个账号在所有浏览器的 Nexus 登录都会立即结束，已连接的浏览器扩展会被撤销（它们下次联网时清除缓存）。'}
+        title="退出 Nexus 的全部设备？"
+        description={unsent || '这个账号在所有浏览器的 Nexus 登录会立即结束；已连接的浏览器扩展、以及已批准但扩展还没领取的授权都会被撤销（扩展下次联网时提示重新连接，未发送的收藏保留在扩展里）。'}
         footer={
           <>
             <Button className="h-10 px-[18px]" disabled={busy} onClick={() => setLeaving(null)}>
               取消
             </Button>
-            <Button variant="danger-solid" className="h-10 px-5" disabled={busy} onClick={() => void everywhere()}>
+            <Button variant="danger-solid" className="h-10 px-5" disabled={busy} onClick={() => void run(logoutEverywhere)}>
               全部退出
             </Button>
           </>
@@ -134,17 +149,33 @@ export function AccountSection() {
       >
         {oidc && (
           <p className="m-0 text-[13px] leading-[1.7] text-ink/66">
-            这个浏览器也会退出账号中心。其他浏览器如果仍登录着账号中心，可以不输密码直接重新进入 Nexus；要连那里也一并退出，请在
-            {accountUrl ? (
-              <a href={accountUrl} target="_blank" rel="noopener noreferrer" className="mx-1 text-amber-hi">
-                账号中心
-              </a>
-            ) : (
-              '账号中心'
-            )}
-            的「设备活动」中退出所有设备。
+            账号中心与 LiteSync 不受影响：仍登录着账号中心的浏览器可以不输密码直接重新进入 Nexus。要连它们一起退出，请用「退出所有产品与设备」。
           </p>
         )}
+      </Dialog>
+
+      <Dialog
+        open={leaving === 'everywhere'}
+        onOpenChange={(o) => !o && !busy && setLeaving(null)}
+        width={520}
+        title="退出所有产品与设备？"
+        description={unsent || '会依次执行三步，并逐项告诉你结果；任何一步没有完成都会如实显示，不会说「全部完成」。'}
+        footer={
+          <>
+            <Button className="h-10 px-[18px]" disabled={busy} onClick={() => setLeaving(null)}>
+              取消
+            </Button>
+            <Button variant="danger-solid" className="h-10 px-5" disabled={busy} onClick={() => void run(revokeAllProducts)}>
+              {busy ? '正在退出…' : '退出所有产品'}
+            </Button>
+          </>
+        }
+      >
+        <ol className="m-0 flex flex-col gap-1.5 pl-5 text-[13px] leading-[1.7] text-ink/72">
+          <li>Nexus：结束所有浏览器的登录，撤销已连接的扩展和尚未领取的扩展授权（立即生效）。</li>
+          <li>账号中心：结束你在所有浏览器的账号中心登录，之后登录任何产品都要重新输入密码。</li>
+          <li>LiteSync：通知它撤销你的网页登录、Obsidian 设备和尚未兑换的连接授权。暂时连不上时会在后台继续重试，状态在这一页可以看到。</li>
+        </ol>
       </Dialog>
 
       <Dialog

@@ -1,4 +1,4 @@
-import { applyOps, ConfigSchema, defaultConfig, invertOp, normalizeConfig, OpError, applyOp, type AppEntry, type Config, type ConfigResponse, type MeResponse, type Op, type Snapshot, type UploadedWallpaper } from '@nexus/shared';
+import { applyOps, ConfigSchema, defaultConfig, invertOp, normalizeConfig, OpError, applyOp, type AppEntry, type Config, type ConfigResponse, type LogoutAllResponse, type MeResponse, type Op, type RevokeEverywhereResponse, type Snapshot, type UploadedWallpaper } from '@nexus/shared';
 import { create } from 'zustand';
 import { storage } from '../lib/storage';
 import { useStatusStore } from './status-store';
@@ -410,13 +410,49 @@ export async function logout(): Promise<void> {
 }
 
 /**
- * 退出所有设备: every session and paired device of the account ends on the server. Returns where to
- * send the browser to end the identity-service session as well (null without unified sign-in).
+ * ADR-019 动作 B · 退出 Nexus 的全部设备: every session, paired extension and approved-but-unclaimed
+ * pairing of the account ends on the server. The identity service and LiteSync are not touched.
  */
-export async function logoutEverywhere(): Promise<string | null> {
+export async function logoutEverywhere(): Promise<LogoutAllResponse> {
   const r = await transport.logoutAll();
   forgetLocal();
-  return r.endSessionUrl;
+  return r;
+}
+
+/** Where the outcome of 动作 C waits for the login page (this browser is signed out by then). */
+const EVERYWHERE_KEY = 'nexus.revocation.v1';
+
+/**
+ * ADR-019 动作 C · 退出所有产品与设备. The server answers part by part (this product, the identity
+ * service, LiteSync); the answer is kept for the login page this browser lands on next.
+ */
+export async function revokeAllProducts(): Promise<RevokeEverywhereResponse> {
+  const r = await transport.revokeEverywhere();
+  forgetLocal();
+  try {
+    sessionStorage.setItem(EVERYWHERE_KEY, JSON.stringify({ at: Date.now(), result: r }));
+  } catch {
+    /* storage disabled: the account page shows the state after signing in again */
+  }
+  return r;
+}
+
+/** The last 动作 C outcome of this tab, for the login page (null when there is none). */
+export function lastEverywhere(): { at: number; result: RevokeEverywhereResponse } | null {
+  try {
+    const raw = sessionStorage.getItem(EVERYWHERE_KEY);
+    return raw ? (JSON.parse(raw) as { at: number; result: RevokeEverywhereResponse }) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function dismissEverywhere() {
+  try {
+    sessionStorage.removeItem(EVERYWHERE_KEY);
+  } catch {
+    /* nothing kept */
+  }
 }
 
 export async function uploadWallpaper(file: File): Promise<UploadedWallpaper> {

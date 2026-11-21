@@ -7,6 +7,7 @@ import { createApp, type Deps } from '../app';
 import { Devices, Pairings } from '../auth/devices';
 import { LoginIntents } from '../auth/intents';
 import { Oidc } from '../auth/oidc';
+import { Revocations } from '../auth/revocation';
 import { LoginLimiter } from '../auth/rate-limit';
 import { Auth } from '../auth/sessions';
 import { ConfigRepo } from '../config/repo';
@@ -102,17 +103,21 @@ export async function buildTestApp(
   const devices = new Devices(db, now);
   const secrets = new SecretBox(randomBytes(32));
   const mail = new LogProvider();
+  const oidc = opts.idp ? new Oidc({ issuer: opts.idp.issuer, clientId: opts.idp.clientId, clientSecret: opts.idp.clientSecret, redirectUri: `${PUBLIC_URL}/auth/callback`, postLogoutRedirectUri: `${PUBLIC_URL}/`, fetch: opts.idp.fetch }) : null;
+  const pairings = new Pairings(devices, now);
+  const revocations = new Revocations({ db, users, devices, pairings, oidc, secrets, now });
   const deps: Deps = {
     env,
     repo,
     auth,
     users,
     intents: new LoginIntents(db, now),
-    oidc: opts.idp ? new Oidc({ issuer: opts.idp.issuer, clientId: opts.idp.clientId, clientSecret: opts.idp.clientSecret, redirectUri: `${PUBLIC_URL}/auth/callback`, postLogoutRedirectUri: `${PUBLIC_URL}/`, fetch: opts.idp.fetch }) : null,
+    oidc,
     secrets,
     limiter: new LoginLimiter(),
     devices,
-    pairings: new Pairings(devices, now),
+    pairings,
+    revocations,
     wallpapers,
     icons: new IconStore(db, join(dir, 'icons'), now, quota),
     limits: new RateLimiter({ ...DEFAULT_LIMITS_FOR_TESTS, ...opts.limits }, now),

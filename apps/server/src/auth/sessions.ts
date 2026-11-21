@@ -24,6 +24,8 @@ export interface Session {
   idTokenEnc: string | null;
   /** OIDC sessions: when the account is next re-checked with the identity provider. */
   revalidateAt: number | null;
+  /** ADR-019: the account's authorization epoch when this session was opened. */
+  authEpoch: number;
 }
 
 export type Validation = { valid: false } | { valid: true; renewed: boolean; session: Session };
@@ -39,6 +41,8 @@ interface Row {
   refresh_enc: string | null;
   id_token_enc: string | null;
   revalidate_at: number | null;
+  auth_epoch: number;
+  user_epoch: number;
 }
 
 export interface SessionExtras {
@@ -69,8 +73,10 @@ export class Auth {
     await this.db.tx(async () => {
       await this.db.run('insert into auth (id, password_hash, updated_at) values (1, ?, ?) on conflict (id) do update set password_hash = excluded.password_hash, updated_at = excluded.updated_at', [hash, new Date().toISOString()]);
       // A new password signs out every browser and paired device of the account it protects —
-      // the legacy administrator's; other accounts never used this password.
+      // the legacy administrator's; other accounts never used this password. A new epoch as well
+      // (ADR-019), so nothing issued before — an approved pairing included — works again.
       if (revokeSessions) {
+        await this.db.run('update users set auth_epoch = auth_epoch + 1 where id = ?', [LEGACY_ADMIN_ID]);
         await this.db.run('delete from sessions where user_id = ?', [LEGACY_ADMIN_ID]);
         await this.db.run('delete from devices where owner_id = ?', [LEGACY_ADMIN_ID]);
       }
@@ -113,25 +119,38 @@ export class Auth {
     return true;
   }
 
+  /**
+   * The session carries the account's epoch as of this very statement (INSERT … SELECT): a sign-in
+   * that races with 退出全部设备 either sees the new epoch (and is a new, valid sign-in) or the old
+   * one (and is dead on its first use).
+   */
   async createSession(userId: string, userAgent: string, extras: SessionExtras = {}): Promise<{ token: string; maxAgeSec: number }> {
     const token = randomBytes(32).toString('base64url');
     const t = this.now();
-    await this.db.run(
-      'insert into sessions (id_hash, user_id, created_at, expires_at, last_seen, user_agent, kind, oidc_sid, refresh_enc, id_token_enc, revalidate_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [sha256(token), userId, t, t + this.sessionDays * DAY, t, userAgent.slice(0, 200), extras.kind ?? 'password', extras.oidcSid ?? null, extras.refreshEnc ?? null, extras.idTokenEnc ?? null, extras.revalidateAt ?? null],
+    const { changes } = await this.db.run(
+      'insert into sessions (id_hash, user_id, created_at, expires_at, last_seen, user_agent, kind, oidc_sid, refresh_enc, id_token_enc, revalidate_at, auth_epoch) select ?, id, ?, ?, ?, ?, ?, ?, ?, ?, ?, auth_epoch from users where id = ?',
+      [sha256(token), t, t + this.sessionDays * DAY, t, userAgent.slice(0, 200), extras.kind ?? 'password', extras.oidcSid ?? null, extras.refreshEnc ?? null, extras.idTokenEnc ?? null, extras.revalidateAt ?? null, userId],
     );
+    if (!changes) throw new Error(`账号 ${userId} 不存在`);
     await this.db.run('delete from sessions where expires_at < ?', [t]);
     return { token, maxAgeSec: this.sessionDays * 86_400 };
   }
 
-  /** Valid sessions slide forward at most once a day to avoid a write per request. */
+  /**
+   * Valid sessions slide forward at most once a day to avoid a write per request. A session issued
+   * under an older epoch than the account's (ADR-019 R-1) is revoked, and goes.
+   */
   async validate(token: string | undefined): Promise<Validation> {
     if (!token || token.length > 128) return { valid: false };
     const id = sha256(token);
-    const row = await this.db.get<Row>('select id_hash, user_id, kind, created_at, expires_at, last_seen, oidc_sid, refresh_enc, id_token_enc, revalidate_at from sessions where id_hash = ?', [id]);
+    const row = await this.db.get<Row>('select s.id_hash, s.user_id, s.kind, s.created_at, s.expires_at, s.last_seen, s.oidc_sid, s.refresh_enc, s.id_token_enc, s.revalidate_at, s.auth_epoch, u.auth_epoch as user_epoch from sessions s join users u on u.id = s.user_id where s.id_hash = ?', [id]);
     const t = this.now();
     if (!row || Number(row.expires_at) < t) return { valid: false };
-    const session: Session = { idHash: row.id_hash, userId: row.user_id, kind: row.kind, createdAt: Number(row.created_at), oidcSid: row.oidc_sid, refreshEnc: row.refresh_enc, idTokenEnc: row.id_token_enc, revalidateAt: row.revalidate_at === null ? null : Number(row.revalidate_at) };
+    if (Number(row.auth_epoch) !== Number(row.user_epoch)) {
+      await this.db.run('delete from sessions where id_hash = ?', [id]);
+      return { valid: false };
+    }
+    const session: Session = { idHash: row.id_hash, userId: row.user_id, kind: row.kind, createdAt: Number(row.created_at), oidcSid: row.oidc_sid, refreshEnc: row.refresh_enc, idTokenEnc: row.id_token_enc, revalidateAt: row.revalidate_at === null ? null : Number(row.revalidate_at), authEpoch: Number(row.auth_epoch) };
     if (t - Number(row.last_seen) < DAY) return { valid: true, renewed: false, session };
     await this.db.run('update sessions set last_seen = ?, expires_at = ? where id_hash = ?', [t, t + this.sessionDays * DAY, id]);
     return { valid: true, renewed: true, session };
@@ -151,7 +170,10 @@ export class Auth {
     await this.db.run('delete from sessions where id_hash = ?', [idHash]);
   }
 
-  /** 退出所有设备 / account frozen: every browser session of the account. */
+  /**
+   * Every browser session of the account, and nothing else (ADR-019 动作 A with only `sub`: a
+   * back-channel logout never touches devices or approved pairings). 动作 B is Revocations.
+   */
   async revokeAllForUser(userId: string): Promise<number> {
     return (await this.db.run('delete from sessions where user_id = ?', [userId])).changes;
   }

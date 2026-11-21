@@ -34,6 +34,12 @@ export interface DeviceInfo {
   lastUsedAt: string | null;
   /** v0.4; absent from older servers (read as config:read). */
   scopes?: DeviceScope[];
+  /**
+   * v0.4.1 (ADR-019): set on a device revoked by an account-wide revocation (退出全部设备, a stopped
+   * account), still listed for a while so people see what happened; absent on active devices.
+   */
+  revokedAt?: string | null;
+  revokedReason?: string | null;
 }
 
 /** POST /api/pair/start {name} */
