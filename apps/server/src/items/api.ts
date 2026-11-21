@@ -5,6 +5,7 @@ import {
   ItemInputSchema,
   itemUrlKey,
   LOCKED_CATEGORY,
+  MAX_PINS,
   OpIdSchema,
   PatchItemSchema,
   type ChangesResponse,
@@ -25,7 +26,7 @@ import type { DB } from '../db';
 import { v2Error, type V2Status } from '../http/security';
 import type { SecretBox } from '../integrations/secret';
 import type { User } from '../users/users';
-import { SHARED_LAYOUT } from './store';
+import { PinRefused } from './store';
 
 /**
  * 我的收藏 v2 API (需求 §8.3–8.4, 契约 §6): items, pins, snapshot and changes.
@@ -153,6 +154,29 @@ export function registerItemsApi(app: Hono<{ Variables: Vars }>, deps: ItemsApiD
     if (used + n > limit) throw new ApiError(409, 'QUOTA_EXCEEDED', `收藏库最多 ${limit} 条，请先删除一些`, { kind: 'items', limit, used });
   };
   const result = (item: Item, r: ItemWriteResult['result']): ItemWriteResult => ({ item, result: r, ownerRevision: 0 });
+  /**
+   * pinToHome (NEX-07): the same rule as the pin interface, in this transaction. The item is saved
+   * whatever happens to the pin; a refused pin is reported, never written past the limit.
+   */
+  const pinIfRoom = async (ownerId: string, id: string): Promise<NonNullable<ItemWriteResult['pin']>> => {
+    try {
+      await store.pin(ownerId, id);
+      return { pinned: true };
+    } catch (e) {
+      if (!(e instanceof PinRefused) || (e.code !== 'PINS_FULL' && e.code !== 'NOT_PINNABLE')) throw e;
+      return e.code === 'PINS_FULL' ? { pinned: false, code: 'PINS_FULL', limit: MAX_PINS, used: e.used } : { pinned: false, code: 'NOT_PINNABLE' };
+    }
+  };
+  /** The pin interfaces answer a refusal like any other limit: QUOTA_EXCEEDED (kind pins) or NOT_PINNABLE. */
+  const pinError = (e: unknown): never => {
+    if (e instanceof PinRefused) {
+      if (e.code === 'PINS_FULL') throw new ApiError(409, 'QUOTA_EXCEEDED', e.message, { kind: 'pins', limit: MAX_PINS, used: e.used });
+      if (e.code === 'NOT_PINNABLE') throw new ApiError(409, 'NOT_PINNABLE', e.message);
+      if (e.code === 'ITEM_DELETED') throw new ApiError(409, 'ITEM_DELETED', e.message);
+      throw new ApiError(404, 'NOT_FOUND', e.message);
+    }
+    throw e;
+  };
 
   // ── reads ──────────────────────────────────────────────────────────────
   app.get('/api/v2/folders', async (c) => {
@@ -263,13 +287,13 @@ export function registerItemsApi(app: Hono<{ Variables: Vars }>, deps: ItemsApiD
         if (existing && req.duplicatePolicy === 'prompt') throw new ApiError(409, 'DUPLICATE', '这个网址已经在收藏库里', { item: existing });
         if (existing && req.duplicatePolicy === 'update') {
           const updated = await store.update(ownerId, existing.id, { title: input.title, folderId: await folderOf(ownerId, input.folderId), tags: input.tags, note: input.note || existing.note });
-          if (req.pinToHome && !updated.pinned) await store.setPins(ownerId, [...(await store.pinnedIds(ownerId)), updated.id]);
-          return { status: 200, body: result((await store.get(ownerId, updated.id))!, 'updated') };
+          const pin = req.pinToHome ? await pinIfRoom(ownerId, updated.id) : undefined;
+          return { status: 200, body: { ...result((await store.get(ownerId, updated.id))!, 'updated'), ...(pin ? { pin } : {}) } };
         }
         await admitItems(c, 1);
         const item = await store.insert(ownerId, { kind: input.kind ?? 'page', source: req.source, catalogId: input.catalogId ?? null, title: input.title, url: input.url, folderId: await folderOf(ownerId, input.folderId), tags: input.tags, note: input.note, iconRef: input.iconRef });
-        if (req.pinToHome) await store.setPins(ownerId, [...(await store.pinnedIds(ownerId)), item.id]);
-        return { status: 201, body: result((await store.get(ownerId, item.id))!, 'created') };
+        const pin = req.pinToHome ? await pinIfRoom(ownerId, item.id) : undefined;
+        return { status: 201, body: { ...result((await store.get(ownerId, item.id))!, 'created'), ...(pin ? { pin } : {}) } };
       });
     } catch (e) {
       return fail(c, e);
@@ -365,13 +389,15 @@ export function registerItemsApi(app: Hono<{ Variables: Vars }>, deps: ItemsApiD
       return await write(c, req.opId, [action, id, req.position ?? null], async () => {
         const ownerId = owner(c);
         await live(ownerId, id);
-        const pins = (await store.pinnedIds(ownerId, SHARED_LAYOUT)).filter((x) => x !== id);
-        if (action !== 'unpin') {
-          if (action === 'pin' && pins.length >= 36) throw new ApiError(409, 'QUOTA_EXCEEDED', '首页最多固定 36 个', { kind: 'pins', limit: 36, used: pins.length });
-          pins.splice(Math.min(req.position ?? pins.length, pins.length), 0, id);
+        let pins: string[];
+        try {
+          if (action === 'unpin') pins = await store.unpin(ownerId, id);
+          // Pin, or move (which pins what is not pinned yet): the one rule decides either way (NEX-07).
+          else pins = await store.pin(ownerId, id, req.position ?? (action === 'move' ? Number.MAX_SAFE_INTEGER : undefined));
+        } catch (e) {
+          return pinError(e);
         }
-        await store.setPins(ownerId, pins);
-        return { status: 200, body: { pins, ownerRevision: 0 } };
+        return { status: 200, body: { pins: pins!, ownerRevision: 0 } };
       });
     } catch (e) {
       if (e instanceof z.ZodError) return v2Error(c, 422, 'VALIDATION', '缺少 opId');

@@ -20,7 +20,7 @@ const askFlush = () => ext.runtime.sendMessage({ type: 'flush' }).catch(() => un
 
 function Status({ entry }: { entry: QueueEntry }) {
   const map: Record<QueueEntry['state'], { icon: typeof Check; text: string; tone: string }> = {
-    saved: { icon: Check, text: '已同步到收藏库', tone: 'text-ok' },
+    saved: { icon: Check, text: entry.message ? `已同步到收藏库；${entry.message}` : '已同步到收藏库', tone: entry.message ? 'text-warn' : 'text-ok' },
     pending: { icon: CloudOff, text: '已保存在此设备，联网后同步', tone: 'text-warn' },
     duplicate: { icon: LibraryBig, text: '这个网址已在收藏库中', tone: 'text-ink/80' },
     held: { icon: TriangleAlert, text: entry.message ?? '没有保存', tone: 'text-danger-ink' },

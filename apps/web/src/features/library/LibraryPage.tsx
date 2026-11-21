@@ -6,7 +6,7 @@ import { PageBackdrop } from '../../components/PageBackdrop';
 import { toast } from '../../components/toast-store';
 import { ToastHost } from '../../components/ToastHost';
 import { currentTransport, useConfig, useConfigStore } from '../../data/config-store';
-import { conflictChoices, libraryApi, loadLibrary, pullLibrary, resolveConflict, useLibrary, type Folder, type LibraryChoice, type LibraryConflict, type WriteOutcome } from '../../data/library';
+import { conflictChoices, libraryApi, loadLibrary, pinNotice, pullLibrary, resolveConflict, useLibrary, type Folder, type LibraryChoice, type LibraryConflict, type WriteOutcome } from '../../data/library';
 import { AppTile } from '../../icons/AppTile';
 import { cn } from '../../lib/cn';
 import { useViewport } from '../../lib/hooks';
@@ -105,7 +105,8 @@ function ItemDialog({ open, item, folders, defaultFolder, onClose }: { open: boo
     setBusy(false);
     // The form stays open with what was typed unless the save went through (or waits on this device).
     if (r.ok) {
-      toast({ msg: r.queued ? '已保存在本机，联网后同步' : item ? '已保存修改' : '已加入收藏库', tone: 'ok' });
+      const refused = pinNotice(r.pin);
+      toast(refused ? { msg: `已加入收藏库；${refused}`, tone: 'warn' } : { msg: r.queued ? '已保存在本机，联网后同步' : item ? '已保存修改' : '已加入收藏库', tone: 'ok' });
       onClose();
     } else if (r.code === 'DUPLICATE') setDuplicate((r.details?.item as Item) ?? null);
     else if (r.code === 'FIELD_CONFLICT') setError(`这条收藏刚在别处被修改（${((r.details?.conflictFields as string[]) ?? []).join('、')}），已显示最新内容，请确认后再改`);
@@ -411,9 +412,14 @@ export default function LibraryPage() {
     }
   };
 
-  const batch = async (label: string, f: (i: Item) => Promise<WriteOutcome>) => {
+  const batch = async (label: string, f: (i: Item) => Promise<WriteOutcome>, opts: { inOrder?: boolean } = {}) => {
     const list = chosen;
-    const results = await Promise.all(list.map(f));
+    // Pins are one ordered list with a limit (NEX-07): one at a time, so every answer is the newest
+    // and the ones past the limit are refused in the order they were chosen.
+    const results: WriteOutcome[] = [];
+    if (opts.inOrder) for (const i of list) results.push(await f(i));
+    else results.push(...(await Promise.all(list.map(f))));
+    if (opts.inOrder) await pullLibrary();
     const failed = results.filter((r) => !r.ok) as Extract<WriteOutcome, { ok: false }>[];
     const queuedN = results.filter((r) => r.ok && r.queued).length;
     setSelected(new Set());
@@ -650,10 +656,10 @@ export default function LibraryPage() {
                 <Button disabled={!tagInput.trim()} onClick={() => void batch('已添加标签', (i) => (i.tags.includes(tagInput.trim()) ? Promise.resolve({ ok: true } as WriteOutcome) : libraryApi.patch(i, { tags: [...i.tags, tagInput.trim()] }))).then(() => setTagInput(''))}>
                   加标签
                 </Button>
-                <Button onClick={() => void batch('已固定到首页', (i) => (pinnedSet.has(i.id) ? Promise.resolve({ ok: true } as WriteOutcome) : libraryApi.pin(i)))}>
+                <Button onClick={() => void batch('已固定到首页', (i) => (pinnedSet.has(i.id) ? Promise.resolve({ ok: true } as WriteOutcome) : libraryApi.pin(i)), { inOrder: true })}>
                   <Pin className="size-3.5" /> 固定
                 </Button>
-                <Button onClick={() => void batch('已取消固定', (i) => (pinnedSet.has(i.id) ? libraryApi.unpin(i) : Promise.resolve({ ok: true } as WriteOutcome)))}>
+                <Button onClick={() => void batch('已取消固定', (i) => (pinnedSet.has(i.id) ? libraryApi.unpin(i) : Promise.resolve({ ok: true } as WriteOutcome)), { inOrder: true })}>
                   <PinOff className="size-3.5" /> 取消固定
                 </Button>
                 <Button variant="danger" onClick={() => void removeSelected()}>

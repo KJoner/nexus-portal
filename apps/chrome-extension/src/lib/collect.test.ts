@@ -102,3 +102,13 @@ describe('the save queue (EX-03)', () => {
     expect(e.pinToHome).toBe(false);
   });
 });
+
+describe('pins the home page has no room for (NEX-07)', () => {
+  it('a save whose pin was refused is saved, and says it was not pinned', async () => {
+    const area = memoryArea();
+    await enqueue(area, server(), { title: '满了', url: 'https://full-home.example.org/', pinToHome: true });
+    const api = { createItem: async () => ({ item: { id: 'it-9', title: '满了', folderId: 'none', pinned: false }, result: 'created', ownerRevision: 3, pin: { pinned: false, code: 'PINS_FULL', limit: 36, used: 36 } }) as never };
+    await flushQueue(area, server(), api);
+    expect((await readQueue(area))[0]).toMatchObject({ state: 'saved', message: expect.stringContaining('36') });
+  });
+});

@@ -5,6 +5,7 @@ import {
   CONFIG_LIMITS,
   ConfigSchema,
   EngineSchema,
+  isPinnable,
   LOCKED_CATEGORY,
   MAX_PINS,
   SettingsSchema,
@@ -255,7 +256,7 @@ export function applyOp(c: Config, op: Op): Config {
   switch (op.type) {
     case 'pin.add': {
       const app = findApp(c, op.appId);
-      if (app.kind !== 'site' || app.hidden) throw new OpError('not_pinnable', `${app.name} 不能固定到首页`);
+      if (!isPinnable(app)) throw new OpError('not_pinnable', `${app.name} 不能固定到首页`);
       if (c.pins.includes(app.id)) return c;
       if (c.pins.length >= MAX_PINS) throw quota('pins', c.pins.length);
       return { ...c, pins: insertAt(c.pins, app.id, op.index) };
@@ -450,7 +451,7 @@ export function normalizeConfig(c: Config): Config {
     c.apps.map((a) => (allCats.has(a.categoryId) ? a : { ...a, categoryId: LOCKED_CATEGORY.none })),
     categories,
   );
-  const pinnable = new Set(apps.filter((a) => a.kind === 'site' && !a.hidden).map((a) => a.id));
+  const pinnable = new Set(apps.filter(isPinnable).map((a) => a.id));
   const pins = [...new Set(c.pins)].filter((id) => ids.has(id) && pinnable.has(id)).slice(0, MAX_PINS);
   const engines = c.engines.length ? c.engines : [];
   const defaultEngine = engines.some((e) => e.id === c.settings.search.defaultEngine) ? c.settings.search.defaultEngine : (engines[0]?.id ?? 'google');

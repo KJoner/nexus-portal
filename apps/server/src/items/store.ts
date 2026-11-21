@@ -1,4 +1,4 @@
-import { AppSchema, itemUrlKey, LOCKED_CATEGORY, OpError, type AppEntry, type Config, type Item, type ItemField, type ItemKind, type ItemSource, type Op } from '@nexus/shared';
+import { AppSchema, isPinnable, itemUrlKey, LOCKED_CATEGORY, MAX_PINS, OpError, type AppEntry, type Config, type Item, type ItemField, type ItemKind, type ItemSource, type Op } from '@nexus/shared';
 import { randomBytes } from 'node:crypto';
 import type { DB } from '../db';
 
@@ -29,6 +29,19 @@ export interface Row {
 }
 
 export const SHARED_LAYOUT = 'shared';
+
+/** A pin the rule refuses (NEX-07): over the limit, not a live item, or not something the home page shows. */
+export class PinRefused extends Error {
+  constructor(
+    readonly code: 'PINS_FULL' | 'NOT_PINNABLE' | 'NOT_FOUND' | 'ITEM_DELETED',
+    message: string,
+    /** Pins the account has now. */
+    readonly used: number,
+  ) {
+    super(message);
+    this.name = 'PinRefused';
+  }
+}
 /** The home page shows at most this many characters of a name (the v0.3 schema; older clients validate it). */
 const APP_NAME_MAX = 32;
 const clip = (s: string, n: number) => [...s].slice(0, n).join('').trim();
@@ -215,8 +228,68 @@ export class ItemStore {
   }
 
   // ── reads ────────────────────────────────────────────────────────────────
+  /**
+   * The pins as every reader sees them (NEX-07): live, pinnable (a shown site — not a service, not
+   * hidden) and at most MAX_PINS, in order. The home page, 我的收藏's pinned flags, snapshots,
+   * changes and exports all read this one list, so they cannot disagree; writes go through
+   * writePins, which refuses anything this list would not show.
+   */
   async pinnedIds(owner: string, layout = SHARED_LAYOUT): Promise<string[]> {
-    return (await this.db.all<{ item_id: string }>('select item_id from pins where owner_id = ? and layout = ? order by position', [owner, layout])).map((r) => r.item_id);
+    const rows = await this.db.all<Row>('select i.* from pins p join items i on i.owner_id = p.owner_id and i.id = p.item_id where p.owner_id = ? and p.layout = ? and i.deleted_at is null order by p.position', [owner, layout]);
+    return rows
+      .filter((r) => {
+        const app = toApp(r);
+        return !!app && isPinnable(app);
+      })
+      .map((r) => r.id)
+      .slice(0, MAX_PINS);
+  }
+
+  /**
+   * The one rule for every way of pinning (NEX-07: create with pinToHome, update of a duplicate,
+   * the pin interfaces, home-page ops, import): the account's transaction, live items only,
+   * pinnable ones only, at most MAX_PINS. Throws PinRefused; nothing is written then.
+   */
+  async writePins(owner: string, ids: readonly string[], layout = SHARED_LAYOUT): Promise<string[]> {
+    const list = [...new Set(ids)];
+    const before = await this.pinnedIds(owner, layout);
+    if (list.length > MAX_PINS) throw new PinRefused('PINS_FULL', `首页最多固定 ${MAX_PINS} 个`, before.length);
+    const rows = new Map<string, Row>();
+    for (let i = 0; i < list.length; i += 400) {
+      const chunk = list.slice(i, i + 400);
+      for (const r of await this.db.all<Row>(`select * from items where owner_id = ? and id in (${chunk.map(() => '?').join(', ')})`, [owner, ...chunk])) rows.set(r.id, r);
+    }
+    for (const id of list) {
+      const r = rows.get(id);
+      if (!r) throw new PinRefused('NOT_FOUND', '收藏不存在', before.length);
+      if (r.deleted_at !== null) throw new PinRefused('ITEM_DELETED', `「${r.title}」已被删除，不能固定`, before.length);
+      const app = toApp(r);
+      if (!app || !isPinnable(app)) throw new PinRefused('NOT_PINNABLE', `「${r.title}」不能固定到首页（自托管服务显示在服务区，隐藏的应用先取消隐藏）`, before.length);
+    }
+    const same = list.length === before.length && list.every((id, i) => id === before[i]);
+    // Rows a reader would not show (an older release's excess) are cleaned up by any write.
+    const stored = Number((await this.db.get<{ n: number }>('select count(*) as n from pins where owner_id = ? and layout = ?', [owner, layout]))!.n);
+    if (same && stored === list.length) return before;
+    await this.db.run('delete from pins where owner_id = ? and layout = ?', [owner, layout]);
+    let i = 0;
+    for (const id of list) await this.db.run('insert into pins (owner_id, item_id, layout, position) values (?, ?, ?, ?)', [owner, id, layout, i++]);
+    await this.change(owner, 'pins', layout, await this.seq(owner), 'pins');
+    return list;
+  }
+
+  /** Pins one item at `position` (default: last). Already pinned: moved there, or left as it is. */
+  async pin(owner: string, id: string, position?: number): Promise<string[]> {
+    const pins = await this.pinnedIds(owner);
+    const rest = pins.filter((x) => x !== id);
+    if (!pins.includes(id) && pins.length >= MAX_PINS) throw new PinRefused('PINS_FULL', `首页最多固定 ${MAX_PINS} 个`, pins.length);
+    if (pins.includes(id) && position === undefined) return pins;
+    rest.splice(Math.min(position ?? rest.length, rest.length), 0, id);
+    return this.writePins(owner, rest);
+  }
+
+  async unpin(owner: string, id: string): Promise<string[]> {
+    const pins = await this.pinnedIds(owner);
+    return pins.includes(id) ? this.writePins(owner, pins.filter((x) => x !== id)) : pins;
   }
 
   async get(owner: string, id: string): Promise<Item | null> {
@@ -323,14 +396,6 @@ export class ItemStore {
     if (!r || r.deleted_at === null) return false;
     const restored = Number(parse<Record<string, number>>(r.field_versions, {}).restored ?? 0);
     return baseVersion === undefined || restored <= baseVersion;
-  }
-
-  /** Replaces a layout's pins (ids must be live items of the account). */
-  async setPins(owner: string, ids: string[], layout = SHARED_LAYOUT): Promise<void> {
-    await this.db.run('delete from pins where owner_id = ? and layout = ?', [owner, layout]);
-    let i = 0;
-    for (const id of ids) await this.db.run('insert into pins (owner_id, item_id, layout, position) values (?, ?, ?, ?)', [owner, id, layout, i++]);
-    await this.change(owner, 'pins', layout, await this.seq(owner), 'pins');
   }
 
   // ── the home page view (config.apps / config.pins) ───────────────────────
@@ -492,7 +557,13 @@ export class ItemStore {
       }
     }
     if (pinsChanged) {
-      await this.setPins(owner, after.pins);
+      // The same rule as every other way of pinning (NEX-07), checked again in this transaction.
+      try {
+        await this.writePins(owner, after.pins);
+      } catch (e) {
+        if (e instanceof PinRefused) throw e.code === 'PINS_FULL' ? new OpError('pins_full', e.message, { kind: 'pins', limit: MAX_PINS, used: e.used }) : new OpError(e.code === 'NOT_PINNABLE' ? 'not_pinnable' : 'not_found', e.message);
+        throw e;
+      }
       changed = true;
     }
     return changed;

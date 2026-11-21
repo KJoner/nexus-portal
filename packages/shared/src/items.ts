@@ -89,7 +89,16 @@ export interface ItemWriteResult {
   result: 'created' | 'updated' | 'deleted' | 'restored' | 'unchanged';
   /** The account's configuration revision after the write (the home page view changes with it). */
   ownerRevision: number;
+  /**
+   * v0.4.1 (NEX-07): what became of `pinToHome`. The item is saved either way; when the pin rule
+   * refuses (36 pinned already, or not something the home page can show) it says so here, and
+   * `item.pinned` is false — the answer, the database and the home page always agree.
+   */
+  pin?: { pinned: boolean; code?: PinRefusal; limit?: number; used?: number };
 }
+
+/** Why a pin was refused: the home page is full, or the item cannot be shown there. */
+export type PinRefusal = 'PINS_FULL' | 'NOT_PINNABLE';
 
 export interface ItemChange {
   seq: number;

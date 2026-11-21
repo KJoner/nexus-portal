@@ -123,7 +123,9 @@ export async function flushQueue(area: Area, server: ServerRecord | null, api: P
     let update: Partial<QueueEntry>;
     try {
       const r = await api.createItem(server.token, { opId: next.opId, source: 'extension', item: { kind: 'page', title: next.title, url: next.url, folderId: next.folderId, tags: next.tags }, pinToHome: next.pinToHome, duplicatePolicy: 'prompt' });
-      update = { state: 'saved', item: { id: r.item.id, title: r.item.title, folderId: r.item.folderId }, message: undefined };
+      // Saved; a pin the home page had no room for is said, not implied (NEX-07).
+      const refused = r.pin && !r.pin.pinned ? (r.pin.code === 'PINS_FULL' ? `首页已固定满 ${r.pin.limit ?? 36} 个，没有固定到首页` : '这个页面不能固定到首页') : undefined;
+      update = { state: 'saved', item: { id: r.item.id, title: r.item.title, folderId: r.item.folderId }, message: refused };
       sent++;
     } catch (e) {
       if (!(e instanceof ApiError)) throw e;

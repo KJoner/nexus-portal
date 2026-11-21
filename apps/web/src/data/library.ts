@@ -139,7 +139,13 @@ export function pullLibrary(): Promise<void> {
 }
 
 /** What a write answered: the item (applied here), or why it could not be done. */
-export type WriteOutcome = { ok: true; item?: Item; queued?: boolean } | { ok: false; code: string; message: string; details?: Record<string, unknown> | null };
+export type WriteOutcome = { ok: true; item?: Item; queued?: boolean; pin?: ItemWriteResult['pin'] } | { ok: false; code: string; message: string; details?: Record<string, unknown> | null };
+
+/** What to tell the person when a requested pin was refused (NEX-07); null when it was pinned. */
+export function pinNotice(pin: ItemWriteResult['pin'] | undefined): string | null {
+  if (!pin || pin.pinned) return null;
+  return pin.code === 'PINS_FULL' ? `首页已固定满 ${pin.limit ?? 36} 个，这条没有固定（取消固定一个后可再固定）` : '这条不能固定到首页';
+}
 
 async function send(op: QueuedOp): Promise<ItemWriteResult | { pins: string[] }> {
   const t = currentTransport().items;
@@ -184,7 +190,7 @@ async function run(op: QueuedOp): Promise<WriteOutcome> {
   try {
     const res = await send(op);
     if (useLibrary.getState().owner === owner) applyAnswer(res);
-    return { ok: true, item: 'item' in res ? res.item : undefined };
+    return { ok: true, item: 'item' in res ? res.item : undefined, ...('pin' in res && res.pin ? { pin: res.pin } : {}) };
   } catch (e) {
     if (retryable(e)) {
       // Kept on this device with the same opId: sent later, applied once.
