@@ -138,6 +138,8 @@ export class ConfigRepo {
         },
         plan,
       );
+      // Folders are config categories: 我的收藏 clients learn about a change through the feed.
+      if (JSON.stringify(current.config.categories) !== JSON.stringify(next.categories)) await this.items.change(ownerId, 'folders', 'shared', await this.items.seq(ownerId), 'folders');
       const written = await this.write(ownerId, current.revision + 1, next);
       await this.db.run('insert into op_log (owner_id, revision, batch_id, client_id, ops, created_at) values (?, ?, ?, ?, ?, ?)', [ownerId, written.revision, batchId, clientId, JSON.stringify(ops), written.updatedAt]);
       await this.db.run('delete from op_log where owner_id = ? and revision <= ?', [ownerId, written.revision - OP_LOG_KEEP]);
@@ -145,6 +147,22 @@ export class ConfigRepo {
       // new apps and restored entries all come from there.
       return { snapshot: await this.snapshot(ownerId), changed: true, duplicate: false };
     });
+  }
+
+  /**
+   * Inside the account's transaction: replaces the folders (categories) of its document — a restore
+   * creating the folders of a backup (NEX-06). The revision moves with the write that follows (bump).
+   */
+  async writeCategories(ownerId: string, categories: Config['categories']): Promise<void> {
+    const row = await this.row(ownerId);
+    const parsed = ConfigSchema.safeParse(JSON.parse(row.data));
+    const doc = parsed.success ? parsed.data : this.template(ownerId);
+    const next = normalizeConfig({ ...doc, categories, apps: [], pins: [] });
+    const check = ConfigSchema.safeParse(next);
+    if (!check.success) throw new OpError('invalid', '分组不正确');
+    await this.db.run('update user_config set data = ? where owner_id = ?', [JSON.stringify({ ...next, apps: [], pins: [] }), ownerId]);
+    // 我的收藏 clients follow folders through the change feed too.
+    await this.items.change(ownerId, 'folders', 'shared', await this.items.seq(ownerId), 'folders');
   }
 
   /** Server-side changes outside ops (e.g. a deleted wallpaper) still bump the revision for sync. */

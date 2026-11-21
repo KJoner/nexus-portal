@@ -188,6 +188,8 @@ export interface ItemDraft {
   extra?: string;
   position?: number;
   importId?: string | null;
+  /** Kept from a backup being restored (NEX-06); otherwise now. */
+  createdAt?: number;
 }
 
 export class ItemStore {
@@ -311,6 +313,32 @@ export class ItemStore {
     return rows.map((r) => toItem(r, pinned));
   }
 
+  /** What a restore plans against (NEX-06), read inside the account's transaction. */
+  async restoreBasis(owner: string): Promise<{ live: Item[]; takenIds: Set<string>; pins: string[]; pinnableIds: Set<string> }> {
+    const rows = await this.db.all<Row>('select * from items where owner_id = ?', [owner]);
+    const pins = await this.pinnedIds(owner);
+    const pinned = new Set(pins);
+    const liveRows = rows.filter((r) => r.deleted_at === null);
+    return {
+      live: liveRows.map((r) => toItem(r, pinned)),
+      takenIds: new Set(rows.map((r) => r.id)),
+      pins,
+      pinnableIds: new Set(
+        liveRows
+          .filter((r) => {
+            const app = toApp(r);
+            return !!app && isPinnable(app);
+          })
+          .map((r) => r.id),
+      ),
+    };
+  }
+
+  /** Full rows of the account's live items (the export carries what the home page stores for each). */
+  async liveRows(owner: string): Promise<Row[]> {
+    return this.db.all<Row>('select * from items where owner_id = ? and deleted_at is null order by position, id', [owner]);
+  }
+
   async countLive(owner: string): Promise<number> {
     return Number((await this.db.get<{ n: number }>('select count(*) as n from items where owner_id = ? and deleted_at is null', [owner]))!.n);
   }
@@ -327,11 +355,12 @@ export class ItemStore {
   // ── writes ───────────────────────────────────────────────────────────────
   async insert(owner: string, d: ItemDraft): Promise<Item> {
     const t = this.now();
+    const created = d.createdAt ?? t;
     const id = d.id ?? newItemId();
     const position = d.position ?? (await this.maxPosition(owner)) + 1;
     await this.db.run(
       'insert into items (owner_id, id, kind, source, catalog_id, title, url, url_key, folder_id, tags, note, icon_ref, extra, position, version, field_versions, import_id, created_at, updated_at, deleted_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, null)',
-      [owner, id, d.kind, d.source, d.catalogId ?? null, d.title, d.url, itemUrlKey(d.url), d.folderId || LOCKED_CATEGORY.none, JSON.stringify(d.tags ?? []), d.note ?? '', d.iconRef ?? '', d.extra ?? '', position, '{}', d.importId ?? null, t, t],
+      [owner, id, d.kind, d.source, d.catalogId ?? null, d.title, d.url, itemUrlKey(d.url), d.folderId || LOCKED_CATEGORY.none, JSON.stringify(d.tags ?? []), d.note ?? '', d.iconRef ?? '', d.extra ?? '', position, '{}', d.importId ?? null, created, t],
     );
     await this.change(owner, 'item', id, 1, 'upsert');
     return (await this.get(owner, id))!;

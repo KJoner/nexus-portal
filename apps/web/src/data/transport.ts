@@ -104,6 +104,22 @@ export interface Transport {
   subscribe(h: { onOpen(): void; onRevision(revision: number): void; onStatus(s: ServiceStatus | { appId: string; removed: true }): void; onClosed(): void }): () => void;
 }
 
+export type RestoreDuplicates = 'skip' | 'update' | 'keep-both';
+/** What a restore (or its preview) reports — see apps/server/src/items/restore.ts. */
+export interface RestoreAnswer {
+  dryRun?: boolean;
+  importId: string | null;
+  basis?: number;
+  summary: {
+    folders: { create: { id: string; label: string }[]; map: { from: string; to: string; label: string }[]; overLimit: number };
+    items: { create: number; update: number; skip: number; repeated: number; unsupported: number; kinds: { app: number; page: number } };
+    duplicates: { fileId: string | null; title: string; url: string; existingId: string; existingTitle: string }[];
+    duplicateCount: number;
+    pins: { restore: number; notPinned: number; limit: number };
+    icons: { upload: number; missing: number };
+  };
+}
+
 export interface ItemsTransport {
   snapshot(page?: string): Promise<SnapshotResponse>;
   changes(cursor: string): Promise<ChangesResponse & { pins?: string[]; folders?: SnapshotResponse['folders'] }>;
@@ -115,7 +131,9 @@ export interface ItemsTransport {
   pin(id: string, opId: string, position?: number): Promise<{ pins: string[] }>;
   unpin(id: string, opId: string): Promise<{ pins: string[] }>;
   importItems(body: { opId: string; folderId?: string; items: ItemInput[]; skipDuplicates?: boolean }): Promise<{ importId: string; imported: number; skipped: number }>;
-  undoImport(importId: string, opId: string): Promise<{ removed: number; kept: number }>;
+  undoImport(importId: string, opId: string): Promise<{ removed: number; kept: number; unpinned?: number; removedFolders?: number; keptFolders?: number }>;
+  /** NEX-06: 恢复 a Nexus collection backup (dryRun = the preview; basis = the preview's revision). */
+  restoreCollection(body: { opId: string; file: unknown; duplicates: RestoreDuplicates; dryRun: boolean; basis?: number }): Promise<RestoreAnswer>;
   exportAll(): Promise<unknown>;
 }
 
@@ -208,6 +226,7 @@ export const httpTransport: Transport = {
     unpin: (id, opId) => request(`/api/v2/pins/${encodeURIComponent(id)}?opId=${encodeURIComponent(opId)}`, { method: 'DELETE' }),
     importItems: (body) => request('/api/v2/import', { method: 'POST', body: JSON.stringify(body) }, 60_000),
     undoImport: (importId, opId) => request(`/api/v2/import/${encodeURIComponent(importId)}/undo`, { method: 'POST', body: JSON.stringify({ opId }) }),
+    restoreCollection: (body) => request('/api/v2/import/collection', { method: 'POST', body: JSON.stringify(body) }, 120_000),
     exportAll: () => request('/api/v2/export', {}, 60_000),
   },
   adminUsers: async () => (await request<{ users: AdminUser[] }>('/api/v2/admin/users')).users,

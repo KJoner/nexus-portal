@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { toast } from '../components/toast-store';
 import { storage } from '../lib/storage';
 import { currentTransport, onAccountChange, useConfigStore } from './config-store';
-import { HttpError, NetworkError } from './transport';
+import { HttpError, NetworkError, type RestoreDuplicates } from './transport';
 
 /**
  * 收藏库 data (需求 §8.4, 契约 §6): a full snapshot once, then only changes after its cursor
@@ -311,4 +311,11 @@ export const libraryApi = {
   async undoImport(importId: string) {
     return currentTransport().items.undoImport(importId, opId('undo'));
   },
+  /**
+   * NEX-06: a Nexus backup is restored (folders, kinds, catalog links, icons, pin order), not
+   * imported as pages. The preview and the restore use the same server-side plan; the restore
+   * sends the preview's basis back, so a collection that changed meanwhile asks for a new preview.
+   */
+  previewRestore: (file: unknown, duplicates: RestoreDuplicates) => currentTransport().items.restoreCollection({ opId: opId('preview'), file, duplicates, dryRun: true }),
+  restoreBackup: (file: unknown, duplicates: RestoreDuplicates, basis: number | undefined) => currentTransport().items.restoreCollection({ opId: opId('restore'), file, duplicates, dryRun: false, basis }),
 };

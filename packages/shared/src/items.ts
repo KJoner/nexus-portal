@@ -105,7 +105,7 @@ export interface ItemChange {
   entity: 'item' | 'pins' | 'folders';
   id: string;
   version: number;
-  action: 'upsert' | 'delete' | 'restore' | 'pins';
+  action: 'upsert' | 'delete' | 'restore' | 'pins' | 'folders';
   /** The item as it is now (for `item` changes), so a client applies a page without more requests. */
   item?: Item;
 }

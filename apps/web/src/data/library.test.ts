@@ -99,6 +99,9 @@ class FakeItems implements ItemsTransport {
   async exportAll(): Promise<unknown> {
     throw new HttpError(501, 'not_in_test', '');
   }
+  async restoreCollection(): Promise<never> {
+    throw new HttpError(501, 'not_in_test', '');
+  }
 }
 
 let items: FakeItems;

@@ -4,6 +4,10 @@ import { canonicalUrl, ITEM_LIMITS, itemUrlKey, type ItemInput } from '@nexus/sh
  * 导入预览 (需求 §8.3): browser bookmark HTML (the Netscape format every browser exports) and
  * Nexus's own collection JSON. Parsing happens in the browser; nothing is sent until the person
  * confirms the preview.
+ *
+ * NEX-06: the two are different operations. A bookmark file is imported — pages, into the folder
+ * the person picks, folder names as tags. A Nexus backup is restored (readBackup + the server's
+ * /api/v2/import/collection): its folders, kinds, catalog links, icons and pin order come back.
  */
 export interface ImportCandidate {
   title: string;
@@ -13,6 +17,9 @@ export interface ImportCandidate {
   tags: string[];
   note: string;
   folderId?: string;
+  /** From a Nexus file: kept as they were (NEX-06), never flattened to pages. */
+  kind?: 'app' | 'page';
+  catalogId?: string;
 }
 
 export interface ImportPreview {
@@ -61,7 +68,31 @@ export function parseBookmarksHtml(html: string): { items: ImportCandidate[]; un
 
 interface ExportFile {
   format?: string;
-  items?: { title?: unknown; url?: unknown; tags?: unknown; note?: unknown; folderId?: unknown }[];
+  version?: unknown;
+  items?: { title?: unknown; url?: unknown; tags?: unknown; note?: unknown; folderId?: unknown; kind?: unknown; catalogId?: unknown }[];
+}
+
+/** The newest Nexus backup format this page can restore (the server checks again). */
+export const BACKUP_VERSION = 2;
+
+/** A Nexus collection file (by name or content), as opposed to a browser's bookmark HTML. */
+export const isBackupFile = (name: string, text: string) => /\.json$/i.test(name) || text.trimStart().startsWith('{');
+
+/**
+ * Reads a Nexus backup for 恢复: the file as it is (the server restores its structure), after
+ * the checks that can be made here — JSON, our format, a version this release knows.
+ */
+export function readBackup(text: string): { file: unknown; version: number; items: number } {
+  let raw: ExportFile;
+  try {
+    raw = JSON.parse(text) as ExportFile;
+  } catch {
+    throw new Error('文件不是有效的 JSON');
+  }
+  if (!raw || raw.format !== 'nexus-collection' || !Array.isArray(raw.items)) throw new Error('不是 Nexus 收藏库导出的文件');
+  const version = typeof raw.version === 'number' ? raw.version : 1;
+  if (version > BACKUP_VERSION) throw new Error(`这个文件来自更新版本的 Nexus（格式第 ${version} 版），请先升级再恢复`);
+  return { file: raw, version, items: raw.items.length };
 }
 
 export function parseNexusJson(text: string): { items: ImportCandidate[]; unsupported: number } {
@@ -81,7 +112,7 @@ export function parseNexusJson(text: string): { items: ImportCandidate[]; unsupp
       continue;
     }
     const tags = Array.isArray(i.tags) ? i.tags.filter((t): t is string => typeof t === 'string').map((t) => clip(t, ITEM_LIMITS.tag)).filter(Boolean).slice(0, ITEM_LIMITS.tags) : [];
-    items.push({ title: clip(typeof i.title === 'string' ? i.title : url, ITEM_LIMITS.title) || clip(url, ITEM_LIMITS.title), url, path: [], tags, note: typeof i.note === 'string' ? i.note.slice(0, ITEM_LIMITS.note) : '', folderId: typeof i.folderId === 'string' ? i.folderId : undefined });
+    items.push({ title: clip(typeof i.title === 'string' ? i.title : url, ITEM_LIMITS.title) || clip(url, ITEM_LIMITS.title), url, path: [], tags, note: typeof i.note === 'string' ? i.note.slice(0, ITEM_LIMITS.note) : '', folderId: typeof i.folderId === 'string' ? i.folderId : undefined, kind: i.kind === 'app' ? 'app' : 'page', ...(typeof i.catalogId === 'string' && /^[a-z0-9][a-z0-9-]{0,47}$/.test(i.catalogId) ? { catalogId: i.catalogId } : {}) });
   }
   return { items, unsupported };
 }
@@ -103,7 +134,7 @@ export function previewImport(name: string, text: string, existingUrls: Readonly
   return { format: isJson ? 'nexus-json' : 'bookmarks-html', items: parsed.items, existing, repeated, unsupported: parsed.unsupported, folders };
 }
 
-/** What the server receives: only the fields of an item. */
+/** What the server receives: only the fields of an item (kind and catalog link kept, NEX-06). */
 export function toInputs(items: ImportCandidate[], keepFolders: boolean): ItemInput[] {
-  return items.map((i) => ({ kind: 'page', title: i.title, url: i.url, tags: keepFolders ? i.tags : [], note: i.note, ...(i.folderId ? { folderId: i.folderId } : {}) }));
+  return items.map((i) => ({ kind: i.kind ?? 'page', title: i.title, url: i.url, tags: keepFolders ? i.tags : [], note: i.note, ...(i.folderId ? { folderId: i.folderId } : {}), ...(i.catalogId ? { catalogId: i.catalogId } : {}) }));
 }

@@ -16,6 +16,7 @@ import {
   type SnapshotResponse,
 } from '@nexus/shared';
 import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import type { Context, Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { z } from 'zod';
@@ -26,7 +27,9 @@ import type { DB } from '../db';
 import { v2Error, type V2Status } from '../http/security';
 import type { SecretBox } from '../integrations/secret';
 import type { User } from '../users/users';
-import { PinRefused } from './store';
+import type { IconStore } from '../icons/store';
+import { COLLECTION_FORMAT, COLLECTION_VERSION, CollectionFileSchema, planRestore, summary, type CollectionFile } from './restore';
+import { extraOf, PinRefused } from './store';
 
 /**
  * 我的收藏 v2 API (需求 §8.3–8.4, 契约 §6): items, pins, snapshot and changes.
@@ -48,6 +51,8 @@ export interface ItemsApiDeps {
   secrets: SecretBox;
   /** Live items an account may keep (null: no limit — the administrator). */
   itemLimit: (user: User) => number | null;
+  /** Uploaded icons: a backup carries them, a restore stores them for the account (NEX-06). */
+  icons?: IconStore;
   now?: () => number;
 }
 
@@ -68,7 +73,7 @@ const OP_KEEP_DAYS = 30;
 const hash = (v: unknown) => createHash('sha256').update(JSON.stringify(v)).digest('hex');
 
 export function registerItemsApi(app: Hono<{ Variables: Vars }>, deps: ItemsApiDeps) {
-  const { db, repo, secrets } = deps;
+  const { db, repo, secrets, icons } = deps;
   const now = deps.now ?? Date.now;
   const store = repo.items;
 
@@ -443,7 +448,85 @@ export function registerItemsApi(app: Hono<{ Variables: Vars }>, deps: ItemsApiD
     }
   });
 
-  /** 撤销本次导入: what the import created and nobody changed since goes to the trash. */
+  /**
+   * 产品 JSON 恢复 (NEX-06) — a Nexus collection backup, as opposed to a browser's bookmark file
+   * (`/api/v2/import`, which puts pages into one chosen folder). Folders are matched (same id, else
+   * same name) or created, item ids kept where free, kinds, catalog links, home-page settings,
+   * uploaded icons and the pin order restored; addresses already here are skipped, updated or kept
+   * as both, as the person chose in the preview.
+   *  - `dryRun`: the preview — nothing is written, and the answer carries `basis` (the revision);
+   *  - the real one sends that `basis` back: the account changed since the preview → PLAN_STALE.
+   * One transaction: all of it, or nothing (icons stored on the way are removed again).
+   */
+  const RestoreSchema = z.object({
+    opId: OpIdSchema,
+    file: z.unknown(),
+    duplicates: z.enum(['skip', 'update', 'keep-both']).default('skip'),
+    dryRun: z.boolean().default(false),
+    basis: z.number().int().min(0).optional(),
+  });
+  const backupOf = (raw: unknown): CollectionFile => {
+    const v = (raw as { version?: unknown } | null)?.version;
+    if ((raw as { format?: unknown } | null)?.format !== COLLECTION_FORMAT) throw new ApiError(422, 'VALIDATION', '不是 Nexus 收藏库导出的文件');
+    if (typeof v === 'number' && v > COLLECTION_VERSION) throw new ApiError(422, 'UNSUPPORTED_VERSION', `这个文件来自更新版本的 Nexus（格式第 ${v} 版），请先升级再恢复`, { version: v, supported: COLLECTION_VERSION });
+    const r = CollectionFileSchema.safeParse(raw);
+    if (!r.success) {
+      const i = r.error.issues[0];
+      throw new ApiError(422, 'VALIDATION', i ? `文件格式不正确（${i.path.join('.') || '文件'}：${i.message}）` : '文件格式不正确');
+    }
+    return r.data;
+  };
+  const basisOf = async (c: C) => ({ admin: c.get('user').isAdmin, categories: (await repo.snapshot(owner(c))).config.categories, ...(await store.restoreBasis(owner(c))) });
+  app.post('/api/v2/import/collection', bodyLimit({ maxSize: 40 * 1024 * 1024 }), async (c) => {
+    const stored: string[] = [];
+    try {
+      if (c.get('viaDevice')) throw new ApiError(403, 'SCOPE_REQUIRED', '恢复只能在网页中进行');
+      const req = await body(c, RestoreSchema);
+      const file = backupOf(req.file);
+      const ownerId = owner(c);
+      if (req.dryRun) {
+        const preview = await db.tx(async () => {
+          const plan = planRestore(file, await basisOf(c), req.duplicates);
+          return { summary: summary(plan), basis: (await repo.version(ownerId)).revision };
+        });
+        return c.json({ dryRun: true, importId: null, ...preview });
+      }
+      return await write(c, req.opId, ['restore-collection', req], async () => {
+        const revision = (await repo.version(ownerId)).revision;
+        if (req.basis !== undefined && req.basis !== revision) throw new ApiError(409, 'PLAN_STALE', '收藏库在预览之后有了变化，请重新预览后再恢复', { basis: revision });
+        const basis = await basisOf(c);
+        const plan = planRestore(file, basis, req.duplicates);
+        await admitItems(c, plan.create.length);
+        const importId = `imp-${req.opId.slice(-16)}`;
+        if (plan.createdFolders.length) await repo.writeCategories(ownerId, plan.categories);
+        let position = (await store.maxPosition(ownerId)) + 1;
+        for (const it of plan.create) {
+          let app = it.app;
+          if (app && it.icon) {
+            const ref = await icons!.add(ownerId, it.icon.data, 'image/png');
+            stored.push(ref);
+            app = { ...app, icon: { ...app.icon, source: 'upload', ref } };
+          }
+          await store.insert(ownerId, { id: it.id, kind: it.kind, source: 'import', catalogId: it.catalogId, title: it.title, url: it.url, folderId: it.folderId, tags: it.tags, note: it.note, iconRef: it.iconRef, extra: app ? extraOf(app) : '', position: position++, importId, ...(it.createdAt ? { createdAt: it.createdAt } : {}) });
+        }
+        for (const u of plan.update) await store.update(ownerId, u.id, { title: u.title, folderId: u.folderId, tags: u.tags, note: u.note, kind: u.kind, catalogId: u.catalogId, ...(u.extra !== null ? { extra: u.extra } : {}) });
+        const addedPins = plan.pins.filter((id) => !basis.pins.includes(id));
+        if (addedPins.length) await store.writePins(ownerId, plan.pins);
+        // What 撤销本次导入 may take back besides the items: the folders and pins this restore added.
+        return { status: 201, body: { importId, summary: summary(plan), undo: { folders: plan.createdFolders.map((k) => ({ id: k.id, label: k.label })), pins: addedPins }, ownerRevision: 0 } };
+      });
+    } catch (e) {
+      // Nothing was committed: icons stored on the way must not outlive it.
+      if (stored.length) await icons?.discardFiles(stored);
+      return fail(c, e);
+    }
+  });
+
+  /**
+   * 撤销本次导入 (批次撤销保护): only what that import added and nobody changed since — its items
+   * still at their first version go to 回收站 (edited ones stay, reported); for a restore also the
+   * pins it added (still pinned) and the folders it created (now empty, name unchanged).
+   */
   app.post('/api/v2/import/:importId/undo', bodyLimit({ maxSize: 4096 }), async (c) => {
     try {
       if (c.get('viaDevice')) throw new ApiError(403, 'SCOPE_REQUIRED', '只能在网页中撤销导入');
@@ -451,6 +534,7 @@ export function registerItemsApi(app: Hono<{ Variables: Vars }>, deps: ItemsApiD
       const importId = c.req.param('importId');
       return await write(c, req.opId, ['undo-import', importId], async () => {
         const ownerId = owner(c);
+        const pinnedBefore = await store.pinnedIds(ownerId);
         const rows = await db.all<{ id: string; version: number }>('select id, version from items where owner_id = ? and import_id = ? and deleted_at is null', [ownerId, importId]);
         let removed = 0;
         let kept = 0;
@@ -462,28 +546,73 @@ export function registerItemsApi(app: Hono<{ Variables: Vars }>, deps: ItemsApiD
             removed++;
           }
         }
-        return { status: 200, body: { importId, removed, kept, ownerRevision: 0 } };
+        const record = await importRecord(ownerId, importId);
+        let unpinned = 0;
+        let removedFolders = 0;
+        let keptFolders = 0;
+        if (record) {
+          // Pins the restore added go — whether with their items above, or here for items that stay.
+          const pins = await store.pinnedIds(ownerId);
+          const take = new Set(record.pins);
+          if (pins.some((id) => take.has(id))) await store.writePins(ownerId, pins.filter((id) => !take.has(id)));
+          const now = new Set(await store.pinnedIds(ownerId));
+          unpinned = record.pins.filter((id) => pinnedBefore.includes(id) && !now.has(id)).length;
+          const config = (await repo.snapshot(ownerId)).config;
+          const inUse = new Set((await store.liveRows(ownerId)).map((r) => r.folder_id));
+          const drop = new Set(record.folders.filter((f) => !inUse.has(f.id) && config.categories.some((k) => k.id === f.id && k.label === f.label)).map((f) => f.id));
+          keptFolders = record.folders.filter((f) => config.categories.some((k) => k.id === f.id)).length - drop.size;
+          if (drop.size) await repo.writeCategories(ownerId, config.categories.filter((k) => !drop.has(k.id)));
+          removedFolders = drop.size;
+        }
+        return { status: 200, body: { importId, removed, kept, unpinned, removedFolders, keptFolders, ownerRevision: 0 } };
       });
     } catch (e) {
       return fail(c, e);
     }
   });
+  /** What a restore said it added (kept with its stored answer, as long as answers are: 30 days). */
+  const importRecord = async (ownerId: string, importId: string): Promise<{ folders: { id: string; label: string }[]; pins: string[] } | null> => {
+    const rows = await db.all<{ result: string }>('select result from item_ops where owner_id = ? and result like ?', [ownerId, `%"importId":"${importId.replace(/[%_]/g, '')}%`]);
+    for (const r of rows) {
+      const body = JSON.parse(r.result) as { importId?: string; undo?: { folders: { id: string; label: string }[]; pins: string[] } };
+      if (body.importId === importId && body.undo) return body.undo;
+    }
+    return null;
+  };
 
+  /**
+   * 导出 (format nexus-collection, version 2): everything a restore needs to rebuild the collection —
+   * folders, pin order, items with their kind, catalog link and home-page settings (`app`), and the
+   * uploaded icons those settings use (`icons`, PNG data URLs), so the file restores on its own.
+   */
   app.get('/api/v2/export', async (c) => {
     try {
       if (c.get('viaDevice')) throw new ApiError(403, 'SCOPE_REQUIRED', '导出只能在网页中进行');
       const ownerId = owner(c);
-      const items = await store.list(ownerId);
+      const pins = await store.pinnedIds(ownerId);
+      const pinned = new Set(pins);
+      const rows = await store.liveRows(ownerId);
+      const iconData: Record<string, string> = {};
+      const items = [];
+      for (const r of rows) {
+        const extra = (() => {
+          try {
+            return r.extra ? (JSON.parse(r.extra) as Record<string, unknown>) : null;
+          } catch {
+            return null;
+          }
+        })();
+        const icon = extra?.icon as { source?: string; ref?: string } | undefined;
+        if (icon?.source === 'upload' && icon.ref && !(icon.ref in iconData) && icons) {
+          const path = await icons.filePath(ownerId, icon.ref);
+          const bytes = path ? await readFile(path).catch(() => null) : null;
+          if (bytes) iconData[icon.ref] = `data:image/png;base64,${bytes.toString('base64')}`;
+        }
+        items.push({ id: r.id, kind: r.kind, title: r.title, url: r.url, folderId: r.folder_id, tags: JSON.parse(r.tags || '[]') as string[], note: r.note, catalogId: r.catalog_id, pinned: pinned.has(r.id), createdAt: new Date(Number(r.created_at)).toISOString(), position: Number(r.position), ...(r.icon_ref ? { iconRef: r.icon_ref } : {}), ...(extra && Object.keys(extra).length ? { app: extra } : {}) });
+      }
       const date = new Date(now()).toISOString().slice(0, 10);
       c.header('Content-Disposition', `attachment; filename="nexus-collection-${date}.json"`);
-      return c.json({
-        format: 'nexus-collection',
-        version: 1,
-        exportedAt: new Date(now()).toISOString(),
-        folders: await folders(ownerId),
-        pins: await store.pinnedIds(ownerId),
-        items: items.map((i) => ({ id: i.id, kind: i.kind, title: i.title, url: i.url, folderId: i.folderId, tags: i.tags, note: i.note, catalogId: i.catalogId, pinned: i.pinned, createdAt: new Date(i.createdAt).toISOString() })),
-      });
+      return c.json({ format: COLLECTION_FORMAT, version: COLLECTION_VERSION, exportedAt: new Date(now()).toISOString(), folders: await folders(ownerId), pins, items, icons: iconData });
     } catch (e) {
       return fail(c, e);
     }

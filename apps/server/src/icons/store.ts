@@ -95,6 +95,14 @@ export class IconStore {
     return n;
   }
 
+  /**
+   * Removes the files of icons whose rows never committed (a restore that failed after storing its
+   * icons, NEX-06): otherwise the next start would adopt them as the administrator's (adoptUnowned).
+   */
+  async discardFiles(ids: readonly string[]): Promise<void> {
+    for (const id of ids) if (ID.test(id)) await rm(join(this.dir, `${id}.png`), { force: true });
+  }
+
   /** The file of one of the account's own icons, or null (unknown, malformed or someone else's). */
   async filePath(ownerId: string, id: string): Promise<string | null> {
     if (!ID.test(id)) return null;

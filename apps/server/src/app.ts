@@ -560,7 +560,7 @@ export function createApp(deps: Deps) {
   const adminOnly: MiddlewareHandler<{ Variables: Vars }> = async (c, next) => (c.get('user').isAdmin ? next() : apiError(c, 403, 'admin_only', '仅管理员可用'));
 
   // ── 我的收藏 (v2) ────────────────────────────────────────────────────────
-  registerItemsApi(app, { db: repo.db, repo, secrets, itemLimit: (u) => (u.isAdmin ? null : (env.quotas ?? DEFAULT_QUOTAS).items) });
+  registerItemsApi(app, { db: repo.db, repo, secrets, icons, itemLimit: (u) => (u.isAdmin ? null : (env.quotas ?? DEFAULT_QUOTAS).items) });
 
   // ── Account (v2) ────────────────────────────────────────────────────────
   app.get('/api/v2/me', async (c) => {
