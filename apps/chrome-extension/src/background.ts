@@ -1,4 +1,5 @@
 import { deviceApi } from './lib/api';
+import { coalesce } from './lib/coalesce';
 import { adoptDrafts, captureFromMenu, dropEntry, enqueue, flushQueue, forgetSent, MENU, migrateLegacyQueue, readQueue, type FlushStop, type SaveInput } from './lib/collect';
 import { QUEUE_COMMANDS, type QueueCommand, type SaveReply } from './lib/queue-client';
 import { idbQueueStore } from './lib/queue-store';
@@ -50,22 +51,20 @@ async function badge(flash?: string) {
 
 /** Why the last send stopped with saves left (offline, 401…); kept for whoever asks. */
 let lastStop: FlushStop | undefined;
-let flushing: Promise<void> | null = null;
-function flush(): Promise<void> {
-  flushing ??= (async () => {
-    await ready();
-    const s = await server();
-    if (s) {
-      lastStop = (await flushQueue(queue, s, deviceApi(s.origin)).catch((): { stopped: FlushStop } => ({ stopped: 'offline' }))).stopped;
-      // 401 (ADR-019): this device is revoked — marked now, unsent saves kept as drafts (revoke.ts).
-      if (lastStop === 'unauthorized') await markRevoked(area, queue, s);
-    }
-    await badge();
-  })().finally(() => {
-    flushing = null;
-  });
-  return flushing;
-}
+/**
+ * One send at a time; a save committed while a send is under way gets one more send after it
+ * (coalesce) — joining the running one could leave it waiting until the next popup or new tab.
+ */
+const flush = coalesce(async () => {
+  await ready();
+  const s = await server();
+  if (s) {
+    lastStop = (await flushQueue(queue, s, deviceApi(s.origin)).catch((): { stopped: FlushStop } => ({ stopped: 'offline' }))).stopped;
+    // 401 (ADR-019): this device is revoked — marked now, unsent saves kept as drafts (revoke.ts).
+    if (lastStop === 'unauthorized') await markRevoked(area, queue, s);
+  }
+  await badge();
+});
 
 function menus() {
   void removeAllMenus().then(() => {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError, deviceApi } from './api';
+import { coalesce } from './coalesce';
 import { adoptDrafts, captureFromMenu, dropEntry, enqueue, flushQueue, forgetSent, MENU, migrateLegacyQueue, readQueue } from './collect';
 import { saveThroughBackground, type QueueCommand, type SaveReply } from './queue-client';
 import { memoryQueueStore } from './queue-store';
@@ -181,6 +182,35 @@ describe('NEX-05 · concurrent changes never lose a save (store stand-in)', () =
     expect(q.find((e) => e.opId === later.opId)?.state).toMatch(/pending|saved/);
     expect((await flushQueue(store, server(), s.api)).left).toBe(0);
     expect(s.items.size).toBe(2);
+  });
+
+  // Found by the release-package test in a real browser: the background's send was single-flight,
+  // so a save committed after the send had read the queue for the last time joined that send, was
+  // not in it, and waited for the next popup or new tab. The background now sends through coalesce.
+  it('a save committed while the background send is finishing gets one more send — it is not left waiting', async () => {
+    const store = memoryQueueStore();
+    const s = fakeServer();
+    const tail = gate(); // the first send's last step (the toolbar badge) is still under way
+    let first = true;
+    const flush = coalesce(async () => {
+      await flushQueue(store, server(), s.api);
+      if (first) {
+        first = false;
+        await tail.wait();
+      }
+    });
+    const a = await enqueue(store, server(), { title: '先存的', url: 'https://tail.example.org/a' });
+    const sending = flush();
+    await tail.reached; // A is on the server; this send will not read the queue again
+    const b = await enqueue(store, server(), { title: '收尾时存的', url: 'https://tail.example.org/b' });
+    const again = flush();
+    tail.open();
+    await Promise.all([sending, again]);
+    expect(s.calls.map((c) => c.opId)).toEqual([a.opId, b.opId]);
+    expect((await readQueue(store)).map((e) => [e.title, e.state]).sort()).toEqual([
+      ['先存的', 'saved'],
+      ['收尾时存的', 'saved'],
+    ]);
   });
 
   it('drafts confirmed while a send is on its way: both changes land', async () => {
