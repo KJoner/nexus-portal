@@ -1,5 +1,6 @@
 import { applyOps, ConfigSchema, defaultConfig, newUserConfig, normalizeConfig, OpError, type Config, type Op, type Snapshot } from '@nexus/shared';
 import { forUpdate, LEGACY_ADMIN_ID, type DB } from '../db';
+import { ItemStore } from '../items/store';
 
 const OP_LOG_KEEP = 500;
 
@@ -36,11 +37,18 @@ interface Row {
  */
 export class ConfigRepo {
   private listeners = new Map<string, Set<(revision: number) => void>>();
+  /** 我的收藏 (v0.4): config.apps / config.pins are a view over these tables. */
+  readonly items: ItemStore;
 
   constructor(
-    private db: DB,
+    readonly db: DB,
     private template: (ownerId: string) => Config = templateFor,
-  ) {}
+    /** Live items an account may keep (null: no limit — the administrator). */
+    private itemLimit: (ownerId: string) => Promise<number | null> = async () => null,
+    now: () => number = Date.now,
+  ) {
+    this.items = new ItemStore(db, now);
+  }
 
   /** Creates the account's document on first use (idempotent). */
   async ensure(ownerId: string): Promise<void> {
@@ -60,8 +68,27 @@ export class ConfigRepo {
     const row = await this.row(ownerId);
     const parsed = ConfigSchema.safeParse(JSON.parse(row.data));
     // A document that no longer validates (manual edit, schema change) must not take the portal down.
-    const config = parsed.success ? normalizeConfig(parsed.data) : this.template(ownerId);
-    return { revision: Number(row.revision), updatedAt: row.updated_at, config };
+    // Since v0.4 it holds settings, categories and engines only: the apps live in the items table,
+    // so even this fallback can no longer lose them.
+    const doc = parsed.success ? parsed.data : this.template(ownerId);
+    // Checked every time (one key lookup): a migration inside a transaction that later rolls back
+    // must run again, so no in-memory flag can be trusted here.
+    if (!(await this.items.migrated(ownerId))) await this.migrateItems(ownerId);
+    const view = await this.items.homeView(ownerId);
+    return { revision: Number(row.revision), updatedAt: row.updated_at, config: normalizeConfig({ ...doc, apps: view.apps, pins: view.pins }) };
+  }
+
+  /** M5, once per account: its apps and pins move to the items tables (ids and order kept). */
+  private async migrateItems(ownerId: string): Promise<void> {
+    await this.db.tx(async () => {
+      await this.lock(ownerId);
+      if (await this.items.migrated(ownerId)) return;
+      const row = (await this.db.get<Row>('select revision, updated_at, data from user_config where owner_id = ?', [ownerId]))!;
+      const parsed = ConfigSchema.safeParse(JSON.parse(row.data));
+      const config = parsed.success ? normalizeConfig(parsed.data) : this.template(ownerId);
+      await this.items.migrate(ownerId, config);
+      await this.db.run('update user_config set data = ? where owner_id = ?', [JSON.stringify({ ...config, apps: [], pins: [] }), ownerId]);
+    });
   }
 
   /** Revision and time only — no parsing — for conditional requests that usually answer 304. */
@@ -74,7 +101,7 @@ export class ConfigRepo {
    * Inside a transaction: takes the owner's row lock (PostgreSQL), so concurrent writers for the same
    * account queue — no lost update, no two documents with one revision, a retried batch is seen.
    */
-  private async lock(ownerId: string): Promise<void> {
+  async lock(ownerId: string): Promise<void> {
     await this.ensure(ownerId);
     await this.db.get(`select revision from user_config where owner_id = ?${forUpdate(this.db)}`, [ownerId]);
   }
@@ -95,7 +122,15 @@ export class ConfigRepo {
         const issue = check.error.issues[0];
         throw new OpError('invalid', issue ? `${issue.path.join('.') || 'config'}: ${issue.message}` : 'invalid');
       }
-      const snapshot = await this.write(ownerId, current.revision + 1, sanitizeFor(opts.admin, applied));
+      const next = sanitizeFor(opts.admin, applied);
+      // The apps and pins go to the items tables; new items count against the account's limit.
+      await this.items.applyHomeView(ownerId, current.config, next, async (fresh) => {
+        const limit = await this.itemLimit(ownerId);
+        if (limit === null) return;
+        const used = await this.items.countLive(ownerId);
+        if (used + fresh > limit) throw new OpError('quota_exceeded', `收藏库最多 ${limit} 条，请先删除一些`, { kind: 'items', limit, used });
+      });
+      const snapshot = await this.write(ownerId, current.revision + 1, next);
       await this.db.run('insert into op_log (owner_id, revision, batch_id, client_id, ops, created_at) values (?, ?, ?, ?, ?, ?)', [ownerId, snapshot.revision, batchId, clientId, JSON.stringify(ops), snapshot.updatedAt]);
       await this.db.run('delete from op_log where owner_id = ? and revision <= ?', [ownerId, snapshot.revision - OP_LOG_KEEP]);
       return { snapshot, changed: true, duplicate: false };
@@ -113,9 +148,16 @@ export class ConfigRepo {
     return snapshot;
   }
 
+  /** Inside the account's transaction: a new revision for a change made in the items tables. */
+  async bump(ownerId: string): Promise<Snapshot> {
+    const current = await this.snapshot(ownerId);
+    return this.write(ownerId, current.revision + 1, current.config);
+  }
+
   private async write(ownerId: string, revision: number, config: Config): Promise<Snapshot> {
     const updatedAt = new Date().toISOString();
-    await this.db.run('update user_config set revision = ?, updated_at = ?, data = ? where owner_id = ?', [revision, updatedAt, JSON.stringify(config), ownerId]);
+    // Apps and pins are stored as items; the document keeps the rest.
+    await this.db.run('update user_config set revision = ?, updated_at = ?, data = ? where owner_id = ?', [revision, updatedAt, JSON.stringify({ ...config, apps: [], pins: [] }), ownerId]);
     return { revision, updatedAt, config };
   }
 

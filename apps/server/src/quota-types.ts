@@ -2,13 +2,15 @@
 export type StorageQuotaKind = 'wallpapers' | 'icons' | 'storage';
 
 export interface AccountQuotas {
+  /** Live items of 我的收藏 (需求 §8.3: a limit of its own, not the home page's 500 apps). */
+  items: number;
   wallpapers: number;
   icons: number;
   storageBytes: number;
 }
 
 /** Defaults for accounts other than the administrator (whose server it is: no limits). */
-export const DEFAULT_QUOTAS: AccountQuotas = { wallpapers: 50, icons: 200, storageBytes: 200 * 1024 * 1024 };
+export const DEFAULT_QUOTAS: AccountQuotas = { items: 5000, wallpapers: 50, icons: 200, storageBytes: 200 * 1024 * 1024 };
 
 export class QuotaExceededError extends Error {
   constructor(

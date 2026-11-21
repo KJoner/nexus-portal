@@ -166,6 +166,10 @@ export const Drawer = forwardRef<DrawerHandle, Props>(function Drawer({ open, wi
         <div className="flex items-center gap-4 pt-[26px] pr-[30px] pb-5 pl-[34px]">
           <h2 className="m-0 text-[22px] font-medium tracking-[-0.01em]">收藏库</h2>
           <span className="text-[13px] text-ink/46">{config.apps.filter((a) => !a.hidden).length} 个</span>
+          {/* v0.4: every saved item (pages too), folders, tags, import and export live on their own page. */}
+          <Link to="/library" tabIndex={tab} className="flex h-9 items-center rounded-lg px-3 text-[13px] text-ink/72 no-underline transition-colors duration-150 hover:bg-ink/8 hover:text-ink">
+            管理收藏库
+          </Link>
           <span className="flex-1" />
           <div className="box-border flex h-10 w-[300px] items-center gap-2.5 rounded-xl pr-2 pl-3.5" style={{ background: 'rgba(239,234,225,0.07)', boxShadow: focused ? 'inset 0 0 0 1px rgba(230,192,138,0.4)' : 'none' }}>
             <Search className="size-[15px] flex-none text-ink/55" />

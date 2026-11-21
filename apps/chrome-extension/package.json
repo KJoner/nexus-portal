@@ -1,13 +1,14 @@
 {
   "name": "@nexus/chrome-extension",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Nexus Portal 新标签页：Chrome 扩展（Manifest V3）",
   "scripts": {
     "build": "vite build",
     "package": "vite build && node scripts/package.mjs",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "package:firefox": "node scripts/firefox.mjs"
   },
   "dependencies": {
     "@fontsource/jetbrains-mono": "5.3.0",
@@ -27,6 +28,7 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.2",
+    "addons-linter": "10.15.0",
     "jsdom": "29.1.1",
     "tailwindcss": "4.3.3",
     "vite": "8.3.5"

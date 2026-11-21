@@ -88,11 +88,12 @@ export async function buildTestApp(
     oidc: opts.idp ? { issuer: opts.idp.issuer, clientId: opts.idp.clientId, clientSecret: opts.idp.clientSecret } : null,
     registration: opts.registration ?? 'open',
     legacyPasswordLogin: opts.legacyPasswordLogin ?? 'auto',
-    quotas: DEFAULT_QUOTAS,
+    quotas: opts.quotas ?? DEFAULT_QUOTAS,
   };
   const auth = new Auth(db, 30, now);
   await auth.ensurePassword({ hash: null, plain: PASSWORD });
-  const repo = new ConfigRepo(db);
+  const itemUsers = new Users(db, now);
+  const repo = new ConfigRepo(db, undefined, async (id) => ((await itemUsers.get(id))?.isAdmin ? null : (opts.quotas ?? DEFAULT_QUOTAS).items), now);
   const health = new HealthChecker(db, repo, { allowPrivate: false, allowLoopback: false }, async () => ({ reached: true, status: 200, latencyMs: 5, message: 'HTTP 200' }), LEGACY_ADMIN_ID);
   const users = new Users(db, now);
   const quota = new Quota(db, { wallpapers: join(dir, 'wallpapers'), icons: join(dir, 'icons') }, async (id) => ((await users.get(id))?.isAdmin ? null : (opts.quotas ?? env.quotas ?? null)));

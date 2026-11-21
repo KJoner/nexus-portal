@@ -1,5 +1,7 @@
 // Packs dist/ into nexus-portal-chrome-v<version>.zip, manifest.json at the root of the archive,
 // so it can be dragged onto chrome://extensions or unpacked into a folder for 「加载已解压的扩展程序」.
+// Also nexus-portal-edge-v<version>.zip: the same build for Microsoft Edge (需求 §9.2: packaged and
+// verified on its own), without manifest.key, which the Edge Add-ons store assigns itself.
 // No dependencies: Node's zlib does deflate and CRC-32.
 // Entries are sorted and dated 1980-01-01, so the same build gives a byte-identical archive.
 import { createHash } from 'node:crypto';
@@ -8,8 +10,10 @@ import { join, relative, resolve } from 'node:path';
 import { crc32, deflateRawSync } from 'node:zlib';
 
 const root = resolve(import.meta.dirname, '..');
-const dist = join(root, 'dist');
-const out = resolve(process.argv[2] ?? join(root, 'release'));
+// --firefox packs dist-firefox (built with NEXUS_EXT_TARGET=firefox) into the Firefox zip instead.
+const firefox = process.argv.includes('--firefox');
+const dist = join(root, firefox ? 'dist-firefox' : 'dist');
+const out = resolve(process.argv.slice(2).find((a) => !a.startsWith('--')) ?? join(root, 'release'));
 
 const manifest = JSON.parse(readFileSync(join(dist, 'manifest.json'), 'utf8'));
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
@@ -22,7 +26,7 @@ if (manifest.host_permissions) throw new Error('dist/ is a test build (host_perm
 const EXTENSION_ID = 'fofncjblmjaocmkmmkdnjdejkgjelcck';
 const hash = createHash('sha256').update(Buffer.from(manifest.key ?? '', 'base64')).digest('hex');
 const id = [...hash.slice(0, 32)].map((c) => String.fromCharCode(97 + parseInt(c, 16))).join('');
-if (id !== EXTENSION_ID) throw new Error(`manifest.json 的 key 对应扩展 ID ${id}，应为 ${EXTENSION_ID}：改动后所有已安装的扩展都要重新连接`);
+if (!firefox && id !== EXTENSION_ID) throw new Error(`manifest.json 的 key 对应扩展 ID ${id}，应为 ${EXTENSION_ID}：改动后所有已安装的扩展都要重新连接`);
 
 function walk(dir) {
   return readdirSync(dir).flatMap((name) => {
@@ -36,11 +40,19 @@ const files = walk(dist)
   .sort((a, b) => (a.name < b.name ? -1 : 1));
 
 const DOS_DATE = (0 << 9) | (1 << 5) | 1; // 1980-01-01
+
+// Permissions are checked before anything ships (需求 §9.1: activeTab, contextMenus, storage and
+// the one server origin the person grants when connecting; never history, bookmarks or all sites).
+const ALLOWED = new Set(['storage', 'activeTab', 'contextMenus']);
+const extra = (manifest.permissions ?? []).filter((p) => !ALLOWED.has(p));
+if (extra.length) throw new Error(`manifest 申请了不在清单内的权限：${extra.join(', ')}`);
+
+function pack(target, contentOf) {
 const locals = [];
 const central = [];
 let offset = 0;
 for (const f of files) {
-  const data = readFileSync(f.path);
+  const data = contentOf(f);
   const packed = deflateRawSync(data, { level: 9 });
   const stored = packed.length >= data.length;
   const body = stored ? data : packed;
@@ -83,7 +95,18 @@ end.writeUInt16LE(files.length, 10);
 end.writeUInt32LE(centralSize, 12);
 end.writeUInt32LE(offset, 16);
 
-const zip = join(out, `nexus-portal-chrome-v${pkg.version}.zip`);
+const zip = join(out, `nexus-portal-${target}-v${pkg.version}.zip`);
 mkdirSync(out, { recursive: true });
 writeFileSync(zip, Buffer.concat([...locals, ...central, end]));
 console.log(`${relative(process.cwd(), zip)} · ${files.length} 个文件 · ${(statSync(zip).size / 1024 / 1024).toFixed(2)} MB`);
+}
+
+if (firefox) {
+  if (!manifest.browser_specific_settings?.gecko?.id) throw new Error('dist-firefox 不是 Firefox 构建（缺少 browser_specific_settings.gecko.id）');
+  pack('firefox', (f) => readFileSync(f.path));
+  process.exit(0);
+}
+pack('chrome', (f) => readFileSync(f.path));
+// Edge: the same build; the Add-ons store assigns the ID itself, so manifest.key stays out.
+const { key: _key, ...edgeManifest } = manifest;
+pack('edge', (f) => (f.name === 'manifest.json' ? Buffer.from(`${JSON.stringify(edgeManifest, null, 2)}\n`) : readFileSync(f.path)));

@@ -1,4 +1,4 @@
-import { CLIENT_HEADER, type ApiErrorBody, type ConfigResponse, type PairPollResponse, type PairStartResponse, type ServiceStatus } from '@nexus/shared';
+import { CLIENT_HEADER, type ApiErrorBody, type ConfigResponse, type Item, type ItemInput, type ItemWriteResult, type PairPollResponse, type PairStartResponse, type ServiceStatus } from '@nexus/shared';
 
 /**
  * offline       no answer (network down, DNS, timeout, a proxy saying the upstream is gone)
@@ -13,6 +13,9 @@ export class ApiError extends Error {
     readonly kind: ApiErrorKind,
     message: string,
     readonly status = 0,
+    /** The server's code (v1 `error.code` or v2 `code`), e.g. DUPLICATE, QUOTA_EXCEEDED, SCOPE_REQUIRED. */
+    readonly code = '',
+    readonly details: Record<string, unknown> | null = null,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -22,7 +25,7 @@ export class ApiError extends Error {
 export type Fetch = typeof fetch;
 
 interface CallInit {
-  method?: 'GET' | 'POST';
+  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   token?: string;
   body?: unknown;
   headers?: Record<string, string>;
@@ -59,12 +62,14 @@ export async function call(fetchImpl: Fetch, origin: string, path: string, init:
   }
   if (res.ok || res.status === 304) return res;
   if (res.status === 502 || res.status === 503 || res.status === 504) throw new ApiError('offline', `Nexus Portal 暂时不可用（${res.status}）`, res.status);
-  const body = (await res.json().catch(() => null)) as ApiErrorBody | null;
-  const code = body?.error?.code;
+  // v1 answers {error:{code,message}}; the /api/v2 interfaces answer {code,message,retryable,details}.
+  const body = (await res.json().catch(() => null)) as (ApiErrorBody & { code?: string; message?: string; details?: Record<string, unknown> }) | null;
+  const code = body?.code ?? body?.error?.code ?? '';
+  const msg = body?.message ?? body?.error?.message;
   // Only Nexus' own answer counts as a revoked token: a 401 from a proxy in front must not wipe the cache.
-  if (res.status === 401 && code === 'device_unauthorized') throw new ApiError('unauthorized', body!.error.message, 401);
+  if (res.status === 401 && (code === 'device_unauthorized' || code === 'DEVICE_REVOKED')) throw new ApiError('unauthorized', msg ?? '此设备的授权已失效', 401, code);
   if (res.status === 404 && path.startsWith('/api/pair/')) throw new ApiError('incompatible', '这个地址不是 Nexus Portal，或服务端版本低于 0.3.0', 404);
-  throw new ApiError('server', body?.error?.message ?? `Nexus Portal 返回错误（${res.status}）`, res.status);
+  throw new ApiError('server', msg ?? `Nexus Portal 返回错误（${res.status}）`, res.status, code, body?.details ?? null);
 }
 
 async function json<T>(res: Response): Promise<T> {
@@ -79,7 +84,7 @@ export type ConfigResult = { changed: false; etag: string | null } | { changed: 
 
 export function deviceApi(origin: string, fetchImpl: Fetch = (...a) => fetch(...a)) {
   return {
-    pairStart: async (name: string) => json<PairStartResponse>(await call(fetchImpl, origin, '/api/pair/start', { method: 'POST', body: { name } })),
+    pairStart: async (name: string, scopes?: readonly string[]) => json<PairStartResponse>(await call(fetchImpl, origin, '/api/pair/start', { method: 'POST', body: scopes ? { name, scopes } : { name } })),
     pairPoll: async (pairId: string, secret: string) => json<PairPollResponse>(await call(fetchImpl, origin, '/api/pair/poll', { method: 'POST', body: { pairId, secret } })),
     /** Conditional: with the last ETag an unchanged configuration is a bodyless 304. */
     async config(token: string, etag: string | null): Promise<ConfigResult> {
@@ -102,6 +107,10 @@ export function deviceApi(origin: string, fetchImpl: Fetch = (...a) => fetch(...
       }
     },
     revoke: async (token: string) => void (await call(fetchImpl, origin, '/api/sync/revoke', { method: 'POST', token, timeoutMs: 5000 })),
+    // ── 我的收藏 (v0.4; needs items:* scopes) ─────────────────────────────
+    folders: async (token: string) => json<{ folders: { id: string; label: string; locked: boolean }[]; account: { id: string; label: string } }>(await call(fetchImpl, origin, '/api/v2/folders', { token })),
+    findItem: async (token: string, url: string) => (await json<{ items: Item[] }>(await call(fetchImpl, origin, `/api/v2/items?url=${encodeURIComponent(url)}`, { token }))).items[0] ?? null,
+    createItem: async (token: string, body: { opId: string; source: 'extension'; item: ItemInput; pinToHome: boolean; duplicatePolicy: 'prompt' | 'update' }) => json<ItemWriteResult>(await call(fetchImpl, origin, '/api/v2/items', { method: 'POST', token, body, timeoutMs: 15_000 })),
   };
 }
 

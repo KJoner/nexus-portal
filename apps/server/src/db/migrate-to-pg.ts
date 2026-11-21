@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { ConfigRepo } from '../config/repo';
 import { IconStore } from '../icons/store';
 import { LEGACY_ADMIN_ID, migratePg, openDb } from '.';
 import type { Database } from './sql';
@@ -20,7 +21,7 @@ import type { Database } from './sql';
  */
 
 /** Tables copied as they are, in an order that satisfies foreign keys. */
-const TABLES = ['users', 'meta', 'user_config', 'op_log', 'auth', 'wallpapers', 'icons', 'health_status', 'integrations', 'devices', 'invites', 'mail_suppression'] as const;
+const TABLES = ['users', 'meta', 'user_config', 'op_log', 'auth', 'wallpapers', 'icons', 'health_status', 'integrations', 'devices', 'invites', 'mail_suppression', 'items', 'pins', 'item_changes', 'item_ops'] as const;
 type Table = (typeof TABLES)[number];
 
 export interface MigrationReport {
@@ -52,6 +53,10 @@ export async function migrateSqliteToPg(opts: { sqliteFile: string; target: Data
     // 2. Upgrade the copy to the account schema; pre-v0.4 icon files become the administrator's rows.
     const copy = openDb(copyFile);
     await new IconStore(copy, join(opts.dataDir, 'icons')).adoptUnowned(LEGACY_ADMIN_ID);
+    // M5 on the copy too: the target receives 我的收藏 in its final shape, so reading it later
+    // changes nothing (and a second run still recognises it as the same migration).
+    const repo = new ConfigRepo(copy);
+    for (const { owner_id } of await copy.all<{ owner_id: string }>('select owner_id from user_config')) await repo.snapshot(owner_id);
     const rows = {} as Record<Table, Record<string, unknown>[]>;
     for (const t of TABLES) rows[t] = await copy.all<Record<string, unknown>>(`select * from ${t}`);
     await copy.close();

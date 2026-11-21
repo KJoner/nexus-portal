@@ -41,17 +41,25 @@
 1. 在欢迎页（或扩展设置、新标签页）中填写门户地址，例如 `https://nexus.example.com`。设备名称可以改，它会显示在门户的设备列表中。
 2. 点「连接」后，Chrome 会请求访问这一个地址的权限，点「允许」。
 3. 扩展显示一个连接码（例如 `KXQ7-M2PD`），并在新标签页中打开门户的确认页面。
-4. 在门户中登录，**核对连接码与扩展显示的完全一致**，点「连接码一致，允许连接」。
+4. 在门户中登录，**核对连接码与扩展显示的完全一致**，看一下扩展申请的权限（读取导航；读取、保存收藏；固定到首页——后几项可以关掉），点「连接码一致，允许连接」。
 5. 扩展取回自己的令牌，关闭确认页，并完成第一次同步。
 
 连接请求 10 分钟内有效，只能确认一次。如果确认页上的连接码和扩展里的不一样，或者你没有发起过连接，请点「拒绝」。
 
 只允许 HTTPS 地址；本机和局域网地址（`localhost`、`192.168.x.x`、`10.x`、Tailscale 的 `100.64/10`、`.lan` 等）也可以用 `http://`，但会显示不加密的提示。
 
+## 收藏网页（0.2.0，需要服务端 0.4.0）
+
+- **工具栏按钮**：在想收藏的网页上点扩展图标，弹窗预填标题和网址；可以改标题、选分组、填标签，勾选「同时固定到首页」（默认不勾），点「保存到收藏库」。服务端确认后显示「已同步到收藏库」；没有网络时显示「已保存在此设备，联网后同步」。已经收藏过的网址会先告诉你它在哪里，不会重复保存。
+- **右键菜单**：网页空白处「收藏当前页面到 Nexus」，链接上「收藏此链接到 Nexus」（存的是链接指向的地址，不是你所在的页面）。浏览器内部页面（`chrome://`、`edge://`）、本地文件、扩展页面不能收藏，会提示原因。
+- **离线与可靠性**：每次保存先写进 `chrome.storage.local` 再发送；关闭弹窗、浏览器结束后台进程或重启都不会丢。浏览器启动、扩展更新、打开弹窗或新标签页时补发，重发用同一个 opId，服务端只会保存一次。工具栏徽标显示还没同步的条数。
+- **授权**：0.1.x 连接的扩展只有读取导航的权限，不会被自动扩大。在扩展设置里点「授权收藏」，回到门户批准新的权限，扩展会用新授权替换旧的（旧授权随即撤销）。没授权时保存的内容存为草稿，授权后在弹窗里确认保存到哪个账号再提交。
+- **权限**：`storage`、`activeTab`（只在你点按钮时读当前页的标题和网址）、`contextMenus`，以及连接时授予的那一个服务器地址。不申请历史记录、书签或全部网站的权限；扩展只在你主动操作时采集。
+
 ## 日常使用
 
 - **打开新标签页**：直接显示缓存的导航。与门户首页一样，可以搜索、打开应用、展开扩展区、查看全部应用和服务状态。
-- **只读**：扩展中不能编辑首页、固定、隐藏或移动应用，也不能收藏壁纸。
+- **新标签页只读**：新标签页中不能编辑首页、固定、隐藏或移动应用，也不能收藏壁纸（收藏网页用工具栏按钮或右键菜单）。
   - 右键菜单中的「在设置中编辑」、显示与布局、更换固定壁纸，会在当前标签页打开门户对应的设置页。
   - 齿轮按钮和 `,` 键打开扩展自己的设置。
 - **扩展设置**（齿轮，或 `chrome://extensions` 中的「扩展程序选项」）：
@@ -279,3 +287,24 @@ apps/chrome-extension
   - 服务端返回重定向（例如 http 跳转到 https）时，扩展不会跟随，请直接填写最终地址。
 - **图标显示为文字**：图标还在下载，或图标源暂时不可用，稍后会自动补上。
 - **想彻底清除扩展的数据**：在扩展设置中「断开连接」，或直接在 `chrome://extensions` 中移除扩展。
+
+## Microsoft Edge（0.2.0）
+
+- 打包：`npm run package -w @nexus/chrome-extension` 同时生成 `nexus-portal-chrome-vX.Y.Z.zip` 与 `nexus-portal-edge-vX.Y.Z.zip`。两者代码相同；Edge 包不含 `manifest.key`（提交 Edge 加载项商店时由商店分配 ID）。打包前检查权限清单，出现清单外的权限会中止。
+- 本机验证：`E2E_EXT_CHANNEL=msedge npx playwright test --project=extension` 在真实的 Microsoft Edge 中跑完整的扩展测试（加载未打包的扩展、连接、新标签页、弹窗收藏、右键收藏、撤销）。2026-11-21 在 Edge 154.0.4258.37 上 12/12 通过。
+- 侧载安装：`edge://extensions` → 开启「开发人员模式」→「加载解压缩的扩展」，选择解压后的 Edge 包目录。不含 key 时扩展 ID 由安装路径决定，更换目录后需要重新连接。
+- 尚未做：Edge 加载项商店的提交与审核。
+
+## Firefox（批次 G，0.2.0）
+
+同一份代码，单独的 manifest 与构建：
+
+- 构建与打包：`npm run package:firefox -w @nexus/chrome-extension` 构建到 `dist-firefox/`，运行 Mozilla 的 `addons-linter`（addons.mozilla.org 签名前做的同一套检查，**出现错误即中止**），再打包 `nexus-portal-firefox-vX.Y.Z.zip`。
+- 与 Chrome / Edge 的差异（`scripts/manifest-targets.mjs`，有单元测试）：后台用事件页（`background.scripts`，Firefox 还不支持扩展 service worker）；`browser_specific_settings.gecko.id = nexus-portal@nexus-portal.extensions`；最低版本 140（第一个读取 `data_collection_permissions` 的桌面版本）；不含 Chrome 专用的 `key`、`minimum_chrome_version`。权限与 Chrome 完全相同。
+- 代码通过 `src/lib/ext.ts` 调用扩展 API：Firefox 用基于 Promise 的 `browser.*`，Chrome / Edge 用 `chrome.*`；唯一需要区别对待的 `contextMenus.removeAll` 已封装。
+- 数据收集声明：`data_collection_permissions.required = ["bookmarksInfo"]`——只有在你主动保存时，才把该网页的地址和标题发到你连接的服务器。提交 addons.mozilla.org 前请再按当时的政策复核一次。
+- 2026-11-21 的 `addons-linter 10.15.0` 结果：**0 个错误**，5 个警告：
+  - `KEY_FIREFOX_ANDROID_UNSUPPORTED_BY_MIN_VERSION`：只面向桌面版 Firefox（安卓版没有新标签页替换），不声明安卓兼容。
+  - `DANGEROUS_EVAL`（zod 校验库里受 try/catch 保护的 `new Function` 探测；扩展页面的 CSP 本就禁止 eval，库会自动退回普通模式）。
+  - 3 个 `UNSAFE_VAR_ASSIGNMENT`（React DOM 内部的 innerHTML 处理与 Vite 的按需加载），均为依赖库代码。
+- **未执行**：在真实 Firefox 中安装与运行（本机没有安装 Firefox；Playwright 的 Firefox 不支持加载扩展），以及 addons.mozilla.org 的签名与审核（需要开发者账号）。上线前请在 Firefox 140+ 中「临时载入附加组件」（`about:debugging` → 此 Firefox → 临时载入附加组件，选择 `dist-firefox/manifest.json`），按「手动验收」逐项检查：新标签页、连接与权限、工具栏收藏、右键收藏页面与链接、断网后重启补发。

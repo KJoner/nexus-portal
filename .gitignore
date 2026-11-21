@@ -26,4 +26,5 @@ docs/*.zip
 
 # Chrome 扩展：测试构建与打包产物
 apps/chrome-extension/dist-test/
+apps/chrome-extension/dist-firefox/
 apps/chrome-extension/release/

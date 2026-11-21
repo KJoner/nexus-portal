@@ -1,7 +1,8 @@
 import { ConfigSchema, normalizeConfig, type ConfigResponse, type ServiceStatus, type WallpaperSourcesResponse } from '@nexus/shared';
+import { ext } from './ext';
 
 /**
- * What the extension keeps in chrome.storage.local (only the extension's own pages can read it).
+ * What the extension keeps in ext.storage.local (only the extension's own pages can read it).
  *   server  the paired portal and this device's read-only token
  *   cache   the last configuration the server confirmed — changes only when the configuration does
  *   sync    when it was last checked, the latest service status, the last error (small, written often)
@@ -15,6 +16,10 @@ export interface ServerRecord {
   pairedAt: string;
   /** The server rejected the token (revoked, password changed, idle too long): pair again. */
   revoked?: boolean;
+  /** v0.4: what this device may do (old pairings: read-only, never widened silently). */
+  scopes?: string[];
+  /** v0.4: the account it belongs to (checked before sending anything saved while signed out). */
+  account?: { id: string; label: string };
 }
 
 export interface CacheRecord {
@@ -46,14 +51,18 @@ export interface Area {
   remove(keys: string | string[]): Promise<void>;
 }
 
-export const KEYS = { server: 'server', cache: 'cache', sync: 'sync' } as const;
+export const KEYS = { server: 'server', cache: 'cache', sync: 'sync', queue: 'saveQueue' } as const;
+
+/** v0.4 收藏: scopes asked for when connecting (the portal shows them, the person may trim them). */
+export const ITEM_SCOPES = ['config:read', 'items:read', 'items:write', 'pins:write'] as const;
+export const canSave = (s: ServerRecord | null) => !!s && !s.revoked && !!s.scopes?.includes('items:write');
 
 const isStr = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
 
 export function readServer(raw: unknown): ServerRecord | null {
   const r = raw as Partial<ServerRecord> | undefined;
   if (!r || !isStr(r.origin) || !isStr(r.token) || !isStr(r.deviceId)) return null;
-  return { origin: r.origin, token: r.token, deviceId: r.deviceId, deviceName: r.deviceName ?? '', pairedAt: r.pairedAt ?? '', revoked: r.revoked === true };
+  return { origin: r.origin, token: r.token, deviceId: r.deviceId, deviceName: r.deviceName ?? '', pairedAt: r.pairedAt ?? '', revoked: r.revoked === true, scopes: Array.isArray(r.scopes) ? r.scopes.filter(isStr) : ['config:read'], account: r.account && isStr(r.account.id) ? { id: r.account.id, label: String(r.account.label ?? '') } : undefined };
 }
 
 /**

@@ -4,6 +4,7 @@ import type { Fetch } from './lib/api';
 import { clearAssets, loadAssets, prefetchWallpaper, useImage, useWallpaperFile } from './lib/assets';
 import { initEngine, load, onStorageChange, useExt, webLock, type ExtState } from './lib/sync';
 import { extensionTransport } from './lib/transport';
+import { ext } from './lib/ext';
 
 /**
  * Wires the portal's home components to the extension before anything renders: read-only, images
@@ -12,7 +13,7 @@ import { extensionTransport } from './lib/transport';
  */
 export async function boot(): Promise<ExtState> {
   const fetchImpl: Fetch = (...args) => fetch(...args);
-  const area = chrome.storage.local;
+  const area = ext.storage.local;
   configureHost({ readOnly: true, useImage, useWallpaperFile, prefetchWallpaper });
   initEngine({
     area,
@@ -31,7 +32,7 @@ export async function boot(): Promise<ExtState> {
   });
   setTransport(extensionTransport(area, fetchImpl));
   const [state] = await Promise.all([load(), loadAssets({ server: () => useExt.getState().server, fetch: fetchImpl, now: Date.now })]);
-  chrome.storage.onChanged.addListener((changes, name) => {
+  ext.storage.onChanged.addListener((changes, name) => {
     if (name === 'local') onStorageChange(changes, () => location.reload());
   });
   return state;
@@ -39,5 +40,5 @@ export async function boot(): Promise<ExtState> {
 
 /** Host access is requested per server and given back when the extension no longer uses it. */
 export async function releaseOrigin(origin: string) {
-  await chrome.permissions.remove({ origins: [`${origin}/*`] }).catch(() => false);
+  await ext.permissions.remove({ origins: [`${origin}/*`] }).catch(() => false);
 }

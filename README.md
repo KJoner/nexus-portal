@@ -115,13 +115,24 @@ scripts          镜像冒烟测试（CI 与本地共用）
 - 修改目录后运行 `npm run catalog:check`（构建与 CI 会自动执行，任何问题都会让构建失败）。`npm run catalog:verify` 联网核对图标是否存在、网址能否打开，并把结果写回 `verification` 字段；被反爬策略拦截的站点会如实记为未通过并注明原因。
 - 站点名称与图标仅用于识别，商标归各自所有者；`icon_source` 记录图标来源（dashboard-icons、simple-icons、站点 favicon），发布前请按各图标集的许可核对。
 
-## Chrome 新标签页扩展
+## 收藏库（v0.4）
 
-`apps/chrome-extension` 把 Chrome 的新标签页换成你的 Nexus 导航。
+每个账号的收藏——应用和收藏的网页——保存在服务端的「我的收藏」里，首页只显示你固定的项目。
 
-- 页面随扩展打包，打开时直接读取本地缓存，再在后台与服务端只读同步。
-- 授权使用可撤销的只读设备令牌：扩展发起连接后，在门户中核对连接码并确认。
-- 需要服务端 0.3.0 或更高版本；每日一图需要 0.3.2。
+- 打开「收藏库」页面（首页收藏库面板右上角「管理收藏库」，或访问 `/library`）：按分组浏览、搜索（名称、拼音、域名、标签）、多选后批量移动/加标签/固定/删除，删除的条目进回收站可恢复；数千条也只渲染屏幕上的那几十行。
+- 导入浏览器导出的书签 HTML 或 Nexus 收藏库 JSON：先看预览（可导入、已存在、重复、不支持的地址），书签文件夹名可作为标签保留，导入后可以撤销本次导入。导出包含分组、标签和固定。
+- 同一网址重复保存会提示「更新原来那条」或「另存一条」；网址的查询参数和锚点原样保留。
+- 接口：`/api/v2/items`、`/api/v2/pins`、`/api/v2/snapshot`、`/api/v2/changes`（opId 幂等、字段级冲突检测、删除墓碑、增量游标），旧的首页配置接口继续可用。
+
+## Chrome / Edge 浏览器扩展
+
+`apps/chrome-extension` 把新标签页换成你的 Nexus 导航，并可以一键把网页收进收藏库。
+
+- 页面随扩展打包，打开时直接读取本地缓存，再在后台与服务端同步。
+- 工具栏按钮：预填当前页的标题和网址，选择分组、标签，可勾选「固定到首页」（默认不勾）。右键菜单「收藏当前页面到 Nexus」「收藏此链接到 Nexus」（取的是链接本身的地址）。断网时先存在本机，联网后用同一个 opId 发送，不会重复。
+- 授权使用可撤销的设备令牌：扩展发起连接后，在门户中核对连接码、查看并确认申请的权限（可以只批准一部分）。0.1.x 的只读授权不会被自动扩大，需要在扩展设置里「授权收藏」。
+- 权限只有 `storage`、`activeTab`、`contextMenus` 和你连接的那一个服务器地址。
+- 需要服务端 0.3.0 或更高版本；收藏网页需要 0.4.0。Chrome、Edge 与 Firefox（桌面版 140+）分别打包（`nexus-portal-chrome-*.zip` / `nexus-portal-edge-*.zip` / `nexus-portal-firefox-*.zip`）；Firefox 版本已通过 Mozilla 附加组件检查，尚未在真实 Firefox 中安装验证。
 
 安装（Windows / macOS 的 Chrome）：
 
@@ -322,7 +333,7 @@ docker compose up -d
 | `NEXUS_OIDC_ISSUER` / `NEXUS_OIDC_CLIENT_ID` / `NEXUS_OIDC_CLIENT_SECRET` | 可选（v0.4）。统一身份（OIDC，授权码 + PKCE，只在服务端完成）。三者与 `NEXUS_PUBLIC_URL` 一起设置后开启多账号 |
 | `NEXUS_REGISTRATION_MODE` | `closed` / `invite`（默认）/ `open`：新身份第一次进入时能否建立 Nexus 账号 |
 | `NEXUS_LEGACY_PASSWORD_LOGIN` | `auto`（默认：管理员绑定统一账号后关闭访问密码登录）/ `on` / `off`；未配置统一身份时始终可用 |
-| `NEXUS_QUOTA_WALLPAPERS` / `NEXUS_QUOTA_ICONS` / `NEXUS_QUOTA_STORAGE_MB` | v0.4：管理员以外每个账号的上限，默认 50 张壁纸、200 个图标、200 MB。超出返回 `QUOTA_EXCEEDED`（不重试）；请求过快返回 `429 RATE_LIMITED` + `Retry-After`。配置本身的上限固定：500 个应用、50 个分类、30 个搜索引擎、36 个固定 |
+| `NEXUS_QUOTA_ITEMS` / `NEXUS_QUOTA_WALLPAPERS` / `NEXUS_QUOTA_ICONS` / `NEXUS_QUOTA_STORAGE_MB` | v0.4：管理员以外每个账号的上限，默认 5000 条收藏、50 张壁纸、200 个图标、200 MB。超出返回 `QUOTA_EXCEEDED`（不重试）；请求过快返回 `429 RATE_LIMITED` + `Retry-After`。配置本身的上限固定：500 个应用、50 个分类、30 个搜索引擎、36 个固定 |
 | `NEXUS_MAIL_PROVIDER` | 产品通知邮件：`log`（默认，只写日志）/ `smtp`（`NEXUS_SMTP_URL`）/ `resend`（`NEXUS_RESEND_API_KEY`）；发件人 `NEXUS_MAIL_FROM`，回复地址 `NEXUS_MAIL_REPLY_TO` |
 
 Compose 额外读取 `NEXUS_VERSION`（镜像标签）、`NEXUS_IMAGE`、`NEXUS_BIND`、`NEXUS_PORT`；`NEXUS_PUBLIC_URL` 同时传给 `NEXUS_ALLOWED_ORIGINS`。说明见 [`.env.example`](.env.example)。

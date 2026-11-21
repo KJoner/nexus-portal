@@ -134,6 +134,8 @@ function initialState(account: string | null = cacheAccount) {
 }
 
 let transport: Transport = httpTransport;
+/** The transport in use (the 收藏库 store talks to the same server, and tests swap both at once). */
+export const currentTransport = (): Transport => transport;
 let notifyRejected: (message: string) => void = () => {};
 
 export const useConfigStore = create<ConfigStore>((set, get) => ({

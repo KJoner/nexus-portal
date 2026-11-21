@@ -9,8 +9,9 @@ import { useEffect, useMemo, type ReactNode } from 'react';
 import { createMemoryRouter, RouterProvider, useLocation } from 'react-router';
 import { phaseOf, sync, useExt } from '../lib/sync';
 import { ConnectForm } from './Connect';
+import { ext } from '../lib/ext';
 
-const optionsUrl = () => chrome.runtime.getURL('options.html');
+const optionsUrl = () => ext.runtime.getURL('options.html');
 
 /**
  * The home links to /settings/…: the extension's own settings for the gear (and `,`), the
@@ -86,6 +87,7 @@ export function NewTab() {
         { path: '/settings/*', element: <LeaveForSettings /> },
         // 应用目录 lives in the portal: the new tab hands over to it, like the settings pages.
         { path: '/catalog', element: <LeaveForSettings /> },
+        { path: '/library', element: <LeaveForSettings /> },
         { path: '*', element: <HomePage /> },
       ]),
     [],

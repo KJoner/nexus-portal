@@ -82,6 +82,31 @@ OBSYNC_LEGACY_TOKEN_LOGIN=true          # 管理员认领统一账号前保留 A
 - 使用独立发信子域（例如 `mail.accounts.example.com`），按服务商给出的记录配置 SPF 与 DKIM，再配置 DMARC。根域已有的 MX 不要替换；同一名称不要出现两条 SPF。
 - 「服务商已接收」不等于「进了收件箱」：上线前用 QQ、163、Gmail、Outlook 实测收件箱/垃圾箱与延迟，记录在验收执行记录里。
 
+## LiteSync 库的排序规则（C）
+
+`litesync` 库以字节序（`LC_COLLATE 'C'`、`LC_CTYPE 'C'`，从 `template0` 创建）建立：LiteSync 的文件路径排序和分页游标必须与它的 SQLite（BINARY）逐字节一致，按语言区域排序会让对账漂移，所以 LiteSync 的 PostgreSQL 模式在启动时检查 `datcollate ∈ {C, POSIX, C.UTF-8}`，不满足就拒绝启动。`nexus` 与 `keycloak` 库保持实例默认，不受影响。
+
+用早期模板建过 `litesync` 库的部署（当时库在 LiteSync 迁移前是空的），先检查：
+
+```
+docker compose exec -T postgres psql -U postgres -tAc "SELECT datcollate FROM pg_database WHERE datname='litesync'"
+```
+
+结果不是 `C` 时，在 LiteSync 迁移进来**之前**删掉重建（库里不能已有数据）：
+
+```
+docker compose exec -T postgres psql -U postgres -v ON_ERROR_STOP=1 <<'SQL'
+DROP DATABASE litesync;
+CREATE DATABASE litesync OWNER litesync_app TEMPLATE template0 ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C';
+REVOKE CONNECT, TEMPORARY ON DATABASE litesync FROM PUBLIC;
+GRANT CONNECT ON DATABASE litesync TO litesync_app;
+\c litesync
+REVOKE ALL ON SCHEMA public FROM PUBLIC;
+GRANT ALL ON SCHEMA public TO litesync_app;
+ALTER SCHEMA public OWNER TO litesync_app;
+SQL
+```
+
 ## 备份与恢复
 
 ```

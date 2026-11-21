@@ -22,7 +22,8 @@ import type { Env } from './env';
 import type { HealthChecker } from './health/checker';
 import { apiError, csrf, headers, isHttps, quotaExceeded, rateLimited, v2Error } from './http/security';
 import { RateLimiter, type LimitKind } from './http/limits';
-import { QuotaExceededError } from './quota-types';
+import { DEFAULT_QUOTAS, QuotaExceededError } from './quota-types';
+import { registerItemsApi } from './items/api';
 import { isValidIconKey, type IconProxy, type IconSource } from './icons/proxy';
 import { IconError, MAX_ICON_BYTES, type IconStore } from './icons/store';
 import { LinkwardenError, type Linkwarden } from './integrations/linkwarden';
@@ -75,7 +76,7 @@ export interface WallpaperSources {
   importFetch?: typeof getBytes;
 }
 
-type Vars = { user: User; session: Session; device: DeviceAuth };
+type Vars = { user: User; session: Session; device: DeviceAuth; viaDevice: boolean };
 
 const COOKIE = 'nexus_session';
 const INTENT_COOKIE = 'nexus_oidc';
@@ -471,8 +472,24 @@ export function createApp(deps: Deps) {
   });
   app.all('/api/sync/*', (c) => apiError(c, 404, 'not_found', '接口不存在'));
 
+  // 我的收藏 v2 (契约 §6): a paired device may call these with its own token, within its scopes.
+  const ITEMS_API = /^\/api\/v2\/(items|pins|snapshot|changes|folders)(\/|$)/;
+  app.use('/api/v2/*', async (c, next) => {
+    const header = c.req.header('authorization');
+    if (!header || !ITEMS_API.test(c.req.path)) return next();
+    const token = /^Bearer (\S+)$/.exec(header)?.[1];
+    const device = token && DEVICE_TOKEN.test(token) ? await devices.validate(token) : null;
+    const user = device ? await users.get(device.ownerId) : null;
+    if (!device || !user || user.disabled) return v2Error(c, 401, 'DEVICE_REVOKED', '此设备的授权已失效或已被撤销，请在扩展中重新连接');
+    c.set('device', device);
+    c.set('user', user);
+    c.set('viaDevice', true);
+    return next();
+  });
+
   // Everything else under /api needs a session, which names the account.
   app.use('/api/*', async (c, next) => {
+    if (c.get('viaDevice')) return next();
     const token = getCookie(c, COOKIE);
     const v = await auth.validate(token);
     if (!v.valid) return apiError(c, 401, 'unauthenticated', '需要登录');
@@ -517,11 +534,17 @@ export function createApp(deps: Deps) {
     ['POST', /^\/api\/status\/[^/]+\/check$/],
     ['PUT', /^\/api\/integrations\/linkwarden$/],
   ];
+  /** Images the pages show by the dozen (icons, wallpaper variants): cached, cheap, never limited. */
+  const IMAGES = /^\/api\/(icon-cache\/|icons\/[^/]+$|wallpapers\/[^/]+\/[^/]+$|daily\/[^/]+\/[^/]+$|gallery\/[^/]+\/preview)/;
   app.use('/api/*', async (c, next) => {
-    const who = `acct:${c.get('user').id}`;
+    const user = c.get('user');
+    const who = `acct:${user.id}`;
     const { method, path } = c.req;
+    if ((method === 'GET' || method === 'HEAD') && IMAGES.test(path)) return next();
     const is = (list: [string, RegExp][]) => list.some(([m, re]) => m === method && re.test(path));
     const kind: LimitKind = is(UPLOADS) ? 'upload' : is(FETCHING) ? 'fetch' : path === '/api/suggest' || path === '/api/bookmarks' ? 'suggest' : method === 'GET' || method === 'HEAD' ? 'read' : 'write';
+    // The administrator runs this server: only the outbound-fetch limits apply (they protect it).
+    if (user.isAdmin && kind !== 'fetch') return next();
     const wait = limits.take(kind, who);
     if (wait) return rateLimited(c, wait, kind);
     if (kind !== 'fetch') return next();
@@ -535,6 +558,9 @@ export function createApp(deps: Deps) {
   });
   const me = (c: Context<{ Variables: Vars }>) => c.get('user');
   const adminOnly: MiddlewareHandler<{ Variables: Vars }> = async (c, next) => (c.get('user').isAdmin ? next() : apiError(c, 403, 'admin_only', '仅管理员可用'));
+
+  // ── 我的收藏 (v2) ────────────────────────────────────────────────────────
+  registerItemsApi(app, { db: repo.db, repo, secrets, itemLimit: (u) => (u.isAdmin ? null : (env.quotas ?? DEFAULT_QUOTAS).items) });
 
   // ── Account (v2) ────────────────────────────────────────────────────────
   app.get('/api/v2/me', async (c) => {

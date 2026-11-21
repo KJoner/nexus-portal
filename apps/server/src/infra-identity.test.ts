@@ -52,4 +52,16 @@ describe('identity realm template', () => {
     for (const db of ['keycloak', 'nexus', 'litesync']) expect(init).toMatch(new RegExp(`REVOKE CONNECT, TEMPORARY ON DATABASE ${db}\\s+FROM PUBLIC`));
     expect(init).toMatch(/NOSUPERUSER NOCREATEDB NOCREATEROLE/);
   });
+
+  it('the litesync database sorts bytewise (C): LiteSync refuses any other collation at start', () => {
+    // Paths and paging cursors must order exactly like its SQLite (BINARY); a locale collation drifts.
+    const litesync = /CREATE DATABASE litesync\b[^;]*;/.exec(init)?.[0] ?? '';
+    expect(litesync).toMatch(/TEMPLATE template0/);
+    expect(litesync).toMatch(/ENCODING 'UTF8'/);
+    expect(litesync).toMatch(/LC_COLLATE 'C'/);
+    expect(litesync).toMatch(/LC_CTYPE 'C'/);
+    // The other two keep the instance default (nothing of theirs depends on byte order).
+    expect(/CREATE DATABASE nexus\b[^;]*;/.exec(init)?.[0]).not.toMatch(/LC_COLLATE/);
+    expect(/CREATE DATABASE keycloak\b[^;]*;/.exec(init)?.[0]).not.toMatch(/LC_COLLATE/);
+  });
 });

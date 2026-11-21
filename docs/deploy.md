@@ -147,7 +147,7 @@ Chrome / Edge 的「新标签页」需要浏览器扩展才能替换，第一阶
 | `NEXUS_OIDC_ISSUER` / `_CLIENT_ID` / `_CLIENT_SECRET` | 空 | v0.4：统一身份，见第 9 节 |
 | `NEXUS_REGISTRATION_MODE` | `invite` | v0.4：`closed` / `invite` / `open` |
 | `NEXUS_LEGACY_PASSWORD_LOGIN` | `auto` | v0.4：管理员绑定统一账号后关闭访问密码登录；`on` / `off` 强制 |
-| `NEXUS_QUOTA_WALLPAPERS` / `_ICONS` / `_STORAGE_MB` | `50` / `200` / `200` | v0.4：管理员以外每个账号的上限 |
+| `NEXUS_QUOTA_ITEMS` / `_WALLPAPERS` / `_ICONS` / `_STORAGE_MB` | `5000` / `50` / `200` / `200` | v0.4：管理员以外每个账号的上限 |
 | `NEXUS_MAIL_PROVIDER` | `log` | v0.4：产品通知邮件 `log` / `smtp`（`NEXUS_SMTP_URL`）/ `resend`（`NEXUS_RESEND_API_KEY`）；`NEXUS_MAIL_FROM`、`NEXUS_MAIL_REPLY_TO` |
 | `NEXUS_HEALTH_ALLOW_LOOPBACK` | `false` | 允许检查回环地址（不建议） |
 | `NEXUS_COOKIE_SECURE` | `auto` | `auto` / `always` / `never` |

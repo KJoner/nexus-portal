@@ -89,7 +89,10 @@ export function csrf(env: Env): MiddlewareHandler {
     if (c.req.method === 'GET' || c.req.method === 'HEAD') return next();
     if (c.req.header(CLIENT_HEADER) !== '1') return apiError(c, 403, 'csrf', '请求缺少 Nexus 客户端标识');
     const origin = c.req.header('origin');
-    if (origin && !DEVICE_API.test(c.req.path)) {
+    // A paired device authenticates with its bearer token, never with cookies: cross-site forgery
+    // has nothing to ride on, and the extension's own origin is not this site's.
+    const bearer = /^Bearer \S+$/.test(c.req.header('authorization') ?? '');
+    if (origin && !bearer && !DEVICE_API.test(c.req.path)) {
       let host: string | null = null;
       try {
         host = new URL(origin).host;

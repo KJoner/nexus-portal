@@ -14,7 +14,10 @@ CREATE ROLE litesync_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT PAS
 
 CREATE DATABASE keycloak OWNER keycloak;
 CREATE DATABASE nexus    OWNER nexus_app;
-CREATE DATABASE litesync OWNER litesync_app;
+-- LiteSync 必须是字节序（C）排序：文件路径的排序与分页游标要和它的 SQLite（BINARY）逐字节一致，
+-- 按语言区域排序（镜像默认 en_US.utf8）会让对账与游标漂移；LiteSync 的 PostgreSQL 模式启动时
+-- 检查 datcollate ∈ {C, POSIX, C.UTF-8}，不满足就拒绝启动。template0 才允许指定与模板不同的排序。
+CREATE DATABASE litesync OWNER litesync_app TEMPLATE template0 ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C';
 
 -- 默认任何角色都能连接任何库；收回，只留给各自的属主
 REVOKE CONNECT, TEMPORARY ON DATABASE keycloak FROM PUBLIC;

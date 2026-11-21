@@ -296,6 +296,70 @@ export const MIGRATIONS: readonly string[] = [
 
   insert or replace into meta (key, value) values ('config_format', '3');
   `,
+  `
+  -- v8 (v0.4 · 我的收藏): items and pins in their own tables (需求 §8, 契约 §6). The home page's
+  -- config.apps / config.pins become a view over them; an account's apps move here on first use
+  -- (user_config.items_migrated), keeping their ids and the pin order.
+  create table items (
+    owner_id text not null references users (id),
+    id text not null,
+    kind text not null,
+    source text not null,
+    catalog_id text,
+    title text not null,
+    url text not null,
+    url_key text not null,
+    folder_id text not null,
+    tags text not null default '[]',
+    note text not null default '',
+    icon_ref text not null default '',
+    extra text not null default '',
+    position double precision not null default 0,
+    version integer not null,
+    field_versions text not null default '{}',
+    import_id text,
+    created_at integer not null,
+    updated_at integer not null,
+    deleted_at integer,
+    primary key (owner_id, id)
+  );
+  create index items_live on items (owner_id, deleted_at, position);
+  create index items_url on items (owner_id, url_key);
+  create index items_import on items (owner_id, import_id);
+  -- A pin can only point at an item of the same account (composite key).
+  create table pins (
+    owner_id text not null,
+    item_id text not null,
+    layout text not null,
+    position integer not null,
+    primary key (owner_id, layout, item_id),
+    foreign key (owner_id, item_id) references items (owner_id, id)
+  );
+  -- Per-account change sequence: what a client that has seen sequence N must apply next.
+  create table item_changes (
+    owner_id text not null references users (id),
+    seq integer not null,
+    entity text not null,
+    entity_id text not null,
+    version integer not null,
+    action text not null,
+    at integer not null,
+    primary key (owner_id, seq)
+  );
+  -- Idempotency of item writes: the same opId replays its stored answer; a different request
+  -- under the same opId is refused (IDEMPOTENCY_KEY_REUSED).
+  create table item_ops (
+    owner_id text not null references users (id),
+    op_id text not null,
+    request_hash text not null,
+    status integer not null,
+    result text not null,
+    created_at integer not null,
+    primary key (owner_id, op_id)
+  );
+  alter table user_config add column items_migrated integer not null default 0;
+  alter table user_config add column item_seq integer not null default 0;
+  `,
 ];
 
 /**
@@ -481,5 +545,69 @@ export const PG_MIGRATIONS: readonly string[] = [
   );
 
   insert into meta (key, value) values ('config_format', '3') on conflict (key) do update set value = excluded.value;
+  `,
+  `
+  -- v2 (v0.4 · 我的收藏): items and pins in their own tables (需求 §8, 契约 §6). The home page's
+  -- config.apps / config.pins become a view over them; an account's apps move here on first use
+  -- (user_config.items_migrated), keeping their ids and the pin order.
+  create table items (
+    owner_id text not null references users (id),
+    id text not null,
+    kind text not null,
+    source text not null,
+    catalog_id text,
+    title text not null,
+    url text not null,
+    url_key text not null,
+    folder_id text not null,
+    tags text not null default '[]',
+    note text not null default '',
+    icon_ref text not null default '',
+    extra text not null default '',
+    position double precision not null default 0,
+    version bigint not null,
+    field_versions text not null default '{}',
+    import_id text,
+    created_at bigint not null,
+    updated_at bigint not null,
+    deleted_at bigint,
+    primary key (owner_id, id)
+  );
+  create index items_live on items (owner_id, deleted_at, position);
+  create index items_url on items (owner_id, url_key);
+  create index items_import on items (owner_id, import_id);
+  -- A pin can only point at an item of the same account (composite key).
+  create table pins (
+    owner_id text not null,
+    item_id text not null,
+    layout text not null,
+    position integer not null,
+    primary key (owner_id, layout, item_id),
+    foreign key (owner_id, item_id) references items (owner_id, id)
+  );
+  -- Per-account change sequence: what a client that has seen sequence N must apply next.
+  create table item_changes (
+    owner_id text not null references users (id),
+    seq bigint not null,
+    entity text not null,
+    entity_id text not null,
+    version bigint not null,
+    action text not null,
+    at bigint not null,
+    primary key (owner_id, seq)
+  );
+  -- Idempotency of item writes: the same opId replays its stored answer; a different request
+  -- under the same opId is refused (IDEMPOTENCY_KEY_REUSED).
+  create table item_ops (
+    owner_id text not null references users (id),
+    op_id text not null,
+    request_hash text not null,
+    status integer not null,
+    result text not null,
+    created_at bigint not null,
+    primary key (owner_id, op_id)
+  );
+  alter table user_config add column items_migrated integer not null default 0;
+  alter table user_config add column item_seq bigint not null default 0;
   `,
 ];

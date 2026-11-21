@@ -37,7 +37,8 @@ test.beforeAll(async () => {
   await api.post('/api/config/ops', { headers: H, data: { clientId: 'e2e', batchId: `ext-${Date.now()}`, ops: [{ type: 'config.replace', config: baseline }] } });
   profile = mkdtempSync(join(tmpdir(), 'nexus-ext-'));
   context = await chromium.launchPersistentContext(profile, {
-    channel: 'chromium',
+    // E2E_EXT_CHANNEL=msedge runs the same suite in Microsoft Edge (需求 §9.2: Edge verified on its own).
+    channel: process.env.E2E_EXT_CHANNEL ?? 'chromium',
     locale: 'zh-CN',
     viewport: { width: 1440, height: 900 },
     args: [`--disable-extensions-except=${BUILD}`, `--load-extension=${BUILD}`, '--enable-unsafe-extension-debugging'],
@@ -81,7 +82,8 @@ test('installs, opens the setup page, and pairs with the portal’s approval', a
   await approval.getByLabel('访问密码').fill('e2e-password');
   await approval.getByRole('button', { name: '进入' }).click();
   await expect(approval.getByRole('dialog')).toContainText(code);
-  await expect(approval.getByRole('dialog')).toContainText('Chrome');
+  // The device names itself after the browser it runs in (Chrome or Edge).
+  await expect(approval.getByRole('dialog')).toContainText(process.env.E2E_EXT_CHANNEL === 'msedge' ? 'Edge' : 'Chrome');
   await approval.getByRole('button', { name: '连接码一致，允许连接' }).click();
 
   // The extension picks up its token, closes the approval tab and syncs.
@@ -89,7 +91,7 @@ test('installs, opens the setup page, and pairs with the portal’s approval', a
   await expect(options.getByText('127.0.0.1:8790')).toBeVisible();
   await options.screenshot({ path: 'test-results/extension-options.png', fullPage: true });
   const devices = (await (await api.get('/api/devices')).json()) as { name: string }[];
-  expect(devices.map((d) => d.name)).toEqual([expect.stringContaining('Chrome')]);
+  expect(devices.map((d) => d.name)).toEqual([expect.stringContaining(process.env.E2E_EXT_CHANNEL === 'msedge' ? 'Edge' : 'Chrome')]);
 });
 
 test('Ctrl+T opens the extension’s own page, rendered from the local cache', async () => {
@@ -287,6 +289,57 @@ test('a damaged cache is dropped and downloaded again', async () => {
   });
   await page.reload();
   await expect(page.getByLabel('搜索', { exact: true })).toBeVisible({ timeout: 10_000 });
+  await page.close();
+});
+
+/** The tab id of a page, as the extension sees it. */
+async function tabIdOf(url: string): Promise<number> {
+  const worker = context.serviceWorkers()[0]!;
+  return worker.evaluate(async (u) => (await chrome.tabs.query({ url: u }))[0]!.id!, url);
+}
+
+test('收藏 (EX-01/02): pairing asked for the collection scopes; the popup saves the page, unpinned, and says 已同步', async () => {
+  const [device] = (await (await api.get('/api/devices')).json()) as { scopes?: string[] }[];
+  expect(device!.scopes).toEqual(['config:read', 'items:read', 'items:write', 'pins:write']);
+  const target = await context.newPage();
+  await target.goto(`${ORIGIN}/api/v2/catalog`);
+  const targetUrl = target.url();
+  const popup = await context.newPage();
+  await popup.goto(`chrome-extension://${extId}/popup.html?tab=${await tabIdOf(targetUrl)}`);
+  await expect(popup.getByRole('heading', { name: '收藏到 Nexus' })).toBeVisible();
+  await expect(popup.getByText(targetUrl, { exact: true })).toBeVisible();
+  await popup.getByLabel('标题').fill('公共应用目录（扩展收藏）');
+  await popup.getByLabel('标签').fill('扩展，测试');
+  await expect(popup.getByRole('checkbox')).not.toBeChecked(); // 固定到首页 is off by default
+  await popup.screenshot({ path: 'test-results/extension-popup.png' });
+  await popup.getByRole('button', { name: '保存到收藏库' }).click();
+  await expect(popup.getByRole('status')).toHaveText('已同步到收藏库');
+  const saved = ((await (await api.get(`/api/v2/items?url=${encodeURIComponent(targetUrl)}`)).json()) as { items: { title: string; source: string; tags: string[]; pinned: boolean }[] }).items[0];
+  expect(saved).toMatchObject({ title: '公共应用目录（扩展收藏）', source: 'extension', tags: ['扩展', '测试'], pinned: false });
+
+  // The same page again: the popup says where it already is, and saving does not make a second one.
+  await popup.goto(`chrome-extension://${extId}/popup.html?tab=${await tabIdOf(targetUrl)}`);
+  await expect(popup.getByText(/已在收藏库：「公共应用目录（扩展收藏）」/)).toBeVisible();
+  await popup.getByRole('button', { name: '保存到收藏库' }).click();
+  await expect(popup.getByRole('status')).toHaveText('这个网址已在收藏库中');
+  expect(((await (await api.get(`/api/v2/items?q=${encodeURIComponent('公共应用目录')}`)).json()) as { items: unknown[] }).items).toHaveLength(1);
+  await popup.close();
+  await target.close();
+});
+
+test('收藏此链接 saves the link (linkUrl), never the page it is on; browser pages are refused', async () => {
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extId}/popup.html`);
+  const link = 'https://docs.example.org/guide/install?id=7#step-2';
+  const r = await page.evaluate(
+    ([l, p]) => chrome.runtime.sendMessage({ type: 'test:menu', info: { menuItemId: 'nexus-save-link', linkUrl: l, pageUrl: p }, tab: { title: '所在页面', url: p } }),
+    [link, `${ORIGIN}/catalog`],
+  );
+  expect(r).toMatchObject({ ok: true, state: 'saved', url: link });
+  expect(((await (await api.get(`/api/v2/items?url=${encodeURIComponent(link)}`)).json()) as { items: { title: string }[] }).items[0]?.title).toBe('install · docs.example.org');
+  expect(((await (await api.get(`/api/v2/items?url=${encodeURIComponent(`${ORIGIN}/catalog`)}`)).json()) as { items: unknown[] }).items).toHaveLength(0);
+  const refused = await page.evaluate(() => chrome.runtime.sendMessage({ type: 'test:menu', info: { menuItemId: 'nexus-save-page', pageUrl: 'chrome://settings/' }, tab: { title: '设置', url: 'chrome://settings/' } }));
+  expect(refused).toMatchObject({ ok: false });
   await page.close();
 });
 

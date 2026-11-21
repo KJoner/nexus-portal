@@ -67,7 +67,7 @@ describe('storage quotas of a member account (TN-07)', () => {
   let member: string;
   let admin: string;
   beforeAll(async () => {
-    t = await buildTestApp({ idp: await fakeIdp(), legacyPasswordLogin: 'on', quotas: { wallpapers: 2, icons: 2, storageBytes: 5 * 1024 * 1024 } });
+    t = await buildTestApp({ idp: await fakeIdp(), legacyPasswordLogin: 'on', quotas: { items: 5000, wallpapers: 2, icons: 2, storageBytes: 5 * 1024 * 1024 } });
     member = (await t.loginOidc({ sub: 'member-1', email: 'm@example.org' })).cookie;
     admin = await t.loginLegacy();
   });
@@ -110,7 +110,7 @@ describe('storage quotas of a member account (TN-07)', () => {
 
 describe('the storage limit in bytes (413)', () => {
   it('a picture that would not fit is QUOTA_EXCEEDED with kind storage', async () => {
-    const t = await buildTestApp({ idp: await fakeIdp(), quotas: { wallpapers: 10, icons: 10, storageBytes: 1 } });
+    const t = await buildTestApp({ idp: await fakeIdp(), quotas: { items: 5000, wallpapers: 10, icons: 10, storageBytes: 1 } });
     try {
       const member = (await t.loginOidc({ sub: 'small' })).cookie;
       const res = await json(await upload(t, member, '/api/wallpapers', await jpeg(1300, 800), 'big.jpg', 'image/jpeg'));
@@ -137,7 +137,7 @@ describe.each(DIALECTS)('quotas hold under concurrency (%s)', (dialect) => {
     const users = new Users(db);
     const r = await users.signIn({ issuer: 'https://id.example.test', subject: 'member' }, 'open');
     if (!r.ok) throw new Error('sign-in');
-    const quota = new Quota(db, { wallpapers: join(dir, 'w'), icons: join(dir, 'i') }, async (id) => (id === LEGACY_ADMIN_ID ? null : { wallpapers: 3, icons: 10, storageBytes: 1 << 30 }));
+    const quota = new Quota(db, { wallpapers: join(dir, 'w'), icons: join(dir, 'i') }, async (id) => (id === LEGACY_ADMIN_ID ? null : { items: 5000, wallpapers: 3, icons: 10, storageBytes: 1 << 30 }));
     const store = new WallpaperStore(db, join(dir, 'w'), quota);
     const add = (n: number) => store.addRemote(r.user.id, `https://images.example.org/${n}.jpg`, `图 ${n}`, { width: 1920, height: 1080 }, '#334455', { source: 'unsplash', ref: `p${n}` });
     return { db, owner: r.user.id, add };
@@ -207,6 +207,21 @@ describe('RATE_LIMITED, per account (TN-07)', () => {
       expect(pending).toHaveLength(3);
       pending.forEach((fail) => fail());
       await Promise.all([...inFlight, bImport]);
+    } finally {
+      await t.close();
+    }
+  });
+
+  it('images a page shows by the dozen are not counted; the administrator’s own requests are not limited', async () => {
+    const t = await buildTestApp({ idp: await fakeIdp(), legacyPasswordLogin: 'on', limits: { read: { rate: 0.001, burst: 2 } } });
+    try {
+      const member = (await t.loginOidc({ sub: 'icons-viewer' })).cookie;
+      for (let i = 0; i < 12; i++) expect((await t.app.request('/api/icon-cache/fav/github.com', { headers: { cookie: member } })).status).not.toBe(429);
+      expect((await t.app.request('/api/config', { headers: { cookie: member } })).status).toBe(200);
+      expect((await t.app.request('/api/config', { headers: { cookie: member } })).status).toBe(200);
+      expect((await t.app.request('/api/config', { headers: { cookie: member } })).status).toBe(429);
+      const admin = await t.loginLegacy();
+      for (let i = 0; i < 6; i++) expect((await t.app.request('/api/config', { headers: { cookie: admin } })).status).toBe(200);
     } finally {
       await t.close();
     }

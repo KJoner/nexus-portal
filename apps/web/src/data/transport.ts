@@ -23,6 +23,11 @@ import {
   type DailyResponse,
   type UploadedWallpaper,
   type WallpaperSourcesResponse,
+  type ChangesResponse,
+  type ItemInput,
+  type ItemPatch,
+  type ItemWriteResult,
+  type SnapshotResponse,
 } from '@nexus/shared';
 
 /** Server answered with an error status. */
@@ -89,10 +94,26 @@ export interface Transport {
   adminUsers(): Promise<AdminUser[]>;
   setUserDisabled(id: string, disabled: boolean): Promise<void>;
   createInvite(ttlDays: number): Promise<InviteResponse>;
+  /** v0.4 我的收藏 (契约 §6): row-level items, pins, snapshot and changes. */
+  items: ItemsTransport;
   /** v0.4 应用目录: public templates, all pages merged (the catalog is small). */
   catalog(): Promise<CatalogResponse>;
   /** Server pushes: config revisions and health results. Returns an unsubscribe function. */
   subscribe(h: { onOpen(): void; onRevision(revision: number): void; onStatus(s: ServiceStatus | { appId: string; removed: true }): void; onClosed(): void }): () => void;
+}
+
+export interface ItemsTransport {
+  snapshot(page?: string): Promise<SnapshotResponse>;
+  changes(cursor: string): Promise<ChangesResponse & { pins?: string[]; folders?: SnapshotResponse['folders'] }>;
+  create(body: { opId: string; source?: 'manual' | 'catalog' | 'import'; item: ItemInput; pinToHome?: boolean; duplicatePolicy?: 'prompt' | 'update' | 'create' }): Promise<ItemWriteResult>;
+  patch(id: string, body: { opId: string; baseVersion: number; patch: ItemPatch }): Promise<ItemWriteResult>;
+  remove(id: string, opId: string): Promise<ItemWriteResult>;
+  restore(id: string, opId: string): Promise<ItemWriteResult>;
+  pin(id: string, opId: string, position?: number): Promise<{ pins: string[] }>;
+  unpin(id: string, opId: string): Promise<{ pins: string[] }>;
+  importItems(body: { opId: string; folderId?: string; items: ItemInput[]; skipDuplicates?: boolean }): Promise<{ importId: string; imported: number; skipped: number }>;
+  undoImport(importId: string, opId: string): Promise<{ removed: number; kept: number }>;
+  exportAll(): Promise<unknown>;
 }
 
 async function request<T>(path: string, init: RequestInit = {}, timeoutMs = 8000): Promise<T> {
@@ -173,6 +194,19 @@ export const httpTransport: Transport = {
   authOptions: () => request('/api/v2/auth/options'),
   me: () => request('/api/v2/me'),
   logoutAll: () => request('/api/v2/account/logout-all', { method: 'POST' }),
+  items: {
+    snapshot: (page) => request(`/api/v2/snapshot${page ? `?page=${encodeURIComponent(page)}` : ''}`, {}, 20_000),
+    changes: (cursor) => request(`/api/v2/changes?cursor=${encodeURIComponent(cursor)}`),
+    create: (body) => request('/api/v2/items', { method: 'POST', body: JSON.stringify(body) }),
+    patch: (id, body) => request(`/api/v2/items/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    remove: (id, opId) => request(`/api/v2/items/${encodeURIComponent(id)}?opId=${encodeURIComponent(opId)}`, { method: 'DELETE' }),
+    restore: (id, opId) => request(`/api/v2/items/${encodeURIComponent(id)}/restore`, { method: 'POST', body: JSON.stringify({ opId }) }),
+    pin: (id, opId, position) => request(`/api/v2/pins/${encodeURIComponent(id)}`, { method: 'POST', body: JSON.stringify(position === undefined ? { opId } : { opId, position }) }),
+    unpin: (id, opId) => request(`/api/v2/pins/${encodeURIComponent(id)}?opId=${encodeURIComponent(opId)}`, { method: 'DELETE' }),
+    importItems: (body) => request('/api/v2/import', { method: 'POST', body: JSON.stringify(body) }, 60_000),
+    undoImport: (importId, opId) => request(`/api/v2/import/${encodeURIComponent(importId)}/undo`, { method: 'POST', body: JSON.stringify({ opId }) }),
+    exportAll: () => request('/api/v2/export', {}, 60_000),
+  },
   adminUsers: async () => (await request<{ users: AdminUser[] }>('/api/v2/admin/users')).users,
   setUserDisabled: async (id, disabled) => {
     await request(`/api/v2/admin/users/${encodeURIComponent(id)}/${disabled ? 'disable' : 'enable'}`, { method: 'POST' });
@@ -342,6 +376,7 @@ export class MemoryTransport implements Transport {
     this.authenticated = false;
     return { sessions: 1, devices: 0, endSessionUrl: null };
   }
+  items: ItemsTransport = new Proxy({} as ItemsTransport, { get: () => async () => { throw new HttpError(501, 'not_in_tests', '收藏库接口在单元测试中不可用'); } });
   users: AdminUser[] = [];
   invites: InviteResponse[] = [];
   async adminUsers(): Promise<AdminUser[]> {

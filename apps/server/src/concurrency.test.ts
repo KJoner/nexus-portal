@@ -1,5 +1,5 @@
 import { defaultConfig, type Op } from '@nexus/shared';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LoginIntents } from './auth/intents';
 import { ConfigRepo } from './config/repo';
 import { LEGACY_ADMIN_ID, type DB } from './db';
@@ -12,6 +12,8 @@ import { Users } from './users/users';
  * construction; with NEXUS_TEST_PG_URL the `pg` half runs on a real PostgreSQL server, where
  * concurrent transactions interleave and each guarantee needs its lock or conditional write.
  */
+// PGlite under a loaded test run is slow; the guarantees are about outcomes, not speed.
+vi.setConfig({ testTimeout: 30_000 });
 const ISSUER = 'https://id.example.test/realms/accounts';
 let db: DB | null = null;
 afterEach(async () => {

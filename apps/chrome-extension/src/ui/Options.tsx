@@ -7,7 +7,9 @@ import { useEffect, useState } from 'react';
 import { releaseOrigin } from '../boot';
 import { assetStats } from '../lib/assets';
 import { clearCache, disconnect, sync, useExt, type SyncOutcome } from '../lib/sync';
+import { canSave } from '../lib/storage';
 import { ConnectForm } from './Connect';
+import { ext } from '../lib/ext';
 
 const SYNC_MESSAGE: Record<SyncOutcome, { msg: string; tone: 'ok' | 'info' | 'warn' | 'error' }> = {
   updated: { msg: '已同步最新导航', tone: 'ok' },
@@ -34,7 +36,7 @@ function Connected() {
   const cache = useExt((s) => s.cache);
   const state = useExt((s) => s.sync);
   const syncing = useExt((s) => s.syncing);
-  const [dialog, setDialog] = useState<'switch' | 'disconnect' | null>(null);
+  const [dialog, setDialog] = useState<'switch' | 'disconnect' | 'authorize' | null>(null);
   const [clearing, setClearing] = useState(false);
   useTick();
   const host = new URL(server.origin).host;
@@ -109,6 +111,31 @@ function Connected() {
         </Row>
       </Group>
 
+      {!canSave(server) && (
+        <Group title="收藏网页">
+          <Row label="需要新的授权" sub="这个扩展目前只能读取导航。要用工具栏按钮和右键菜单把网页存进收藏库，请在 Nexus Portal 里批准「读取与保存收藏」的权限（旧授权不会被自动扩大）。">
+            <Button variant="primary" onClick={() => setDialog('authorize')}>
+              授权收藏
+            </Button>
+          </Row>
+        </Group>
+      )}
+      {canSave(server) && server.account && (
+        <Group title="收藏网页">
+          <Row label={`保存到 ${server.account.label}`} sub="点工具栏的 Nexus 按钮，或在网页、链接上右键选择「收藏到 Nexus」。离线时先保存在本机，联网后自动同步。" />
+        </Group>
+      )}
+
+      <Dialog open={dialog === 'authorize'} onOpenChange={(o) => !o && setDialog(null)} width={500} title="授权收藏" description="在 Nexus Portal 里核对连接码并批准权限后，扩展会用新的授权替换旧的只读授权（旧授权随即撤销）。" footer={<Button onClick={() => setDialog(null)}>关闭</Button>}>
+        <ConnectForm
+          initial={server.origin}
+          onDone={(r) => {
+            setDialog(null);
+            toast(r === 'revoked' ? SYNC_MESSAGE[r] : { msg: '已授权：现在可以把网页收藏到 Nexus 了', tone: 'ok' });
+          }}
+        />
+      </Dialog>
+
       <Dialog open={dialog === 'switch'} onOpenChange={(o) => !o && setDialog(null)} width={500} title="更换服务器" description="连接成功后才会替换当前服务器。" footer={<Button onClick={() => setDialog(null)}>关闭</Button>}>
         <ConnectForm
           onDone={(r) => {
@@ -141,7 +168,7 @@ export function Options() {
   const server = useExt((s) => s.server);
   const loaded = useExt((s) => s.loaded);
   const welcome = new URLSearchParams(location.search).has('welcome');
-  const version = chrome.runtime.getManifest().version;
+  const version = ext.runtime.getManifest().version;
   if (!loaded) return null;
   const paired = server && !server.revoked;
   return (

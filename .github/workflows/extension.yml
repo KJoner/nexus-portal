@@ -62,8 +62,11 @@ jobs:
       - run: npx vitest run --project extension
       - id: version
         run: echo "version=$(node -p "require('./apps/chrome-extension/package.json').version")" >> "$GITHUB_OUTPUT"
-      - name: Build and package
+      - name: Build and package (Chrome, Edge)
         run: npm run package -w @nexus/chrome-extension
+      # Firefox: same code, its own manifest; Mozilla's add-ons linter must report no errors.
+      - name: Build, lint and package (Firefox)
+        run: npm run package:firefox -w @nexus/chrome-extension
       - name: Check the package
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -78,7 +81,8 @@ jobs:
             if (m.manifest_version !== 3) fail("不是 Manifest V3");
             if (m.version !== process.env.VERSION) fail(`manifest 版本 ${m.version} ≠ ${process.env.VERSION}`);
             if (m.host_permissions) fail("发布包不能预授权任何网站（host_permissions）");
-            if (JSON.stringify(m.permissions) !== JSON.stringify(["storage"])) fail(`权限异常：${m.permissions}`);
+            // 需求 §9.1: storage, activeTab and contextMenus; the server origin is asked for at runtime.
+            if (JSON.stringify(m.permissions) !== JSON.stringify(["storage", "activeTab", "contextMenus"])) fail(`权限异常：${m.permissions}`);
           '
           # No remote code: every script is a file inside the package.
           if unzip -p "$ZIP" '*.html' | grep -Eo '<script[^>]+src="[^"]*"' | grep -E 'src="(https?:)?//'; then echo "::error::页面引用了远程脚本"; exit 1; fi

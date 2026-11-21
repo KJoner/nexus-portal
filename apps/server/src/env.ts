@@ -113,6 +113,7 @@ export function readEnv(source: NodeJS.ProcessEnv = process.env): Env {
   if (provider === 'resend' && !mail.resendKey) throw new EnvError('NEXUS_MAIL_PROVIDER=resend 需要 NEXUS_RESEND_API_KEY');
 
   const quotas: AccountQuotas = {
+    items: positiveInt(source, 'NEXUS_QUOTA_ITEMS', DEFAULT_QUOTAS.items),
     wallpapers: positiveInt(source, 'NEXUS_QUOTA_WALLPAPERS', DEFAULT_QUOTAS.wallpapers),
     icons: positiveInt(source, 'NEXUS_QUOTA_ICONS', DEFAULT_QUOTAS.icons),
     storageBytes: positiveInt(source, 'NEXUS_QUOTA_STORAGE_MB', DEFAULT_QUOTAS.storageBytes / 1048576) * 1048576,

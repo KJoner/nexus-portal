@@ -3,7 +3,9 @@ import { useConfigStore } from '@web/data/config-store';
 import { useStatusStore } from '@web/data/status-store';
 import { create } from 'zustand';
 import { ApiError, deviceApi, type Fetch } from './api';
+import { forgetSent } from './collect';
 import { KEYS, readCache, readServer, readSync, type Area, type CacheRecord, type ServerRecord, type SyncRecord } from './storage';
+import { ext } from './ext';
 
 /** A new tab opened within this long of the last check shows the cache and asks nothing. */
 export const THROTTLE_MS = 30_000;
@@ -128,6 +130,9 @@ export async function sync({ force = false }: { force?: boolean } = {}): Promise
         // too, and the page asks to pair again.
         await e.area.remove([KEYS.cache, KEYS.sync]);
         await e.area.set({ [KEYS.server]: { ...server, token: '-', revoked: true } });
+        // Saves not sent yet stay (they are the person's), as drafts to confirm after reconnecting;
+        // the record of finished ones goes with the rest of this account's data.
+        await forgetSent(e.area);
         await e.wipe();
         return 'revoked';
       }
@@ -149,7 +154,7 @@ export async function connect(server: ServerRecord): Promise<SyncOutcome> {
   const e = eng();
   const raw = await e.area.get([KEYS.server]);
   const old = readServer(raw[KEYS.server]);
-  if (old && old.origin !== server.origin) await revokeQuietly(old);
+  if (old && (old.origin !== server.origin || old.deviceId !== server.deviceId)) await revokeQuietly(old);
   adopting = server.deviceId;
   try {
     await e.area.remove([KEYS.cache, KEYS.sync]);
@@ -189,7 +194,7 @@ export async function clearCache(): Promise<SyncOutcome> {
   return sync({ force: true });
 }
 
-/** Keeps every open page in step with whichever page synced (chrome.storage.onChanged). */
+/** Keeps every open page in step with whichever page synced (ext.storage.onChanged). */
 export function onStorageChange(changes: Record<string, unknown>, reloadPage: () => void) {
   if (KEYS.server in changes) {
     const before = useExt.getState().server;

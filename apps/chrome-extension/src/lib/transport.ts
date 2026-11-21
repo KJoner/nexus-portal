@@ -76,6 +76,7 @@ export function extensionTransport(area: Area, fetchImpl: Fetch): Transport {
     adminUsers: readOnly,
     setUserDisabled: readOnly,
     createInvite: readOnly,
+    items: new Proxy({} as Transport['items'], { get: () => readOnly }),
     subscribe: () => () => {},
   };
 }

@@ -2,10 +2,12 @@ import { Button, Field, Spinner } from '@web/features/settings/ui';
 import { ExternalLink, ShieldCheck } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { releaseOrigin } from '../boot';
-import { ApiError } from '../lib/api';
+import { ApiError, deviceApi } from '../lib/api';
 import { defaultDeviceName, pair, PairError } from '../lib/pair';
 import { originPattern, parseServer } from '../lib/server';
+import { ITEM_SCOPES } from '../lib/storage';
 import { connect, useExt, type SyncOutcome } from '../lib/sync';
+import { ext } from '../lib/ext';
 
 type Step = { kind: 'form'; error?: string } | { kind: 'permission' } | { kind: 'starting' } | { kind: 'waiting'; code: string; url: string; expiresAt: number } | { kind: 'finishing' };
 
@@ -32,7 +34,7 @@ export function ConnectForm({ initial = '', onDone }: { initial?: string; onDone
   }, [step.kind]);
 
   const openApproval = async (url: string) => {
-    const tab = await chrome.tabs.create({ url, active: true });
+    const tab = await ext.tabs.create({ url, active: true });
     approvalTab.current = tab.id;
   };
 
@@ -41,7 +43,7 @@ export function ConnectForm({ initial = '', onDone }: { initial?: string; onDone
     const { origin } = check;
     // Chrome asks the user here (it needs this click): access to this one address, nothing else.
     setStep({ kind: 'permission' });
-    const granted = await chrome.permissions.request({ origins: [originPattern(origin)] }).catch(() => false);
+    const granted = await ext.permissions.request({ origins: [originPattern(origin)] }).catch(() => false);
     if (!granted) return setStep({ kind: 'form', error: `需要允许访问 ${new URL(origin).host} 才能同步导航` });
     setStep({ kind: 'starting' });
     ctrl.current = new AbortController();
@@ -50,18 +52,21 @@ export function ConnectForm({ initial = '', onDone }: { initial?: string; onDone
       const server = await pair(origin, name.trim() || defaultDeviceName(), {
         fetch: (...a) => fetch(...a),
         signal: ctrl.current.signal,
+        scopes: ITEM_SCOPES,
         onCode: (code, url, expiresAt) => {
           setStep({ kind: 'waiting', code, url, expiresAt });
           void openApproval(url);
         },
       });
       setStep({ kind: 'finishing' });
+      // Which account this device saves to (shown in the popup; drafts are checked against it).
+      if (server.scopes?.includes('items:read')) server.account = await deviceApi(origin).folders(server.token).then((r) => r.account, () => undefined);
       const outcome = await connect(server);
       if (before && before.origin !== origin) await releaseOrigin(before.origin);
       // Back to this page; the approval tab has done its job.
-      if (approvalTab.current !== undefined) await chrome.tabs.remove(approvalTab.current).catch(() => undefined);
-      const self = await chrome.tabs.getCurrent();
-      if (self?.id !== undefined) await chrome.tabs.update(self.id, { active: true }).catch(() => undefined);
+      if (approvalTab.current !== undefined) await ext.tabs.remove(approvalTab.current).catch(() => undefined);
+      const self = await ext.tabs.getCurrent();
+      if (self?.id !== undefined) await ext.tabs.update(self.id, { active: true }).catch(() => undefined);
       onDone?.(outcome);
     } catch (e) {
       if (e instanceof PairError && e.reason === 'cancelled') return;

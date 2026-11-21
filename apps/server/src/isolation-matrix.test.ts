@@ -40,7 +40,8 @@ interface Route {
 }
 
 function routes(): Route[] {
-  const src = readFileSync(join(import.meta.dirname, 'app.ts'), 'utf8');
+  // app.ts and the modules that register routes on the same app (我的收藏 v2).
+  const src = ['app.ts', 'items/api.ts'].map((f) => readFileSync(join(import.meta.dirname, f), 'utf8')).join('\n');
   const out: Route[] = [];
   for (const m of src.matchAll(/app\.(get|post|put|delete|patch)\('([^']+)'/g)) out.push({ method: m[1]!.toUpperCase(), path: m[2]! });
   if (out.length < 40) throw new Error(`只解析出 ${out.length} 条路由——正则大概已经和 app.ts 对不上了`);
@@ -100,6 +101,9 @@ describe.each(DIALECTS)('isolation matrix (%s)', (dialect) => {
       .replace('/api/wallpapers/:id', `/api/wallpapers/${ids.wallpaper}`)
       .replace('/api/v2/admin/users/:id/:action{disable|enable}', `/api/v2/admin/users/${ids.user}/disable`)
       .replace('/api/status/:id/check', '/api/status/litebox/check')
+      // A's apps are stored as items since v0.4: aim at A's private one.
+      .replace('/api/v2/items/:id', '/api/v2/items/a-secret')
+      .replace('/api/v2/pins/:itemId', '/api/v2/pins/a-secret')
       .replace(/:([a-z]+)(\{[^}]+\})?/gi, 'probe');
 
   it('parses the route table and every route is either public, device-only, a capability or account-bound', () => {
@@ -129,7 +133,7 @@ describe.each(DIALECTS)('isolation matrix (%s)', (dialect) => {
       expect(text, key(r)).not.toContain(ids.wallpaper!);
       expect(text, key(r)).not.toContain(ids.icon!);
       expect(text, key(r)).not.toContain(ids.device!);
-      if (/:id|:file/.test(r.path)) expect([401, 403, 404], `${key(r)} → ${res.status}`).toContain(res.status);
+      if (/:id|:file|:itemId/.test(r.path)) expect([401, 403, 404, 422], `${key(r)} → ${res.status}`).toContain(res.status);
     }
     expect(await snapshotA()).toBe(aState);
     // A still sees all of it.

@@ -25,6 +25,8 @@ export interface PairOptions {
   signal: AbortSignal;
   /** Called once the server has issued a code: show it, open the approval page. */
   onCode(code: string, approveUrl: string, expiresAt: number): void;
+  /** What the device asks for (default: read-only, as before v0.4). */
+  scopes?: readonly string[];
   now?: () => number;
   sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
 }
@@ -43,7 +45,7 @@ export async function pair(origin: string, name: string, opts: PairOptions): Pro
   const now = opts.now ?? Date.now;
   const sleep = opts.sleep ?? wait;
   const api = deviceApi(origin, opts.fetch);
-  const start = await api.pairStart(name);
+  const start = await api.pairStart(name, opts.scopes);
   const expiresAt = now() + start.expiresIn * 1000;
   opts.onCode(start.code, `${origin}${pairPath(start.code)}`, expiresAt);
   while (now() < expiresAt) {
@@ -55,7 +57,7 @@ export async function pair(origin: string, name: string, opts: PairOptions): Pro
       if (e instanceof ApiError && (e.kind === 'offline' || e.kind === 'server')) continue;
       throw e;
     }
-    if (r.status === 'approved') return { origin, token: r.token, deviceId: r.device.id, deviceName: r.device.name, pairedAt: r.device.createdAt };
+    if (r.status === 'approved') return { origin, token: r.token, deviceId: r.device.id, deviceName: r.device.name, pairedAt: r.device.createdAt, scopes: r.device.scopes ?? ['config:read'] };
     if (r.status === 'denied') throw new PairError('denied', '连接请求已在 Nexus Portal 中被拒绝');
     if (r.status === 'expired') break;
   }

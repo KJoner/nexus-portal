@@ -3,6 +3,11 @@ import react from '@vitejs/plugin-react';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { defineConfig, type Plugin } from 'vite';
+// A plain .mjs module, shared with the packaging script and the tests.
+import { firefoxManifest } from './scripts/manifest-targets.mjs';
+
+/** NEXUS_EXT_TARGET=firefox builds the Firefox flavour into dist-firefox (批次 G). */
+const target = process.env.NEXUS_EXT_TARGET === 'firefox' ? 'firefox' : 'chromium';
 
 const root = import.meta.dirname;
 const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as { version: string };
@@ -20,7 +25,8 @@ function manifest(): Plugin {
       m.version = pkg.version;
       const hosts = process.env.NEXUS_EXT_TEST_HOSTS;
       if (hosts) m.host_permissions = hosts.split(',');
-      this.emitFile({ type: 'asset', fileName: 'manifest.json', source: `${JSON.stringify(m, null, 2)}\n` });
+      const out = target === 'firefox' ? firefoxManifest(m) : m;
+      this.emitFile({ type: 'asset', fileName: 'manifest.json', source: `${JSON.stringify(out, null, 2)}\n` });
       // The built-in wallpaper is the portal's own file, not a second copy in the repository.
       this.emitFile({ type: 'asset', fileName: 'wallpapers/fallingwater.jpg', source: readFileSync(resolve(root, '../web/public/wallpapers/fallingwater.jpg')) });
     },
@@ -41,18 +47,20 @@ function woff2Only(): Plugin {
 
 export default defineConfig({
   plugins: [woff2Only(), react(), tailwindcss(), manifest()],
+  // Test builds (separate directory) let the end-to-end tests drive the context-menu handler.
+  define: { __NEXUS_TEST__: JSON.stringify(!!process.env.NEXUS_EXT_TEST_HOSTS) },
   resolve: {
     // The new tab reuses the portal's home components (apps/web/src) instead of copying them.
     alias: { '@web': resolve(root, '../web/src') },
   },
   build: {
     target: 'es2022',
-    outDir: process.env.NEXUS_EXT_OUT ?? 'dist',
+    outDir: process.env.NEXUS_EXT_OUT ?? (target === 'firefox' ? 'dist-firefox' : 'dist'),
     emptyOutDir: true,
     // The polyfill would land in background.js too, where there is no document.
     modulePreload: { polyfill: false },
     rollupOptions: {
-      input: { newtab: resolve(root, 'newtab.html'), options: resolve(root, 'options.html'), background: resolve(root, 'src/background.ts') },
+      input: { newtab: resolve(root, 'newtab.html'), options: resolve(root, 'options.html'), popup: resolve(root, 'popup.html'), background: resolve(root, 'src/background.ts') },
       output: { entryFileNames: (chunk) => (chunk.name === 'background' ? 'background.js' : 'assets/[name]-[hash].js') },
     },
   },

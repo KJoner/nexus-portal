@@ -199,7 +199,7 @@ export default function CatalogPage() {
             <h1 className={cn('m-0 font-medium tracking-[-0.01em]', compact ? 'text-[20px]' : 'text-[26px]')}>应用目录</h1>
             {!compact && <p className="m-0 text-[13.5px] text-ink/56">挑选常用网站加入收藏库。默认不会固定到首页；目录以后更新，也不会改动你已添加的条目。</p>}
           </div>
-          <Link to="/settings/apps" className="flex h-11 flex-none items-center rounded-xl px-3.5 text-[13.5px] text-ink/80 no-underline transition-colors duration-150 hover:bg-ink/8">
+          <Link to="/library" className="flex h-11 flex-none items-center rounded-xl px-3.5 text-[13.5px] text-ink/80 no-underline transition-colors duration-150 hover:bg-ink/8">
             收藏库
           </Link>
         </header>
