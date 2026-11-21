@@ -28,6 +28,16 @@ export function quotaExceeded(c: Context, status: 409 | 413, details: { kind: st
   return c.json({ code: 'QUOTA_EXCEEDED', message, retryable: false, requestId, details, error: { code: 'quota_exceeded', message } }, status);
 }
 
+/**
+ * A home-page change another device got ahead of (NEX-04): 409 with the 我的收藏 v2 code
+ * (ITEM_DELETED / FIELD_CONFLICT / REVISION_CONFLICT) and what it is now, so the client keeps the
+ * change for the person instead of dropping or forcing it. `error` keeps older clients reading it.
+ */
+export function opConflict(c: Context, code: string, v1Code: string, message: string, details?: Record<string, unknown>) {
+  const requestId = `req_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
+  return c.json({ code, message, retryable: false, requestId, ...(details ? { details } : {}), error: { code: v1Code, message } }, 409);
+}
+
 export function rateLimited(c: Context, retryAfterSeconds: number, kind: string, message = '请求过于频繁，请稍后再试') {
   const secs = Math.max(1, Math.ceil(retryAfterSeconds));
   const requestId = `req_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;

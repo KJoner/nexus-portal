@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { defaultConfig } from './defaults';
-import { applyOp, applyOps, invertOp, normalizeConfig, OpError, type Op } from './ops';
+import { applyOp, applyOps, invertOp, normalizeConfig, OpError, withBase, type Op } from './ops';
 import { ConfigSchema, MAX_PINS } from './schema';
 
 const base = () => defaultConfig();
@@ -141,5 +141,61 @@ describe('settings, categories and engines', () => {
     const after = roundTrip({ type: 'engine.delete', engineId: 'mdn' }, c);
     expect(after.settings.search.defaultEngine).toBe('google');
     expect(() => applyOp(c, { type: 'engine.delete', engineId: 'google' })).toThrow(OpError);
+  });
+});
+
+describe('NEX-04: bases, merges and explicit restores', () => {
+  const gh = () => base().apps.find((a) => a.id === 'github')!;
+
+  it('an edit with a base merges field by field; the same field changed on both sides is a conflict', () => {
+    const b = gh();
+    const elsewhere = applyOp(base(), { type: 'app.upsert', app: { ...b, url: 'https://elsewhere.example.org/' } });
+    const merged = applyOp(elsewhere, { type: 'app.upsert', app: { ...b, name: '我改的' }, base: b });
+    expect(merged.apps.find((a) => a.id === 'github')).toMatchObject({ name: '我改的', url: 'https://elsewhere.example.org/' });
+    const renamed = applyOp(base(), { type: 'app.upsert', app: { ...b, name: '别处改的' } });
+    try {
+      applyOp(renamed, { type: 'app.upsert', app: { ...b, name: '我改的' }, base: b });
+      expect.unreachable();
+    } catch (e) {
+      expect(e).toBeInstanceOf(OpError);
+      expect((e as OpError).code).toBe('conflict');
+      expect((e as OpError).details).toMatchObject({ conflictFields: ['name'], current: { name: '别处改的' } });
+    }
+    // Both sides made the same change: nothing to decide.
+    expect(applyOp(renamed, { type: 'app.upsert', app: { ...b, name: '别处改的' }, base: b })).toBe(renamed);
+  });
+
+  it('an edit of an app that is gone is `deleted`, never a re-creation; a new app (base null) is a creation', () => {
+    const b = gh();
+    const gone = applyOp(base(), { type: 'app.delete', appId: 'github' });
+    expect(() => applyOp(gone, { type: 'app.upsert', app: { ...b, name: '离线改' }, base: b })).toThrow(expect.objectContaining({ code: 'deleted' }));
+    expect(applyOp(gone, { type: 'app.upsert', app: { ...b, name: '新建' }, base: null }).apps.some((a) => a.id === 'github')).toBe(true);
+  });
+
+  it('a delete with a base refuses what was changed since (`stale`); a version difference alone does not count', () => {
+    const b = gh();
+    const renamed = applyOp(base(), { type: 'app.upsert', app: { ...b, name: '别处改的' } });
+    expect(() => applyOp(renamed, { type: 'app.delete', appId: 'github', base: b })).toThrow(expect.objectContaining({ code: 'stale' }));
+    expect(applyOp(base(), { type: 'app.delete', appId: 'github', base: { ...b, version: 7 } }).apps.some((a) => a.id === 'github')).toBe(false);
+  });
+
+  it('undo of a delete is an explicit app.restore (with the version seen), and restoring twice changes nothing', () => {
+    const c = base();
+    const withVersion = { ...c, apps: c.apps.map((a) => (a.id === 'gmail' ? { ...a, version: 4 } : a)) };
+    const inv = invertOp(withVersion, { type: 'app.delete', appId: 'gmail' });
+    expect(inv[0]).toMatchObject({ type: 'app.restore', app: { id: 'gmail' }, baseVersion: 4 });
+    const back = applyOps(applyOp(withVersion, { type: 'app.delete', appId: 'gmail' }), inv);
+    expect(back).toEqual(withVersion);
+    expect(applyOp(back, inv[0]!)).toBe(back);
+  });
+
+  it('withBase records what the client saw: the old entry for an edit, null for a new app', () => {
+    const c = base();
+    const b = gh();
+    expect(withBase(c, { type: 'app.upsert', app: { ...b, name: 'x' } })).toMatchObject({ base: b });
+    expect(withBase(c, { type: 'app.upsert', app: { ...b, id: 'brand-new' } })).toMatchObject({ base: null });
+    expect(withBase(c, { type: 'app.delete', appId: 'github' })).toMatchObject({ base: b });
+    // A change that already has a base keeps it (a retried or resolved change).
+    expect(withBase(c, { type: 'app.upsert', app: b, base: null })).toMatchObject({ base: null });
   });
 });

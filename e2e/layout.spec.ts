@@ -1,10 +1,11 @@
 import type { APIRequestContext } from '@playwright/test';
-import { expect, ops, serverConfig, test } from './fixtures';
+import { expect, freshTag, ops, serverConfig, test } from './fixtures';
 
 async function pinMany(api: APIRequestContext, n: number) {
   const cfg = (await serverConfig(api)) as unknown as { apps: Record<string, unknown>[] };
   const gh = cfg.apps.find((a) => a.id === 'github')!;
-  const sites = Array.from({ length: n }, (_, i) => ({ ...gh, id: `wide-${i}`, name: `一个名字相当长的网站 ${i}`, url: `https://w${i}.example.com`, icon: { source: 'letter', ref: '', letter: 'W', tone: 0 } }));
+  const tag = freshTag();
+  const sites = Array.from({ length: n }, (_, i) => ({ ...gh, id: `wide-${tag}-${i}`, name: `一个名字相当长的网站 ${i}`, url: `https://w${i}.example.com`, icon: { source: 'letter', ref: '', letter: 'W', tone: 0 } }));
   await ops(api, sites.map((app) => ({ type: 'app.upsert', app })));
   await ops(api, sites.map((s) => ({ type: 'pin.add', appId: s.id })));
 }

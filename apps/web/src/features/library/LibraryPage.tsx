@@ -6,7 +6,7 @@ import { PageBackdrop } from '../../components/PageBackdrop';
 import { toast } from '../../components/toast-store';
 import { ToastHost } from '../../components/ToastHost';
 import { currentTransport, useConfig, useConfigStore } from '../../data/config-store';
-import { libraryApi, loadLibrary, pullLibrary, useLibrary, type Folder, type WriteOutcome } from '../../data/library';
+import { conflictChoices, libraryApi, loadLibrary, pullLibrary, resolveConflict, useLibrary, type Folder, type LibraryChoice, type LibraryConflict, type WriteOutcome } from '../../data/library';
 import { AppTile } from '../../icons/AppTile';
 import { cn } from '../../lib/cn';
 import { useViewport } from '../../lib/hooks';
@@ -310,7 +310,7 @@ export default function LibraryPage() {
   const compact = w < 900;
   const config = useConfig();
   const account = useConfigStore((s) => s.account?.account.id ?? null);
-  const { status, error, items, pins, folders, queued } = useLibrary();
+  const { status, error, items, pins, folders, queued, conflicts } = useLibrary();
   const pinyin = usePinyin((s) => s.fn);
   const [view, setView] = useState<View>({ kind: 'all' });
   const [query, setQuery] = useState('');
@@ -562,6 +562,14 @@ export default function LibraryPage() {
               </div>
             )}
 
+            {conflicts.length > 0 && (
+              <div role="region" aria-label="待处理的离线更改" className="flex flex-col gap-2 rounded-xl bg-warn/10 p-3">
+                <p className="m-0 text-[13.5px] text-ink/86">{conflicts.length} 项离线时的更改没有完成：在别处已被删除或修改。它们保留在本机，请逐项决定。</p>
+                {conflicts.map((c, i) => (
+                  <ConflictLine key={`${c.op.opId}-${c.at}`} conflict={c} index={i} />
+                ))}
+              </div>
+            )}
             {status === 'loading' && (
               <p role="status" className="flex items-center gap-2 text-[13.5px] text-ink/60">
                 <Spinner /> 正在加载收藏库…
@@ -664,6 +672,36 @@ export default function LibraryPage() {
         <ImportDialog open={importing} folders={folders} existing={existingUrls} onClose={() => setImporting(false)} />
         <ToastHost variant={compact ? 'mobile' : 'desktop'} bottom={chosen.length ? 96 : 24} />
       </div>
+    </div>
+  );
+}
+
+const MINE_LABEL = (c: LibraryConflict) =>
+  c.op.kind === 'patch' ? (c.code === 'ITEM_DELETED' ? '恢复并应用修改' : '用我的修改') : c.op.kind === 'remove' ? '仍然删除' : c.op.kind === 'restore' ? '仍然恢复' : c.code === 'DUPLICATE' ? '更新原来那条' : '重试';
+const CHOICE_LABEL: Record<Exclude<LibraryChoice, 'mine'>, string> = { copy: '另存一条', discard: '放弃' };
+const CHOICE_DONE: Record<LibraryChoice, string> = { mine: '已重新提交', copy: '已另存一条', discard: '已放弃这项更改' };
+
+/** A change made offline that another device got ahead of (NEX-04): what happened and what to do. */
+function ConflictLine({ conflict, index }: { conflict: LibraryConflict; index: number }) {
+  const [busy, setBusy] = useState(false);
+  const decide = async (choice: LibraryChoice) => {
+    setBusy(true);
+    const r = await resolveConflict(index, choice);
+    setBusy(false);
+    toast(r.ok ? { msg: r.queued ? '已保存在本机，联网后同步' : CHOICE_DONE[choice], tone: 'ok' } : { msg: `没有完成：${r.message}`, tone: 'warn' });
+  };
+  const title = conflict.op.seen?.title ?? (conflict.details?.item as Item | undefined)?.title ?? '';
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-lg bg-ink/5 px-3 py-2">
+      <span className="min-w-0 flex-1 text-[13px] text-ink/86">
+        {title && <span className="font-medium">「{title}」</span>}
+        {conflict.message}
+      </span>
+      {conflictChoices(conflict).map((choice) => (
+        <Button key={choice} size="sm" variant={choice === 'mine' ? 'primary' : choice === 'discard' ? 'ghost' : 'secondary'} disabled={busy} onClick={() => void decide(choice)}>
+          {choice === 'mine' ? MINE_LABEL(conflict) : CHOICE_LABEL[choice]}
+        </Button>
+      ))}
     </div>
   );
 }

@@ -70,7 +70,16 @@ export const AppSchema = z.object({
     .regex(/^[a-z0-9][a-z0-9-]{0,47}$/)
     .optional(),
   catalogVersion: z.number().int().min(1).max(1_000_000).optional(),
+  /**
+   * v0.4.1 (NEX-04): the 我的收藏 row version this entry was read at. Filled by the server; a client
+   * sends it back as the base of an edit, a delete or an explicit restore. Older documents and clients
+   * simply have none.
+   */
+  version: z.number().int().min(1).optional(),
 });
+
+/** Sites that are shown can be pinned to the home page; services and hidden apps cannot (NEX-07). */
+export const isPinnable = (a: Pick<z.infer<typeof AppSchema>, 'kind' | 'hidden'>) => a.kind === 'site' && !a.hidden;
 
 export const CategorySchema = z.object({
   id: Id,

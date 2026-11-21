@@ -113,8 +113,10 @@ export class ConfigRepo {
       const seen = await this.db.get('select 1 as x from op_log where owner_id = ? and batch_id = ?', [ownerId, batchId]);
       const current = await this.snapshot(ownerId);
       if (seen) return { snapshot: current, changed: false, duplicate: true };
-      const applied = applyOps(current.config, ops);
-      if (applied === current.config) return { snapshot: current, changed: false, duplicate: false };
+      // Deleted items, explicit restores and taken ids are only known to the items table (NEX-04).
+      const plan = await this.items.prepare(ownerId, current.config, ops);
+      const applied = applyOps(plan.config, plan.ops);
+      if (applied === plan.config) return { snapshot: current, changed: false, duplicate: false };
       // Never store a document that would not read back: an unreadable document falls back to the
       // template on the next read, and the next write would make that loss permanent.
       const check = ConfigSchema.safeParse(applied);
@@ -124,16 +126,24 @@ export class ConfigRepo {
       }
       const next = sanitizeFor(opts.admin, applied);
       // The apps and pins go to the items tables; new items count against the account's limit.
-      await this.items.applyHomeView(ownerId, current.config, next, async (fresh) => {
-        const limit = await this.itemLimit(ownerId);
-        if (limit === null) return;
-        const used = await this.items.countLive(ownerId);
-        if (used + fresh > limit) throw new OpError('quota_exceeded', `收藏库最多 ${limit} 条，请先删除一些`, { kind: 'items', limit, used });
-      });
-      const snapshot = await this.write(ownerId, current.revision + 1, next);
-      await this.db.run('insert into op_log (owner_id, revision, batch_id, client_id, ops, created_at) values (?, ?, ?, ?, ?, ?)', [ownerId, snapshot.revision, batchId, clientId, JSON.stringify(ops), snapshot.updatedAt]);
-      await this.db.run('delete from op_log where owner_id = ? and revision <= ?', [ownerId, snapshot.revision - OP_LOG_KEEP]);
-      return { snapshot, changed: true, duplicate: false };
+      await this.items.applyHomeView(
+        ownerId,
+        plan.config,
+        next,
+        async (fresh) => {
+          const limit = await this.itemLimit(ownerId);
+          if (limit === null) return;
+          const used = await this.items.countLive(ownerId);
+          if (used + fresh > limit) throw new OpError('quota_exceeded', `收藏库最多 ${limit} 条，请先删除一些`, { kind: 'items', limit, used });
+        },
+        plan,
+      );
+      const written = await this.write(ownerId, current.revision + 1, next);
+      await this.db.run('insert into op_log (owner_id, revision, batch_id, client_id, ops, created_at) values (?, ?, ?, ?, ?, ?)', [ownerId, written.revision, batchId, clientId, JSON.stringify(ops), written.updatedAt]);
+      await this.db.run('delete from op_log where owner_id = ? and revision <= ?', [ownerId, written.revision - OP_LOG_KEEP]);
+      // The answer is what the tables hold now, not the reducer's guess: merged edits, ids given to
+      // new apps and restored entries all come from there.
+      return { snapshot: await this.snapshot(ownerId), changed: true, duplicate: false };
     });
   }
 

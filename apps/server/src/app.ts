@@ -1,6 +1,6 @@
 import { getConnInfo } from '@hono/node-server/conninfo';
 import { serveStatic } from '@hono/node-server/serve-static';
-import { AppSchema, DEVICE_SCOPE_LABELS, DEVICE_TOKEN, isDeviceScope, OpBatchSchema, OpError, PAIR_CODE, validateApp, type CatalogResponse, type ConfigResponse, type DeviceScope, type WallpaperSourcesResponse } from '@nexus/shared';
+import { AppSchema, CONFLICT_CODES, CONFLICT_HTTP_CODE, DEVICE_SCOPE_LABELS, DEVICE_TOKEN, isDeviceScope, OpBatchSchema, OpError, PAIR_CODE, validateApp, type CatalogResponse, type ConfigResponse, type DeviceScope, type WallpaperSourcesResponse } from '@nexus/shared';
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
@@ -20,7 +20,7 @@ import type { ConfigRepo } from './config/repo';
 import { LEGACY_ADMIN_ID } from './db';
 import type { Env } from './env';
 import type { HealthChecker } from './health/checker';
-import { apiError, csrf, headers, isHttps, quotaExceeded, rateLimited, v2Error } from './http/security';
+import { apiError, csrf, headers, isHttps, opConflict, quotaExceeded, rateLimited, v2Error } from './http/security';
 import { RateLimiter, type LimitKind } from './http/limits';
 import { DEFAULT_QUOTAS, QuotaExceededError } from './quota-types';
 import { registerItemsApi } from './items/api';
@@ -623,7 +623,10 @@ export function createApp(deps: Deps) {
       return c.json({ ...r.snapshot, wallpapers: await wallpapers.list(u.id) } satisfies ConfigResponse);
     } catch (e) {
       // A per-account limit is permanent until something is removed: QUOTA_EXCEEDED, never retried.
-      if (e instanceof OpError) return e.quota ? quotaExceeded(c, 409, e.quota, e.message) : apiError(c, 422, e.code, e.message);
+      if (e instanceof OpError && e.quota) return quotaExceeded(c, 409, e.quota, e.message);
+      // Another device got there first (deleted, same field changed, already undone): kept by the client (NEX-04).
+      if (e instanceof OpError && (CONFLICT_CODES as string[]).includes(e.code)) return opConflict(c, CONFLICT_HTTP_CODE[e.code as keyof typeof CONFLICT_HTTP_CODE], e.code, e.message, e.details);
+      if (e instanceof OpError) return apiError(c, 422, e.code, e.message);
       throw e;
     }
   });

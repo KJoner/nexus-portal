@@ -297,6 +297,13 @@ export function registerItemsApi(app: Hono<{ Variables: Vars }>, deps: ItemsApiD
     }
   });
 
+  /**
+   * `expectedVersion`: exactly this version, or 409. `baseVersion` (v0.4.1, NEX-04 — what the web app
+   * sends): the version the client saw; refused if its content was changed after that (order alone
+   * does not count), the same field-level rule as PATCH — deleting what someone just edited is asked
+   * again, not done blindly.
+   */
+  const CONTENT_FIELDS = ['title', 'url', 'folderId', 'tags', 'note', 'iconRef', 'extra', 'kind', 'catalogId'];
   app.delete('/api/v2/items/:id', async (c) => {
     try {
       need(c, 'items:write');
@@ -304,12 +311,19 @@ export function registerItemsApi(app: Hono<{ Variables: Vars }>, deps: ItemsApiD
       if (!opId.success) throw new ApiError(422, 'VALIDATION', '缺少 opId');
       const id = c.req.param('id');
       const expected = c.req.query('expectedVersion');
-      return await write(c, opId.data, ['delete', id, expected ?? null], async () => {
+      const base = c.req.query('baseVersion');
+      if (base !== undefined && !/^\d{1,12}$/.test(base)) throw new ApiError(422, 'VALIDATION', 'baseVersion 不正确');
+      return await write(c, opId.data, base === undefined ? ['delete', id, expected ?? null] : ['delete', id, expected ?? null, Number(base)], async () => {
         const ownerId = owner(c);
         const item = await store.get(ownerId, id);
         if (!item) throw new ApiError(404, 'NOT_FOUND', '收藏不存在');
         if (item.deletedAt !== null) return { status: 200, body: result(item, 'unchanged') };
         if (expected !== undefined && Number(expected) !== item.version) throw new ApiError(409, 'REVISION_CONFLICT', '这条收藏在别处已被修改', { currentVersion: item.version, item });
+        if (base !== undefined) {
+          const fields = await store.fieldVersions(ownerId, id);
+          const changed = CONTENT_FIELDS.filter((f) => (fields[f] ?? 0) > Number(base));
+          if (changed.length) throw new ApiError(409, 'REVISION_CONFLICT', '这条收藏在你上次看到之后被修改过，没有删除；请确认后再删除', { currentVersion: item.version, conflictFields: changed, item });
+        }
         return { status: 200, body: result(await store.tombstone(ownerId, id), 'deleted') };
       });
     } catch (e) {
@@ -317,16 +331,22 @@ export function registerItemsApi(app: Hono<{ Variables: Vars }>, deps: ItemsApiD
     }
   });
 
+  /**
+   * Restore is its own explicit operation (NEX-04: no write of any other kind revives a tombstone).
+   * `baseVersion`: the version the client saw (in 回收站); refused when the item was restored after
+   * that and deleted again — a newer decision an old restore must not overturn.
+   */
   app.post('/api/v2/items/:id/restore', bodyLimit({ maxSize: 4096 }), async (c) => {
     try {
       need(c, 'items:write');
-      const req = await body(c, z.object({ opId: OpIdSchema }));
+      const req = await body(c, z.object({ opId: OpIdSchema, baseVersion: z.number().int().min(0).optional() }));
       const id = c.req.param('id');
-      return await write(c, req.opId, ['restore', id], async () => {
+      return await write(c, req.opId, req.baseVersion === undefined ? ['restore', id] : ['restore', id, req.baseVersion], async () => {
         const ownerId = owner(c);
         const item = await store.get(ownerId, id);
         if (!item) throw new ApiError(404, 'NOT_FOUND', '收藏不存在');
         if (item.deletedAt === null) return { status: 200, body: result(item, 'unchanged') };
+        if (!(await store.restorable(ownerId, id, req.baseVersion))) throw new ApiError(409, 'REVISION_CONFLICT', '这条收藏在你上次看到之后已被恢复过、又被再次删除；请刷新回收站后再决定', { currentVersion: item.version, item });
         await admitItems(c, 1);
         return { status: 200, body: result(await store.restore(ownerId, id), 'restored') };
       });

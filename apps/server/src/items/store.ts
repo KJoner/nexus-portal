@@ -1,4 +1,4 @@
-import { AppSchema, itemUrlKey, LOCKED_CATEGORY, type AppEntry, type Config, type Item, type ItemField, type ItemKind, type ItemSource } from '@nexus/shared';
+import { AppSchema, itemUrlKey, LOCKED_CATEGORY, OpError, type AppEntry, type Config, type Item, type ItemField, type ItemKind, type ItemSource, type Op } from '@nexus/shared';
 import { randomBytes } from 'node:crypto';
 import type { DB } from '../db';
 
@@ -6,7 +6,7 @@ import type { DB } from '../db';
  * Table access for 我的收藏 (items, pins, the per-account change sequence). Every method runs in
  * the caller's transaction — the caller holds the account's lock (ConfigRepo.lock).
  */
-interface Row {
+export interface Row {
   id: string;
   kind: ItemKind;
   source: ItemSource;
@@ -64,8 +64,11 @@ function toItem(r: Row, pinned: Set<string>): Item {
   };
 }
 
-/** The home page's view of an item (config.apps entry); null when it cannot be shown there. */
-function toApp(r: Row): AppEntry | null {
+/**
+ * The home page's view of an item (config.apps entry); null when it cannot be shown there. It
+ * carries the row version (NEX-04): clients send it back as the base of their next change.
+ */
+export function toApp(r: Row): AppEntry | null {
   const extra = parse<Partial<AppEntry>>(r.extra, {});
   const parsed = AppSchema.safeParse({
     kind: 'site',
@@ -76,14 +79,86 @@ function toApp(r: Row): AppEntry | null {
     url: r.url,
     categoryId: r.folder_id || LOCKED_CATEGORY.none,
     ...(r.catalog_id ? { catalogId: r.catalog_id } : {}),
+    version: Number(r.version),
   });
   return parsed.success ? parsed.data : null;
 }
 
 /** What an app entry stores besides the item's own columns (service kind, LAN address, health…). */
-function extraOf(app: AppEntry): string {
-  const { id: _id, name: _name, url: _url, categoryId: _c, catalogId: _k, ...rest } = app;
+export function extraOf(app: AppEntry): string {
+  const { id: _id, name: _name, url: _url, categoryId: _c, catalogId: _k, version: _v, ...rest } = app;
   return JSON.stringify(rest);
+}
+
+/** What a changed home-view entry changes in its item (the view clips long titles: see below). */
+function changesOf(old: AppEntry, app: AppEntry): Partial<Record<'title' | 'url' | 'folderId' | 'catalogId' | 'extra', string | null>> {
+  const set: Partial<Record<'title' | 'url' | 'folderId' | 'catalogId' | 'extra', string | null>> = {};
+  // The view shows at most 32 characters of a longer title: an unchanged clipped name keeps the title.
+  if (app.name !== old.name) set.title = app.name;
+  if (app.url !== old.url) set.url = app.url;
+  if (app.categoryId !== old.categoryId) set.folderId = app.categoryId;
+  if ((app.catalogId ?? null) !== (old.catalogId ?? null)) set.catalogId = app.catalogId ?? null;
+  if (extraOf(app) !== extraOf(old)) set.extra = extraOf(app);
+  return set;
+}
+
+/** Ids an op names directly (the rows the server must look at before applying it). */
+function idsOf(op: Op): string[] {
+  const id = (v: unknown) => (v && typeof v === 'object' && typeof (v as { id?: unknown }).id === 'string' ? [(v as { id: string }).id] : []);
+  switch (op.type) {
+    case 'app.upsert':
+    case 'app.restore':
+      return id(op.app);
+    case 'app.delete':
+      return [op.appId];
+    case 'config.replace': {
+      const apps = (op.config as { apps?: unknown } | null)?.apps;
+      return Array.isArray(apps) ? apps.flatMap(id) : [];
+    }
+    default:
+      return [];
+  }
+}
+
+/** An op with the ids of apps created in the same batch replaced by the ids they were given. */
+function remapped(op: Op, map: ReadonlyMap<string, string>): Op {
+  if (!map.size) return op;
+  const m = (id: string) => map.get(id) ?? id;
+  switch (op.type) {
+    case 'pin.add':
+    case 'pin.remove':
+    case 'pin.move':
+    case 'app.setHidden':
+    case 'service.setShown':
+    case 'app.move':
+      return { ...op, appId: m(op.appId) };
+    case 'app.delete':
+      return { ...op, appId: m(op.appId) };
+    case 'pin.reorder':
+      return { ...op, order: op.order.map(m) };
+    case 'app.upsert':
+    case 'app.restore': {
+      const id = (op.app as { id?: unknown } | null)?.id;
+      return typeof id === 'string' && map.has(id) ? { ...op, app: { ...op.app, id: m(id) } } : op;
+    }
+    default:
+      return op;
+  }
+}
+
+/**
+ * The batch as the server will apply it (NEX-04). The home view only holds live apps and pinned
+ * pages, so the reducer alone cannot tell a deleted app from one that never existed: these come
+ * from the items table.
+ */
+export interface HomePlan {
+  /** The view the ops apply to (live items they name that the view does not show are added). */
+  config: Config;
+  ops: Op[];
+  /** Deleted items this batch explicitly brings back (app.restore, or a whole-configuration replace). */
+  restores: Set<string>;
+  /** Live items that are not on the home page (pages): changed in place, their order untouched. */
+  extra: Set<string>;
 }
 
 export interface ItemDraft {
@@ -193,10 +268,13 @@ export class ItemStore {
    * Changes some columns of an item: one new version, the changed fields remember it (field-level
    * CAS for PATCH), one change record.
    */
-  async update(owner: string, id: string, set: Partial<Record<ItemField | 'extra' | 'position' | 'kind' | 'catalogId', unknown>>, action: 'upsert' | 'restore' = 'upsert', extraSql = ''): Promise<Item> {
+  async update(owner: string, id: string, set: Partial<Record<ItemField | 'extra' | 'position' | 'kind' | 'catalogId', unknown>>, action: 'upsert' | 'restore' = 'upsert'): Promise<Item> {
     const r = (await this.row(owner, id))!;
     const version = Number(r.version) + 1;
     const fields = parse<Record<string, number>>(r.field_versions, {});
+    // A restore is remembered (NEX-04): a later restore made from an older view is a stale one.
+    const extraSql = action === 'restore' ? ', deleted_at = null' : '';
+    if (action === 'restore') fields.restored = version;
     const cols: string[] = [];
     const vals: (string | number | null)[] = [];
     const col: Record<string, string> = { title: 'title', url: 'url', folderId: 'folder_id', tags: 'tags', note: 'note', iconRef: 'icon_ref', extra: 'extra', position: 'position', kind: 'kind', catalogId: 'catalog_id' };
@@ -232,7 +310,19 @@ export class ItemStore {
   }
 
   async restore(owner: string, id: string): Promise<Item> {
-    return this.update(owner, id, {}, 'restore', ', deleted_at = null');
+    return this.update(owner, id, {}, 'restore');
+  }
+
+  /**
+   * Whether an explicit restore made from version `baseVersion` still applies: the item is deleted,
+   * and nobody restored it after that version (that deletion was undone already, and the item has
+   * been deleted again since — a newer decision the old restore must not overturn).
+   */
+  async restorable(owner: string, id: string, baseVersion: number | undefined): Promise<boolean> {
+    const r = await this.row(owner, id);
+    if (!r || r.deleted_at === null) return false;
+    const restored = Number(parse<Record<string, number>>(r.field_versions, {}).restored ?? 0);
+    return baseVersion === undefined || restored <= baseVersion;
   }
 
   /** Replaces a layout's pins (ids must be live items of the account). */
@@ -278,10 +368,86 @@ export class ItemStore {
   }
 
   /**
+   * Checks a batch of home-page ops against the items table before the reducer runs (NEX-04):
+   *  - an edit — or an older client's upsert — of a deleted item is refused (`deleted`): only an
+   *    explicit restore brings it back, and the client keeps the edit for the person to decide;
+   *  - an explicit restore must still apply (`stale` otherwise) and brings back the server's copy;
+   *  - a new app whose id is already taken (by an item in 回收站, or one made elsewhere) gets its own;
+   *  - a live item the view does not show (a page that is not pinned) is edited or deleted in place.
+   */
+  async prepare(owner: string, view: Config, ops: readonly Op[]): Promise<HomePlan> {
+    const named = [...new Set(ops.flatMap(idsOf))];
+    const rows = new Map<string, Row>();
+    for (let i = 0; i < named.length; i += 400) {
+      const chunk = named.slice(i, i + 400);
+      for (const r of await this.db.all<Row>(`select * from items where owner_id = ? and id in (${chunk.map(() => '?').join(', ')})`, [owner, ...chunk])) rows.set(r.id, r);
+    }
+    let config = view;
+    const restores = new Set<string>();
+    const extra = new Set<string>();
+    const map = new Map<string, string>();
+    const shown = (id: string) => config.apps.some((a) => a.id === id);
+    const addToView = (r: Row) => {
+      const app = toApp(r);
+      if (!app) return;
+      config = { ...config, apps: [...config.apps, app] };
+      extra.add(r.id);
+    };
+    const gone = (r: Row, message: string, code: 'deleted' | 'stale') => new OpError(code, message, undefined, { appId: r.id, name: r.title, item: toItem(r, new Set()), current: toApp(r) });
+    const out: Op[] = [];
+    for (const raw of ops) {
+      let op = remapped(raw, map);
+      if (op.type === 'app.upsert') {
+        const id = idsOf(op)[0];
+        const row = id ? rows.get(id) : undefined;
+        if (id && op.base === null && (row || shown(id))) {
+          const fresh = await this.freeId(owner, id, config, map);
+          map.set(id, fresh);
+          op = { ...op, app: { ...op.app, id: fresh } };
+        } else if (row && row.deleted_at !== null && !restores.has(row.id)) throw gone(row, `「${row.title}」已被删除（在回收站中），这次修改没有应用`, 'deleted');
+        // (Restored earlier in this batch: the restore puts it back in the view before this edit runs.)
+        else if (row && row.deleted_at === null && !shown(row.id)) addToView(row);
+      } else if (op.type === 'app.delete') {
+        const row = rows.get(op.appId);
+        if (row && row.deleted_at === null && !shown(row.id)) addToView(row);
+      } else if (op.type === 'app.restore') {
+        const id = idsOf(op)[0];
+        const row = id ? rows.get(id) : undefined;
+        if (!row) throw new OpError('not_found', '这条收藏不存在，无法恢复');
+        // Already back (restored elsewhere, or a retry of this one): nothing to do.
+        if (row.deleted_at === null) continue;
+        if (!(await this.restorable(owner, row.id, op.baseVersion))) throw gone(row, `「${row.title}」在你删除之后已被恢复过、又被再次删除，所以没有自动恢复；需要时请到收藏库的回收站恢复`, 'stale');
+        const app = toApp(row);
+        if (!app) throw new OpError('invalid', `「${row.title}」不能显示在首页，请在收藏库中恢复`);
+        restores.add(row.id);
+        // The server's own copy comes back, not the (possibly older) one the client remembers.
+        op = { ...op, app };
+      } else if (op.type === 'config.replace') {
+        // Replacing the whole configuration (导入配置 / 恢复默认) is an explicit choice of every entry in it.
+        for (const id of idsOf(op)) if (rows.get(id)?.deleted_at != null) restores.add(id);
+      }
+      out.push(op);
+    }
+    return { config, ops: out, restores, extra };
+  }
+
+  /** `github` taken → `github-2`, `github-3`… (free in the view, in this batch and in the table). */
+  private async freeId(owner: string, id: string, config: Config, map: ReadonlyMap<string, string>): Promise<string> {
+    const stem = id.replace(/-\d+$/, '').slice(0, 56) || 'app';
+    const used = new Set([...config.apps.map((a) => a.id), ...map.values()]);
+    for (let i = 2; ; i++) {
+      const candidate = `${stem}-${i}`;
+      if (used.has(candidate)) continue;
+      if (!(await this.db.get('select 1 as x from items where owner_id = ? and id = ?', [owner, candidate]))) return candidate;
+    }
+  }
+
+  /**
    * Writes the difference between two home views back to the tables (older clients and the home
    * page keep editing `config.apps`/`config.pins` with ops). Returns whether anything changed.
+   * `plan` (from `prepare`) says which deleted items this batch may restore.
    */
-  async applyHomeView(owner: string, before: Config, after: Config, admit: (newItems: number) => Promise<void>): Promise<boolean> {
+  async applyHomeView(owner: string, before: Config, after: Config, admit: (newItems: number) => Promise<void>, plan: Pick<HomePlan, 'restores' | 'extra'> = { restores: new Set(), extra: new Set() }): Promise<boolean> {
     const pinsChanged = JSON.stringify(before.pins) !== JSON.stringify(after.pins);
     // Most ops (settings, engines, categories) leave the apps array untouched: nothing to write.
     if (before.apps === after.apps && !pinsChanged) return false;
@@ -294,26 +460,25 @@ export class ItemStore {
     if (fresh.length) await admit(fresh.length);
     let position = 0;
     for (const app of before.apps === after.apps ? [] : after.apps) {
-      position++;
+      // A page edited through the home page keeps its place in 我的收藏: the view orders only its own.
+      const ordered = !plan.extra.has(app.id);
+      if (ordered) position++;
       const old = prev.get(app.id);
       const row = rows.get(app.id);
-      if (!old || !row) {
-        if (row) {
-          // A legacy upsert of a deleted id (the home page's 撤销删除): an explicit restore + update.
-          await this.update(owner, app.id, { title: app.name, url: app.url, folderId: app.categoryId, extra: extraOf(app), position, kind: 'app' }, 'restore', ', deleted_at = null');
-        } else await this.insert(owner, { id: app.id, kind: 'app', source: app.catalogId ? 'catalog' : 'manual', catalogId: app.catalogId ?? null, title: app.name, url: app.url, folderId: app.categoryId, note: app.description, extra: extraOf(app), position });
+      if (!row) {
+        await this.insert(owner, { id: app.id, kind: 'app', source: app.catalogId ? 'catalog' : 'manual', catalogId: app.catalogId ?? null, title: app.name, url: app.url, folderId: app.categoryId, note: app.description, extra: extraOf(app), position });
         changed = true;
         continue;
       }
-      const set: Parameters<ItemStore['update']>[2] = {};
-      // The view shows at most 32 characters of a longer title: an unchanged clipped name keeps the title.
-      if (app.name !== old.name) set.title = app.name;
-      if (app.url !== old.url) set.url = app.url;
-      if (app.categoryId !== old.categoryId) set.folderId = app.categoryId;
-      if ((app.catalogId ?? null) !== (old.catalogId ?? null)) set.catalogId = app.catalogId ?? null;
-      if (extraOf(app) !== extraOf(old)) set.extra = extraOf(app);
-      if (Number(row.position) !== position) set.position = position;
-      if (Object.keys(set).length) {
+      const was = old ?? toApp((await this.row(owner, app.id))!);
+      const set: Parameters<ItemStore['update']>[2] = was ? changesOf(was, app) : { title: app.name, url: app.url, folderId: app.categoryId, extra: extraOf(app) };
+      if (ordered && Number(row.position) !== position) set.position = position;
+      if (row.deleted_at !== null) {
+        // Only an explicit restore brings a deleted item back (NEX-04) — never an upsert.
+        if (!plan.restores.has(app.id)) throw new OpError('deleted', `「${app.name}」已被删除（在回收站中），这次修改没有应用`, undefined, { appId: app.id, name: app.name });
+        await this.update(owner, app.id, set, 'restore');
+        changed = true;
+      } else if (Object.keys(set).length) {
         await this.update(owner, app.id, set);
         changed = true;
       }
