@@ -130,7 +130,7 @@ try {
   await a.getByRole('button', { name: /全部退出/ }).waitFor();
   await shot(a, '08-nexus-settings-member');
   const memberText = await a.locator('main, body').first().innerText();
-  step('member settings: account and both ways out, no claim, no administration', /退出此设备/.test(memberText) && /退出全部设备/.test(memberText) && /打开账号中心/.test(memberText) && !/绑定统一账号/.test(memberText) && !/账号与邀请/.test(memberText), memberText.match(/账号与登录[\s\S]{0,40}/)?.[0]);
+  step('member settings: account and the three ways out (ADR-019), no claim, no administration', /退出此设备/.test(memberText) && /退出 Nexus 的全部设备/.test(memberText) && /退出所有产品与设备/.test(memberText) && /打开账号中心/.test(memberText) && !/绑定统一账号/.test(memberText) && !/账号与邀请/.test(memberText), memberText.match(/账号与登录[\s\S]{0,40}/)?.[0]);
   // An extension asking for more than reading: the approval page lists it and lets her trim it.
   const pairStart = await (await fetch('http://127.0.0.1:28787/api/pair/start', { method: 'POST', headers: { 'content-type': 'application/json', 'x-nexus-client': '1' }, body: JSON.stringify({ name: 'Chrome 扩展', scopes: ['config:read', 'items:read', 'items:write', 'pins:write'] }) })).json();
   await a.goto(`${PUBLIC}/settings/data?pair=${pairStart.code}`);
@@ -173,28 +173,24 @@ try {
   const meBStill = await api(b, '/api/v2/me');
   step("…and only Alice's: Bob stays signed in", meBStill.status === 200, meBStill.status);
 
-  // 5. 退出所有设备: every Nexus session of Bob ends, and the browser goes to Keycloak's end-session.
+  // 5. 退出 Nexus 的全部设备（ADR-019 动作 B）: every Nexus session of Bob ends; the identity service is
+  //    not touched (that is 动作 C, see revocation-smoke.mjs), so no end-session hop any more.
   const b2ctx = await browser.newContext({ locale: 'zh-CN' });
   const b2 = await b2ctx.newPage();
   await signInThroughKeycloak(b2, bob); // a second session of Bob, another browser
   const kcBefore = (await kc(`/users/${bob.id}/sessions`)).body.length;
   const all = await api(b, '/api/v2/account/logout-all', 'POST');
-  step('logout-all ends every session of the account', all.status === 200 && all.body.sessions >= 2 && typeof all.body.endSessionUrl === 'string', { status: all.status, sessions: all.body?.sessions, devices: all.body?.devices, endSession: all.body?.endSessionUrl ? new URL(all.body.endSessionUrl).pathname : null });
+  step('动作 B ends every Nexus session of the account, without an end-session hop', all.status === 200 && all.body.sessions >= 2 && all.body.endSessionUrl === null, { status: all.status, sessions: all.body?.sessions, devices: all.body?.devices, grants: all.body?.grants, endSessionUrl: all.body?.endSessionUrl });
   const b2After = await api(b2, '/api/v2/me');
   step("…including Bob's other browser", b2After.status === 401, b2After.status);
-  await b.goto(all.body.endSessionUrl);
-  await b.waitForURL((u) => u.href.startsWith(PUBLIC), { timeout: 20_000 });
   const kcSessions = await kc(`/users/${bob.id}/sessions`);
-  step("…and this browser's identity-service session (end-session → back to Nexus)", kcBefore === 2 && kcSessions.body.length === 1, { keycloakSessionsBefore: kcBefore, after: kcSessions.body?.length, landed: new URL(b.url()).pathname });
-  await b.getByRole('button', { name: '使用统一账号登录' }).click();
-  await b.waitForURL((u) => u.href.startsWith(`${KC}/`));
-  step('this browser must enter the password again', await b.locator('#password').isVisible(), b.url().slice(0, 80));
-  // Documented limit: another browser still signed in at the identity service gets back in without a password.
+  step('…and leaves the identity service alone (B is this product only)', kcBefore === 2 && kcSessions.body.length === 2, { keycloakSessionsBefore: kcBefore, after: kcSessions.body?.length });
+  // B's scope, by design: a browser still signed in at the identity service re-enters without a password.
   await b2.goto(`${PUBLIC}/`);
   await b2.getByRole('button', { name: '使用统一账号登录' }).click();
   await b2.waitForURL((u) => u.href.startsWith(PUBLIC) && !u.pathname.startsWith('/auth/') || u.href.startsWith(`${KC}/`), { timeout: 20_000 });
   await b2.waitForTimeout(1000);
-  step('(limit, documented) another browser with a live identity-service session re-enters silently', new URL(b2.url()).host === new URL(PUBLIC).host, new URL(b2.url()).host);
+  step('(by design) after B a browser with a live identity-service session re-enters without a password', new URL(b2.url()).host === new URL(PUBLIC).host, new URL(b2.url()).host);
 
   // 6. 旧管理员认领: the legacy administrator (password) binds a shared account.
   const admin = await createUser('owner@example.test', '站长');

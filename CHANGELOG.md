@@ -57,6 +57,7 @@
 - **中心停用检查**（`NEXUS_IDENTITY_STATUS_CHECK=on`）：用 `nexus-web` 的只读服务账号查询账号中心里的账号状态，停用或删除后 Nexus 的登录与扩展最迟 60 秒内失效；账号中心暂时不可达时宽限 15 分钟，之后扩展请求返回 `503 IDENTITY_UNAVAILABLE`（扩展保留待发内容）。未开启时启动日志与管理员页面都写明后果。
 - 实时推送（`/api/events`）每 15 秒复核一次会话与授权代次，账号被撤销后连接随即关闭，页面重新确认登录状态。
 - 浏览器扩展被撤销授权后提示「授权已被撤销，请重新连接」，还没发送的收藏仍保留在扩展里。
+- **realm 模板**（`infra/identity`）：两个 client 开启只读服务账号（只授 realm-management 的 `view-users`），默认作用域加 `roles`，作用域映射加 `account/manage-account` 与 `realm-management/view-users`；已部署的 realm 用 `./configure.sh revocation` 增量补上（可重复执行）。`verify-realm.mjs` 增加对应回读与最小权限断言（服务账号修改用户、结束会话都是 403），新增 `revocation-smoke.mjs` 在真实 Keycloak 上跑动作 C 与 D。
 
 ### 升级说明
 

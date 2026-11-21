@@ -6,6 +6,12 @@
 #   ./configure.sh rotate-secret nexus-web|litesync-web
 #                                                    重新生成 client secret 并输出一次；
 #                                                    随后必须更新对应产品的配置并重启它
+#   ./configure.sh revocation                        账号撤销（ADR-019）：两个 client 开启只读服务账号，
+#                                                    加上 roles 作用域与 manage-account / view-users 映射；
+#                                                    已部署的 realm 用它补上模板的新内容，可重复执行
+#
+# 不用 compose 时（例如一次性的本机容器），KC_EXEC 指定进入 Keycloak 容器的方式：
+#   KC_EXEC="docker exec -i <容器名>" ./configure.sh revocation
 #
 # 注册开关是两层的：身份服务（这里）决定能不能在账号中心创建账号；每个产品自己的
 # NEXUS_REGISTRATION_MODE / OBSYNC_REGISTRATION_MODE 决定新身份第一次进入时能不能建立
@@ -17,7 +23,8 @@ set -a
 . ./.env
 set +a
 
-kc() { docker compose exec -T keycloak /opt/keycloak/bin/kcadm.sh "$@"; }
+# shellcheck disable=SC2086 # KC_EXEC is a command line on purpose
+kc() { ${KC_EXEC:-docker compose exec -T keycloak} /opt/keycloak/bin/kcadm.sh "$@"; }
 login() {
   # 管理员口令只经过容器内进程参数，不写入任何文件或日志
   kc config credentials --server http://localhost:8080 --realm master \
@@ -73,8 +80,34 @@ case "${1:-}" in
     echo "$secret"
     if [ "$client" = nexus-web ]; then echo "→ 写入 Nexus 的 NEXUS_OIDC_CLIENT_SECRET 并重启 Nexus"; else echo "→ 写入 LiteSync 的 OBSYNC_OIDC_CLIENT_SECRET 并重启 LiteSync"; fi
     ;;
+  revocation)
+    # ADR-019：用户本人结束自己的全部会话（Account REST，需要令牌带 account/manage-account），
+    # 产品查询账号是否被停用 / 删除（只读服务账号，realm-management/view-users，不授 manage-users）。
+    # 两个 client 都是 fullScopeAllowed=false：令牌只带作用域映射里的角色，所以两项都要进映射，
+    # 并且要有 roles 作用域（它把 resource_access 与 aud 写进令牌）。普通用户没有 view-users，
+    # 这条映射不会给他们任何权限。
+    login
+    realm_mgmt="$(client_uuid realm-management)"
+    account="$(client_uuid account)"
+    roles_scope="$(kc get client-scopes -r accounts --fields id,name --format csv --noquotes | sed -n 's/^\([^,]*\),roles$/\1/p' | head -n 1)"
+    if [ -z "$realm_mgmt" ] || [ -z "$account" ] || [ -z "$roles_scope" ]; then echo "找不到 realm-management / account client 或 roles 作用域" >&2; exit 1; fi
+    view_users="$(kc get "clients/$realm_mgmt/roles/view-users" -r accounts --fields id,name)"
+    manage_account="$(kc get "clients/$account/roles/manage-account" -r accounts --fields id,name)"
+    for client in nexus-web litesync-web; do
+      id="$(client_uuid "$client")"
+      [ -n "$id" ] || { echo "找不到 client $client" >&2; exit 1; }
+      kc update "clients/$id" -r accounts -s serviceAccountsEnabled=true
+      kc update "clients/$id/default-client-scopes/$roles_scope" -r accounts -b '{}'
+      kc create "clients/$id/scope-mappings/clients/$account" -r accounts -b "[$manage_account]"
+      kc create "clients/$id/scope-mappings/clients/$realm_mgmt" -r accounts -b "[$view_users]"
+      kc add-roles -r accounts --uusername "service-account-$client" --cclientid realm-management --rolename view-users
+      echo "$client：服务账号只读（realm-management/view-users）；作用域映射 account/manage-account + realm-management/view-users"
+    done
+    echo "完成。Nexus 设置 NEXUS_IDENTITY_STATUS_CHECK=on，LiteSync 按它的文档开启中心停用检查，重启后在各自的管理员页面确认生效；"
+    echo "然后运行 node scripts/smoke/verify-realm.mjs 回读核对（本机一次性实例）。"
+    ;;
   *)
-    sed -n '2,15p' "$0"
+    sed -n '2,20p' "$0"
     exit 2
     ;;
 esac

@@ -62,7 +62,7 @@
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
-      "serviceAccountsEnabled": false,
+      "serviceAccountsEnabled": true,
       "frontchannelLogout": false,
       "consentRequired": false,
       "fullScopeAllowed": false,
@@ -81,7 +81,7 @@
         "use.refresh.tokens": "true",
         "id.token.signed.response.alg": "RS256"
       },
-      "defaultClientScopes": ["web-origins", "acr", "basic", "profile", "email"],
+      "defaultClientScopes": ["web-origins", "acr", "basic", "profile", "email", "roles"],
       "optionalClientScopes": []
     },
     {
@@ -96,7 +96,7 @@
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
-      "serviceAccountsEnabled": false,
+      "serviceAccountsEnabled": true,
       "frontchannelLogout": false,
       "consentRequired": false,
       "fullScopeAllowed": false,
@@ -115,8 +115,32 @@
         "use.refresh.tokens": "true",
         "id.token.signed.response.alg": "RS256"
       },
-      "defaultClientScopes": ["web-origins", "acr", "basic", "profile", "email"],
+      "defaultClientScopes": ["web-origins", "acr", "basic", "profile", "email", "roles"],
       "optionalClientScopes": []
+    }
+  ],
+  "clientScopeMappings": {
+    "account": [
+      { "client": "nexus-web", "roles": ["manage-account"] },
+      { "client": "litesync-web", "roles": ["manage-account"] }
+    ],
+    "realm-management": [
+      { "client": "nexus-web", "roles": ["view-users"] },
+      { "client": "litesync-web", "roles": ["view-users"] }
+    ]
+  },
+  "users": [
+    {
+      "username": "service-account-nexus-web",
+      "enabled": true,
+      "serviceAccountClientId": "nexus-web",
+      "clientRoles": { "realm-management": ["view-users"] }
+    },
+    {
+      "username": "service-account-litesync-web",
+      "enabled": true,
+      "serviceAccountClientId": "litesync-web",
+      "clientRoles": { "realm-management": ["view-users"] }
     }
   ]
 }
