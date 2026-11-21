@@ -3,7 +3,7 @@ import { ExternalLink, KeyRound, LogOut, MonitorX } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from '../../../components/toast-store';
 import { authOptions, logout, logoutEverywhere, useAccount, useSaveState } from '../../../data/config-store';
-import { AUTH_ERRORS } from '../../auth/LoginPage';
+import { AUTH_ERRORS, AUTH_OFFLINE } from '../../auth/LoginPage';
 import { Button, Dialog, Group, Row, Tag } from '../ui';
 
 /** Messages for the claim flow, which returns here (`/settings/data?auth_error=…`). */
@@ -158,7 +158,7 @@ export function AccountSection() {
             <Button className="h-10 px-[18px]" onClick={() => setLinking(false)}>
               取消
             </Button>
-            <Button variant="primary" className="h-10 px-5" onClick={() => location.assign('/auth/link/start')}>
+            <Button variant="primary" className="h-10 px-5" onClick={() => (navigator.onLine ? location.assign('/auth/link/start') : toast({ msg: AUTH_OFFLINE, tone: 'error' }))}>
               前往账号中心
             </Button>
           </>

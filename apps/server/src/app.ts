@@ -399,6 +399,8 @@ export function createApp(deps: Deps) {
       return c.json({ error: 'invalid_request' }, 400);
     }
   });
+  /** /auth/* belongs to the server (NEX-01): an unknown path there is not an app page. */
+  app.all('/auth/*', (c) => c.text('未找到', 404));
 
   // ── Paired devices (browser extension): pairing, then sync with a device token ──
   // Never reads the session cookie. The extension calls from an extension origin, which is why

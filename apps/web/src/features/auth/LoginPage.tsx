@@ -27,6 +27,9 @@ export const AUTH_ERRORS: Record<string, string> = {
   session_ended: '登录已失效，请重新登录。',
 };
 
+/** Signing in needs the server and the identity service; nothing is pretended offline. */
+export const AUTH_OFFLINE = '当前设备离线：统一登录需要连接 Nexus 服务端与账号中心，恢复网络后再试。';
+
 const here = () => `${location.pathname}${location.search.replace(/[?&]auth_error=[^&]*/g, '').replace(/^&/, '?')}${location.hash}`;
 
 /**
@@ -80,8 +83,16 @@ export function LoginPage() {
     }
   };
 
-  /** A full-page navigation: the server talks to the identity service, the browser never sees a token. */
+  /**
+   * A full-page navigation: the server talks to the identity service, the browser never sees a token.
+   * Offline it would only reach the browser's error page (the Service Worker never answers /auth/*
+   * with the app, NEX-01): say so here instead.
+   */
   const signIn = () => {
+    if (!navigator.onLine) {
+      setError(AUTH_OFFLINE);
+      return;
+    }
     const q = new URLSearchParams({ returnTo: here() });
     if (invite.trim()) q.set('invite', invite.trim());
     location.assign(`/auth/login?${q}`);

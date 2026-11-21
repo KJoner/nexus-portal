@@ -92,6 +92,8 @@ jobs:
       - run: npx playwright install --with-deps chromium webkit
       # The Edge project needs a local Microsoft Edge; it runs on Windows (see docs/acceptance.md).
       - run: npm run test:e2e -- --project=chrome --project=iphone
+      # 统一登录 × Service Worker（NEX-01）：生产构建已由上一步完成；用例自己启停服务端与模拟身份服务。
+      - run: npx playwright test -c playwright.auth.config.ts --project=chrome --project=iphone
       - if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

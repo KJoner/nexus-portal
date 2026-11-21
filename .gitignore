@@ -14,6 +14,8 @@ coverage/
 test-results/
 playwright-report/
 e2e/.baseline.json
+# 升级测试用的 0.4.0 Service Worker 构建（e2e-auth/global-setup.ts 生成）
+e2e-auth/.legacy-dist/
 
 # 编辑器与系统文件
 .idea/

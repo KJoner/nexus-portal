@@ -2,7 +2,8 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "jsx": "react-jsx",
+    "allowImportingTsExtensions": true,
     "types": ["vite/client", "vite-plugin-pwa/client"]
   },
-  "include": ["src", "vite.config.ts", "vitest.config.ts"]
+  "include": ["src", "vite.config.ts", "vitest.config.ts", "pwa.config.ts"]
 }
