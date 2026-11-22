@@ -50,6 +50,8 @@ interface LibraryState {
   cursor: string | null;
   queued: number;
   conflicts: LibraryConflict[];
+  /** UI v2 (N3): 1 when this space was created with the eight starter sites (the snapshot's word); undefined until loaded. */
+  starterVersion?: number;
 }
 
 const initial = (): LibraryState => ({ status: 'idle', error: '', owner: null, items: {}, pins: [], folders: [], cursor: null, queued: 0, conflicts: [] });
@@ -80,6 +82,15 @@ function writeConflicts(owner: string, list: LibraryConflict[]) {
   if (useLibrary.getState().owner === owner) useLibrary.setState({ conflicts: list.slice(-50) });
 }
 
+/**
+ * UI v2 (status pill): changes of 我的收藏 still waiting on this device for the collection on
+ * screen — read from storage, so a page that has not loaded the collection (the home page) still
+ * never claims 已同步 while something is queued from an earlier visit.
+ */
+export function storedQueueLength(): number {
+  return readQueue(ownerNow()).length;
+}
+
 /** Another account signed in here: nothing of the previous one stays in memory. */
 onAccountChange(() => useLibrary.setState(initial()));
 
@@ -108,7 +119,7 @@ export async function loadLibrary(): Promise<void> {
       items.push(...page.items);
     }
     if (ownerNow() !== owner) return;
-    useLibrary.setState({ items: Object.fromEntries(items.map((i) => [i.id, i])), pins: first.pins, folders: first.folders, cursor: first.cursor, status: 'ready' });
+    useLibrary.setState({ items: Object.fromEntries(items.map((i) => [i.id, i])), pins: first.pins, folders: first.folders, cursor: first.cursor, status: 'ready', starterVersion: first.starterVersion ?? 0 });
     // Pages and changes share the snapshot's watermark: what changed while paging comes next.
     await pullLibrary();
     await flushLibrary();
@@ -201,7 +212,7 @@ const retryable = (e: unknown) => e instanceof NetworkError || (e instanceof Htt
 
 async function run(op: QueuedOp): Promise<WriteOutcome> {
   const owner = useLibrary.getState().owner;
-  if (!owner) return { ok: false, code: 'NOT_READY', message: '收藏库还没有加载' };
+  if (!owner) return { ok: false, code: 'NOT_READY', message: '我的收藏还没有加载' };
   // Changes still waiting go first: a new one never overtakes them (a delete before the queued edit).
   if (readQueue(owner).length) {
     writeQueue(owner, [...readQueue(owner), op]);
@@ -249,7 +260,7 @@ export function flushLibrary(): Promise<void> {
         if (KEPT.has(e.code)) {
           // Another device got there first: kept for the person to decide, never dropped (NEX-04).
           writeConflicts(owner, [...readConflicts(owner), { op, code: e.code, message: e.message, details: e.details, at: Date.now() }]);
-          toast({ msg: `一项离线时的更改没有完成：${e.message}。已保留在本机，请在收藏库中处理`, tone: 'warn' });
+          toast({ msg: `一项离线时的更改没有完成：${e.message}。已保留在本机，请在我的收藏中处理`, tone: 'warn' });
         } else toast({ msg: `一项离线时的更改未能保存：${e.message}`, tone: 'warn' });
       }
       // Re-read: changes made while this one was on its way were appended meanwhile.
@@ -283,7 +294,7 @@ export function conflictChoices(c: LibraryConflict): LibraryChoice[] {
 export async function resolveConflict(index: number, choice: LibraryChoice): Promise<WriteOutcome> {
   const owner = useLibrary.getState().owner;
   const c = useLibrary.getState().conflicts[index];
-  if (!owner || !c) return { ok: false, code: 'NOT_READY', message: '收藏库还没有加载' };
+  if (!owner || !c) return { ok: false, code: 'NOT_READY', message: '我的收藏还没有加载' };
   const done = () => writeConflicts(owner, readConflicts(owner).filter((x) => x.at !== c.at || x.op.opId !== c.op.opId));
   if (choice === 'discard') {
     done();
