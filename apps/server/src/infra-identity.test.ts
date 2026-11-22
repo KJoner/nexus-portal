@@ -21,7 +21,8 @@ const init = readFileSync(join(dir, 'postgres-init', '01-databases.sh'), 'utf8')
 
 describe('identity realm template', () => {
   it('requires verified e-mail, limits link lifetimes and resists password guessing', () => {
-    expect(realm).toMatchObject({ realm: 'accounts', verifyEmail: true, registrationEmailAsUsername: true, duplicateEmailsAllowed: false, resetPasswordAllowed: true, rememberMe: false, bruteForceProtected: true, sslRequired: 'external' });
+    // I1 (v12.0.3): new accounts pick a username (not their e-mail); signing in with the e-mail still works.
+    expect(realm).toMatchObject({ realm: 'accounts', verifyEmail: true, registrationEmailAsUsername: false, loginWithEmailAllowed: true, editUsernameAllowed: false, duplicateEmailsAllowed: false, resetPasswordAllowed: true, rememberMe: false, bruteForceProtected: true, sslRequired: 'external' });
     expect(realm.attributes['actionTokenGeneratedByUserLifespan.verify-email']).toBe('1800');
     expect(realm.attributes['actionTokenGeneratedByUserLifespan.reset-credentials']).toBe('900');
     expect(String(realm.passwordPolicy)).toMatch(/length\((1\d|[89])\)/);
@@ -157,6 +158,44 @@ describe('identity realm template', () => {
     expect(css).toMatch(/@media \(min-width: 721px\) \{[^}]*\.ac-visual \{[^}]*url\('\.\.\/img\/auth-art\.webp'\)/);
     // No remote resource: no external script, stylesheet, font or image (comments may cite URLs).
     expect(`${template}\n${css}`).not.toMatch(/(src|href)=["']https?:|url\(\s*['"]?https?:|@import/);
+  });
+
+  it('I1: username / nickname / e-mail are a user-profile file applied by ./configure.sh profile, never an import file', () => {
+    const profile = JSON.parse(readFileSync(join(dir, 'profiles', 'user-profile.json'), 'utf8')) as {
+      attributes: { name: string; required?: unknown; permissions: { view: string[]; edit: string[] }; validations: Record<string, Record<string, unknown>>; annotations?: Record<string, string> }[];
+    };
+    const attr = Object.fromEntries(profile.attributes.map((a) => [a.name, a]));
+    // Order on the registration form: 用户名、昵称、邮箱 (the account password comes after the e-mail link).
+    expect(profile.attributes.map((a) => a.name)).toEqual(['username', 'nickname', 'email', 'firstName', 'lastName']);
+    // Nickname: optional (no profile step forced on existing accounts), 1–32 when given, shown and editable.
+    expect(attr.nickname!.required).toBeUndefined();
+    expect(attr.nickname!.validations.length).toEqual({ min: 1, max: 32 });
+    expect(attr.nickname!.permissions).toEqual({ view: ['admin', 'user'], edit: ['admin', 'user'] });
+    // Username: Keycloak's own validators only — existing usernames are e-mail addresses, so no pattern
+    // that rejects '@' (or anything else) may apply realm-wide.
+    expect(Object.keys(attr.username!.validations).sort()).toEqual(['length', 'up-username-not-idn-homograph', 'username-prohibited-characters']);
+    expect(attr.username!.validations.length).toEqual({ min: 3, max: 255 });
+    expect(attr.email!.required).toEqual({ roles: ['user'] });
+    // 姓 / 名: kept (old values stay) but only administrators see them; nobody is asked for them.
+    for (const n of ['firstName', 'lastName']) {
+      expect(attr[n]!.required, n).toBeUndefined();
+      expect(attr[n]!.permissions, n).toEqual({ view: ['admin'], edit: ['admin'] });
+    }
+    // Every ${…} the profile shows exists in the login and account themes (zh and en).
+    const keys = [...JSON.stringify(profile).matchAll(/\$\{(\w+)\}/g)].map((m) => m[1]!).filter((k) => !['username', 'email', 'firstName', 'lastName'].includes(k));
+    expect(keys.sort()).toEqual(['acEmailHelp', 'acNicknameHelp', 'acUsernameHelp', 'nickname']);
+    for (const [type, files] of [['login', ['messages_zh_CN.properties', 'messages_zh_Hans.properties', 'messages_en.properties']], ['account', ['messages_zh_CN.properties', 'messages_zh_Hans.properties', 'messages_en.properties']]] as const) {
+      for (const f of files) {
+        const text = readFileSync(join(dir, 'themes', 'accounts', type, 'messages', f), 'utf8');
+        for (const k of keys) expect(text, `${type}/${f}: ${k}`).toMatch(new RegExp(`^${k}=.+`, 'm'));
+      }
+    }
+    // Applied and read back by the script (deployed realms do not re-import); separate from the theme switch.
+    expect(readdirSync(join(dir, 'realm'))).not.toContain('user-profile.json');
+    expect(configure).toMatch(/\n {2}profile\)/);
+    for (const piece of ['profiles/user-profile.json', 'update users/profile -r accounts --no-merge', 'backup/profile-', 'registrationEmailAsUsername=false', 'loginWithEmailAllowed=true', '回读', 'rollback', '"claim.name":"nickname"']) expect(configure, piece).toContain(piece);
+    const themeBlock = /\n {2}theme\)[\s\S]*?\n {4};;/.exec(configure)?.[0] ?? '';
+    expect(themeBlock).not.toMatch(/users\/profile|registrationEmailAsUsername/);
   });
 
   it('keeps every credential out of the files', () => {

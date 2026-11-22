@@ -18,7 +18,15 @@ const api = (p, init = {}) => fetch(`${KC}/admin/realms/accounts${p}`, { ...init
 const realm = await api('').then((r) => r.json());
 check('realm.verifyEmail', realm.verifyEmail === true, realm.verifyEmail);
 check('realm.registrationAllowed (template default)', realm.registrationAllowed === true, realm.registrationAllowed);
-check('realm.registrationEmailAsUsername', realm.registrationEmailAsUsername === true, realm.registrationEmailAsUsername);
+// v12.0.3 I1: new accounts choose a username; the e-mail still signs in (after ./configure.sh profile apply).
+check('realm.registrationEmailAsUsername', realm.registrationEmailAsUsername === false, realm.registrationEmailAsUsername);
+check('realm.loginWithEmailAllowed', realm.loginWithEmailAllowed === true, realm.loginWithEmailAllowed);
+check('realm.editUsernameAllowed', realm.editUsernameAllowed === false, realm.editUsernameAllowed);
+const profile = await api('/users/profile').then((r) => r.json());
+const attrs = Object.fromEntries((profile.attributes ?? []).map((a) => [a.name, a]));
+check('profile: username, nickname, email first', JSON.stringify((profile.attributes ?? []).slice(0, 3).map((a) => a.name)) === '["username","nickname","email"]', (profile.attributes ?? []).map((a) => a.name));
+check('profile: nickname optional, 1-32', !attrs.nickname?.required && attrs.nickname?.validations?.length?.max === 32, attrs.nickname);
+check('profile: 姓/名 admin-only, not required', ['firstName', 'lastName'].every((n) => !attrs[n]?.required && JSON.stringify(attrs[n]?.permissions?.view) === '["admin"]'), [attrs.firstName?.permissions, attrs.lastName?.permissions]);
 check('realm.resetPasswordAllowed', realm.resetPasswordAllowed === true, realm.resetPasswordAllowed);
 check('realm.bruteForceProtected', realm.bruteForceProtected === true, realm.bruteForceProtected);
 check('realm.sslRequired', realm.sslRequired === 'external', realm.sslRequired);

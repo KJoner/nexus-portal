@@ -241,6 +241,9 @@ try {
   await shot(e, '04-keycloak-register');
   step('registration form: no password before the e-mail is proven (Keycloak 26.8 default)', (await e.locator('input[type=password]').count()) === 0, await e.locator('input').evaluateAll((xs) => xs.map((x) => x.name).filter(Boolean)));
   await e.locator('#email').fill('carol@example.test');
+  // v12.0.3 I1: 用户名 + 昵称 + 邮箱 (after ./configure.sh profile apply); older realms still ask for 姓 / 名.
+  if (await e.locator('#username').count()) await e.locator('#username').fill('carol');
+  if (await e.locator('#nickname').count()) await e.locator('#nickname').fill('卡罗');
   if (await e.locator('#firstName').count()) await e.locator('#firstName').fill('卡罗');
   if (await e.locator('#lastName').count()) await e.locator('#lastName').fill('测试');
   await e.locator('[type=submit]').first().click();
@@ -283,7 +286,7 @@ try {
     await ctxG.close();
     return text;
   })();
-  step('a wrong password is refused with a generic message', /无效|错误|invalid/i.test(tooShort), tooShort.slice(0, 80));
+  step('a wrong password is refused with a generic message', /无效|错误|不正确|invalid/i.test(tooShort), tooShort.slice(0, 80));
 } catch (e) {
   step('smoke run', false, String(e?.stack ?? e).slice(0, 600));
 } finally {

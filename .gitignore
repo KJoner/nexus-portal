@@ -30,3 +30,6 @@ docs/*.zip
 apps/chrome-extension/dist-test/
 apps/chrome-extension/dist-firefox/
 apps/chrome-extension/release/
+
+# 身份服务 configure.sh profile apply 的备份（部署相关，不入库）
+/infra/identity/backup/

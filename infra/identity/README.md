@@ -23,6 +23,7 @@ LiteSync 与 Nexus Portal 共用一个账号：用户只注册一次，邮箱验
 2. 配置反向代理：`accounts.example.com` → `127.0.0.1:8180`，并传递 `X-Forwarded-For/Proto/Host`（Keycloak 以 `KC_PROXY_HEADERS=xforwarded` 读取它们，所以**不要**让外部请求直接打到 8180）。
 3. `docker compose up -d`。首次启动时 postgres 执行 `postgres-init/01-databases.sh` 建库建角色，Keycloak 导入 `realm/accounts-realm.json`（其中的 `${…}` 取自 `.env`）。日志出现 `Realm 'accounts' imported` 才算完成；健康检查同时检查 realm 的发现文档，所以容器变成 healthy 时 realm 一定已经可用（实测 Keycloak 26.8 的 `/health/ready` 会在导入完成前就报告 UP）。realm 只在不存在时导入，之后对模板的修改不会自动生效，日常调整用 `./configure.sh`。
 4. 打开 `https://accounts.example.com/admin`，用临时管理员登录 → 在 master realm 建立正式管理员（启用 OTP）→ 删除临时管理员。
+4a. `./configure.sh profile apply`：应用用户资料定义（用户名 / 昵称 / 邮箱，见下文「用户名、昵称与邮箱」）。模板只带注册与登录开关，资料定义一律由这条命令应用并回读；不运行它，注册页会显示 Keycloak 默认的「名 / 姓」。
 5. 在 realm `accounts` 的 Realm settings › Email 点「Test connection」，确认能收到测试邮件。
 6. 配置两个产品（见下节）并重启。
 
@@ -202,9 +203,23 @@ docker compose exec -T postgres pg_dump -U postgres -Fc nexus    > nexus-$(date 
   - 装饰图 `resources/img/auth-art.webp`：由 v12.0.3 设计包 `prototype/assets/auth-art.png`（1122×1402，sha256 `59020c17542c9e6279d899bd35066b255b05921ebb7af14cc6ae334555b0cd3f`，生成图、无文字）用 Pillow 转成 WebP（quality 85，尺寸不变，sha256 `fe70b55d4deeeec774b0f5eecadd6bbb535fde82c9dd2c10255a14b34da41d2b`，约 46 KB）。
   - **升级 Keycloak 时**：`template.ftl` 开头记着所依据的上游版本与 sha256。先取出新版的上游文件对照（`docker create --name kc-up quay.io/keycloak/keycloak:<新版本>`，`docker cp kc-up:/opt/keycloak/lib/lib/main/org.keycloak.keycloak-themes-<新版本>.jar .`，`unzip -p org.keycloak.keycloak-themes-<新版本>.jar theme/keycloak.v2/login/template.ftl > upstream-template.ftl`，`docker rm kc-up`），把上游 `<head>` 与各个 `<#nested>` 区块的改动搬过来，再更新开头的版本与 sha256（测试会核对）。与上游的差异只有：`<body>` 的版式（`ac-*` 结构）、`<head>` 多一行 `theme-toggle.js`、去掉了自带的 `kc-header`（realm 名称改在表单上方的小标题里显示）。
 - `accounts-nexus/login`、`accounts-litesync/login`：两个产品的子主题，realm 模板在各自的 client 上指定（`login_theme`）。只设产品名、一句导语和产品色（Nexus 琥珀 `#986321` / 深色 `#E4BF84`，LiteSync 紫 `#6854BC` / 深色 `#B4A1F3`，取自 v12.0.3 `design/tokens.json`）。
-- `accounts/account`：账号控制台 v3，加一份样式和「账号中心」标志，把自带翻译里的「帐户安全 / 登陆凭证 / 应用列表」改成「登录与安全 / 登录方式 / 已授权的应用」。两个产品打开账号中心时带 `?referrer=<client>`，页头显示「回到 Nexus Portal / LiteSync」。账号控制台的版式本轮没有改成两栏外壳。
+- `accounts/account`：账号控制台 v3，加一份样式和「账号中心」标志，把自带翻译里的「帐户安全 / 登陆凭证 / 应用列表」改成「登录与安全 / 登录方式 / 已授权的应用」，并给用户资料的「用户名 / 昵称 / 邮箱」补上中文名。两个产品打开账号中心时带 `?referrer=<client>`，页头显示「回到 Nexus Portal / LiteSync」。账号控制台的版式本轮没有改成两栏外壳。
 - `accounts/email`：验证邮箱、重设账号密码等邮件的外壳和中文标题。
 
-新部署导入模板即生效；已部署的 realm：`docker compose up -d`（让新挂载生效）后 `./configure.sh theme on`，回退 `./configure.sh theme off`。主题只改展示，不改认证流程、注册开关、会话和退出行为。
+新部署导入模板即生效；已部署的 realm：`docker compose up -d`（让新挂载生效）后 `./configure.sh theme on`，回退 `./configure.sh theme off`。主题只改展示，不改认证流程、注册开关、会话和退出行为；`theme off` 不会撤回下一节的用户资料改动。
+
+## 用户名、昵称与邮箱（v12.0.3 I1）
+
+| 字段 | 用途 | 规则 |
+| --- | --- | --- |
+| 用户名 `username` | 登录 | 唯一；注册后不能改（`editUsernameAllowed=false`）。旧账号的用户名就是邮箱，照常可用，不需要改名或重新注册。校验沿用 Keycloak 自带的（3–255 个字符、禁用字符、同形字），**不加**挡住 `@` 的规则 |
+| 昵称 `nickname` | 展示 | 可重复、可留空、1–32 个字符（Keycloak 按 UTF-16 计数）；用户可在账号中心改 |
+| 邮箱 `email` | 验证、找回账号密码 | 照旧唯一、必须验证；也能用来登录（`loginWithEmailAllowed=true`） |
+| 姓 / 名 | — | 保留旧值，只对管理员可见，不再要求填写 |
+
+- 定义在 `profiles/user-profile.json`（**不放进 `realm/`**）。`./configure.sh profile apply` 先把当前定义与开关存进 `backup/profile-<UTC 时间>.*`，再应用、关闭「用邮箱作为用户名注册」，并回读核对（定义忽略空白逐字一致、开关逐项一致、`profile` 作用域里有 `nickname` 声明的映射；不一致就以非零状态退出）。`show` 打印当前状态。
+- 注册表单依次是 用户名、昵称、邮箱；开启「验证邮箱」时 Keycloak 26.8 **不在注册表单里收密码**，验证邮箱之后再设置账号密码（Keycloak 推荐的做法；注册页底部有一句说明）。
+- 两个产品从 ID Token 取显示名：`nickname` → 旧的 `name`（姓名）→ `preferred_username`，去掉首尾空白，空值跳过。账号仍按 `(issuer, sub)` 认人，昵称相同的两个人是两个账号；改昵称不改变账号、仓库与收藏的归属。
+- 回退：`./configure.sh profile rollback backup/profile-<时间>` 恢复备份里的定义与开关，并回读核对。不删除任何数据：已填的昵称还在用户属性里，已注册的非邮箱用户名保留，不重建账号、不改 `sub`。回退期间 Keycloak 按旧定义处理：管理控制台把这些账号的用户名显示成邮箱、昵称不显示，「名 / 姓」重新成为必填（新账号下次登录会被要求补填）；存储的用户名与昵称不变，再次 `apply` 后原样恢复（本机演练：rollback → 再 apply，同一账号的用户名、昵称与 id 都没变）。
 
 **注意**：`realm/` 是导入目录，`--import-realm` 会把其中每个 `.json` 都当作 realm 解析，放进其他文件 Keycloak 就**无法启动**（2026-11-22 本机复现：`account-texts.*.json` 放在那里时报 `Unrecognized field "deviceActivity"`），所以账号中心文字的补设文件放在 `texts/`。

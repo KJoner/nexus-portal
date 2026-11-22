@@ -14,6 +14,10 @@
 #   ./configure.sh theme on|off                      账号中心主题（themes/）：on 让登录、账号、邮件使用 accounts，
 #                                                    两个产品的登录页用各自的子主题；off 回到 Keycloak 自带主题。
 #                                                    需要 compose 已挂载 ./themes（改动 compose 后要重建容器）
+#   ./configure.sh profile show|apply|rollback <备份>
+#                                                    用户名 / 昵称 / 邮箱（profiles/user-profile.json 与注册、登录开关）：
+#                                                    apply 先备份到 backup/，再应用并回读核对；rollback 用备份恢复。
+#                                                    与 theme 互不影响（theme off 不会撤回这里的改动）
 #
 # 不用 compose 时（例如一次性的本机容器），KC_EXEC 指定进入 Keycloak 容器的方式：
 #   KC_EXEC="docker exec -i <容器名>" ./configure.sh revocation
@@ -138,8 +142,72 @@ case "${1:-}" in
       echo "已写入账号中心文案覆盖：$locale"
     done
     ;;
+  profile)
+    # 用户名、昵称、邮箱各司其职（v12.0.3 I1）：用户名用于登录（注册后不能改，旧账号的用户名就是邮箱，照常可用），
+    # 昵称用于展示（可重复、可留空），邮箱用于验证与找回；姓 / 名保留旧值，只对管理员可见。定义在
+    # profiles/user-profile.json（不放进 realm/：导入目录里的每个 .json 都会被当成 realm 解析）。
+    # 模板首次导入只带开关，资料定义一律由这里应用；可重复执行。账号身份（issuer + sub）与资产归属不受影响。
+    #   show              打印当前的用户资料定义、相关开关与 nickname 声明的映射
+    #   apply             先把当前定义与开关存进 backup/profile-<UTC 时间>.*，再应用并回读核对（不一致即失败）
+    #   rollback <备份>   用 apply 存下的备份（profile-<时间>，不带后缀）恢复定义与开关。不删除任何数据：
+    #                     已填的昵称、已注册的非邮箱用户名都留着（不重建账号，不改 sub）
+    login
+    flags='registrationEmailAsUsername,loginWithEmailAllowed,editUsernameAllowed,duplicateEmailsAllowed'
+    squash() { tr -d ' \t\r\n'; }
+    profile_scope="$(kc get client-scopes -r accounts --fields id,name --format csv --noquotes | sed -n 's/^\([^,]*\),profile$/\1/p' | head -n 1)"
+    [ -n "$profile_scope" ] || { echo "找不到 profile 作用域" >&2; exit 1; }
+    has_nickname_mapper() {
+      kc get "client-scopes/$profile_scope/protocol-mappers/models" -r accounts | squash | grep -q '"claim.name":"nickname"'
+    }
+    case "${2:-}" in
+      show)
+        kc get users/profile -r accounts
+        kc get realms/accounts --fields "$flags"
+        if has_nickname_mapper; then echo "profile 作用域：有 nickname 声明的映射"; else echo "profile 作用域：没有 nickname 声明的映射"; fi
+        ;;
+      apply)
+        [ -f profiles/user-profile.json ] || { echo "缺少 profiles/user-profile.json" >&2; exit 1; }
+        mkdir -p backup
+        stamp="backup/profile-$(date -u +%Y%m%dT%H%M%SZ)"
+        kc get users/profile -r accounts > "$stamp.user-profile.json"
+        kc get realms/accounts --fields "$flags" > "$stamp.realm.json"
+        echo "已备份当前定义与开关：$stamp.user-profile.json、$stamp.realm.json"
+        kc update users/profile -r accounts --no-merge -f - < profiles/user-profile.json
+        kc update realms/accounts -s registrationEmailAsUsername=false -s loginWithEmailAllowed=true \
+          -s editUsernameAllowed=false -s duplicateEmailsAllowed=false
+        # 两个产品从 ID Token 的 nickname 取显示名：Keycloak 自带的 profile 作用域带这条映射；没有就补上
+        if ! has_nickname_mapper; then
+          kc create "client-scopes/$profile_scope/protocol-mappers/models" -r accounts -b '{"name":"nickname","protocol":"openid-connect","protocolMapper":"oidc-usermodel-attribute-mapper","config":{"user.attribute":"nickname","claim.name":"nickname","jsonType.label":"String","id.token.claim":"true","access.token.claim":"true","userinfo.token.claim":"true","introspection.token.claim":"true"}}'
+          echo "已在 profile 作用域补上 nickname 声明的映射"
+        fi
+        # 回读核对：资料定义逐字（忽略空白）一致，开关逐项一致，映射存在
+        if [ "$(kc get users/profile -r accounts | squash)" != "$(squash < profiles/user-profile.json)" ]; then
+          echo "回读的用户资料定义与 profiles/user-profile.json 不一致（备份在 $stamp.*）" >&2; exit 1
+        fi
+        got="$(kc get realms/accounts --fields "$flags" | squash)"
+        for want in '"registrationEmailAsUsername":false' '"loginWithEmailAllowed":true' '"editUsernameAllowed":false' '"duplicateEmailsAllowed":false'; do
+          case "$got" in *"$want"*) ;; *) echo "回读的开关不对：缺少 $want（备份在 $stamp.*）" >&2; exit 1 ;; esac
+        done
+        has_nickname_mapper || { echo "回读：profile 作用域没有 nickname 声明的映射" >&2; exit 1; }
+        echo "用户资料已应用并回读一致：注册填 用户名 / 昵称 / 邮箱（密码在验证邮箱后设置），登录用用户名或邮箱。"
+        echo "回滚：$0 profile rollback $stamp"
+        ;;
+      rollback)
+        base="${3:-}"
+        base="${base%.user-profile.json}"; base="${base%.realm.json}"
+        [ -n "$base" ] && [ -f "$base.user-profile.json" ] && [ -f "$base.realm.json" ] || { echo "用法：$0 profile rollback backup/profile-<时间>" >&2; exit 2; }
+        kc update users/profile -r accounts --no-merge -f - < "$base.user-profile.json"
+        kc update realms/accounts -f - < "$base.realm.json"
+        if [ "$(kc get users/profile -r accounts | squash)" != "$(squash < "$base.user-profile.json")" ]; then
+          echo "回读的用户资料定义与备份不一致" >&2; exit 1
+        fi
+        echo "已按 $base 恢复用户资料定义与开关。已有的昵称、用户名、账号与资产都没有改动。"
+        ;;
+      *) echo "用法：$0 profile show|apply|rollback <备份>" >&2; exit 2 ;;
+    esac
+    ;;
   *)
-    sed -n '2,23p' "$0"
+    sed -n '2,27p' "$0"
     exit 2
     ;;
 esac
