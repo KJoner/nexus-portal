@@ -1,112 +1,997 @@
 /*
- * 账号中心 · 账号控制台（UI 焕新 U3）：与登录页同一套变量（PatternFly 5），中性主色，
- * 不透明表面；只换变量与少量间距，不改布局，Keycloak 升级时跟着上游走。
+ * 账号中心 · 账号控制台（Keycloak 26 账号控制台 v3）· UI v2（v12.0.3 I2）。
+ *
+ * 版式取自 docs v12.0.3 litesync-nexus-ui-v2 的 prototype/identity.css（.account-*）：72 px 页头（标志、账号中心、
+ * LiteSync & Nexus、返回产品）、左侧 240 px 导航、主区 930 px 以内的标题与卡片。控制台本身是 Keycloak 的 React
+ * 应用，这里只用样式改它的 PatternFly 5 组件，不改结构：字段、按钮、列表和数据都是 Keycloak 原样。
+ * 颜色与登录页（accounts/login）同一套变量；强调色默认中性墨色，从 LiteSync / Nexus 打开时（js/console.js 在
+ * <html> 上标 data-ac-product）换成该产品的颜色。深浅色：<html> 上有 pf-v5-theme-dark 即深色。
+ * 手机与平板（< 1200 px）：导航不再收进汉堡菜单，改成主区上方的一排页签。
  */
 :root {
-  --ac-bg: #f7f7f5;
+  --ac-bg: #f6f6f2;
   --ac-surface: #ffffff;
-  --ac-subtle: #efefec;
-  --ac-text: #232428;
-  --ac-text-2: #62646d;
-  --ac-border: #e3e3df;
-  --ac-accent: #232428;
-  --ac-accent-hover: #3a3b40;
+  --ac-subtle: #f0f0ec;
+  --ac-field: #fbfbf8;
+  --ac-text: #26282a;
+  --ac-muted: #64675f;
+  --ac-line: #e2e4dc;
+  --ac-line-strong: #c4c7bd;
+  --ac-accent: #26282a;
   --ac-on-accent: #ffffff;
-  --ac-font: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --ac-accent-hover: #3a3c3e;
+  --ac-accent-soft: #ecece6;
+  --ac-focus: rgba(38, 40, 42, 0.18);
+  --ac-success: #2f5e45;
+  --ac-success-bg: #edf4ed;
+  --ac-danger: #a63a32;
+  --ac-danger-bg: #fff0ed;
+  --ac-warn: #7a4a00;
+  --ac-warn-bg: #fff4db;
+  --ac-font: system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif;
+  /* 标志里的菱形（随强调色换色；data: 图标，CSP 允许） */
+  --ac-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2326282a' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3 21 12 12 21 3 12Z'/%3E%3Cpath d='m12 7 5 5-5 5-5-5Z'/%3E%3C/svg%3E");
+  /* 线性图标（遮罩，颜色取 currentColor） */
+  --ac-icon-user: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='8' r='4'/%3E%3Cpath d='M4 21v-2a8 8 0 0 1 16 0v2'/%3E%3C/svg%3E");
+  --ac-icon-shield: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6Z'/%3E%3Cpath d='m8.5 12 2.5 2.5 4.5-5'/%3E%3C/svg%3E");
+  --ac-icon-monitor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='18' height='13' rx='2'/%3E%3Cpath d='M8 21h8m-4-5v5'/%3E%3C/svg%3E");
+  --ac-icon-link: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7'/%3E%3Cpath d='M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7'/%3E%3C/svg%3E");
+  --ac-icon-dot: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.7'%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3C/svg%3E");
+  --ac-icon-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12h14m-5-5 5 5-5 5'/%3E%3C/svg%3E");
+
   --pf-v5-global--FontFamily--text: var(--ac-font);
   --pf-v5-global--FontFamily--heading: var(--ac-font);
+  --pf-v5-global--FontFamily--redhatfont--text: var(--ac-font);
+  --pf-v5-global--FontFamily--redhatfont--heading: var(--ac-font);
   --pf-v5-global--BackgroundColor--100: var(--ac-surface);
-  --pf-v5-global--BackgroundColor--200: var(--ac-bg);
+  --pf-v5-global--BackgroundColor--200: var(--ac-subtle);
   --pf-v5-global--Color--100: var(--ac-text);
-  --pf-v5-global--Color--200: var(--ac-text-2);
-  --pf-v5-global--BorderColor--100: var(--ac-border);
+  --pf-v5-global--Color--200: var(--ac-muted);
+  --pf-v5-global--BorderColor--100: var(--ac-line);
   --pf-v5-global--primary-color--100: var(--ac-accent);
   --pf-v5-global--primary-color--200: var(--ac-accent-hover);
   --pf-v5-global--link--Color: var(--ac-text);
   --pf-v5-global--link--Color--hover: var(--ac-text);
+  --pf-v5-global--danger-color--100: var(--ac-danger);
+  --pf-v5-global--success-color--100: var(--ac-success);
+  --pf-v5-global--warning-color--100: var(--ac-warn);
+  color-scheme: light;
 }
+
 html.pf-v5-theme-dark {
   --ac-bg: #17181b;
   --ac-surface: #202126;
   --ac-subtle: #28292f;
+  --ac-field: #24252b;
   --ac-text: #efeff2;
-  --ac-text-2: #b3b4bd;
-  --ac-border: #35363e;
+  --ac-muted: #b2b5ba;
+  --ac-line: #383940;
+  --ac-line-strong: #55565f;
   --ac-accent: #efeff2;
-  --ac-accent-hover: #d6d6dc;
   --ac-on-accent: #17181b;
+  --ac-accent-hover: #d8d8de;
+  --ac-accent-soft: #2c2d33;
+  --ac-focus: rgba(239, 239, 242, 0.22);
+  --ac-success: #a1d2b2;
+  --ac-success-bg: #25382d;
+  --ac-danger: #f2aaa0;
+  --ac-danger-bg: #3a2829;
+  --ac-warn: #e8c17d;
+  --ac-warn-bg: #392f20;
+  --ac-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23efeff2' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3 21 12 12 21 3 12Z'/%3E%3Cpath d='m12 7 5 5-5 5-5-5Z'/%3E%3C/svg%3E");
+
   --pf-v5-global--BackgroundColor--100: var(--ac-surface);
-  --pf-v5-global--BackgroundColor--200: var(--ac-bg);
+  --pf-v5-global--BackgroundColor--200: var(--ac-subtle);
   --pf-v5-global--Color--100: var(--ac-text);
-  --pf-v5-global--Color--200: var(--ac-text-2);
-  --pf-v5-global--BorderColor--100: var(--ac-border);
+  --pf-v5-global--Color--200: var(--ac-muted);
+  --pf-v5-global--BorderColor--100: var(--ac-line);
   --pf-v5-global--primary-color--100: var(--ac-accent);
   --pf-v5-global--primary-color--200: var(--ac-accent-hover);
   --pf-v5-global--link--Color: var(--ac-text);
   --pf-v5-global--link--Color--hover: var(--ac-text);
+  --pf-v5-global--danger-color--100: var(--ac-danger);
+  --pf-v5-global--success-color--100: var(--ac-success);
+  color-scheme: dark;
 }
+
+/* 从 LiteSync / Nexus 打开时（Keycloak 核对过 referrer）用该产品的强调色；数值与登录页的产品子主题相同。 */
+html[data-ac-product='litesync'] {
+  --ac-accent: #6854bc;
+  --ac-on-accent: #ffffff;
+  --ac-accent-hover: #5a47a8;
+  --ac-accent-soft: #efebf9;
+  --ac-focus: rgba(104, 84, 188, 0.24);
+  --ac-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236854bc' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3 21 12 12 21 3 12Z'/%3E%3Cpath d='m12 7 5 5-5 5-5-5Z'/%3E%3C/svg%3E");
+}
+html.pf-v5-theme-dark[data-ac-product='litesync'] {
+  --ac-accent: #b4a1f3;
+  --ac-on-accent: #211c32;
+  --ac-accent-hover: #c3b4f6;
+  --ac-accent-soft: #312d41;
+  --ac-focus: rgba(180, 161, 243, 0.3);
+  --ac-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23b4a1f3' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3 21 12 12 21 3 12Z'/%3E%3Cpath d='m12 7 5 5-5 5-5-5Z'/%3E%3C/svg%3E");
+}
+html[data-ac-product='nexus'] {
+  --ac-accent: #986321;
+  --ac-on-accent: #ffffff;
+  --ac-accent-hover: #84551b;
+  --ac-accent-soft: #f7efdf;
+  --ac-focus: rgba(152, 99, 33, 0.24);
+  --ac-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23986321' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3 21 12 12 21 3 12Z'/%3E%3Cpath d='m12 7 5 5-5 5-5-5Z'/%3E%3C/svg%3E");
+}
+html.pf-v5-theme-dark[data-ac-product='nexus'] {
+  --ac-accent: #e4bf84;
+  --ac-on-accent: #2b2318;
+  --ac-accent-hover: #ecd0a3;
+  --ac-accent-soft: #383124;
+  --ac-focus: rgba(228, 191, 132, 0.3);
+  --ac-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23e4bf84' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3 21 12 12 21 3 12Z'/%3E%3Cpath d='m12 7 5 5-5 5-5-5Z'/%3E%3C/svg%3E");
+}
+
 body {
   font-family: var(--ac-font);
+  background: var(--ac-bg);
+  color: var(--ac-text);
+  -webkit-font-smoothing: antialiased;
 }
-/* Header: our mark, quiet. */
-.pf-v5-c-masthead,
-.pf-v5-c-masthead .pf-v5-c-masthead__main,
-.pf-v5-c-masthead .pf-v5-c-masthead__content {
+
+/* ---------- 页面骨架 ---------- */
+.pf-v5-c-page {
+  --pf-v5-c-page--BackgroundColor: var(--ac-bg);
+  --pf-v5-c-page__sidebar--Width: 240px;
+  --pf-v5-c-page__sidebar--BackgroundColor: var(--ac-bg);
+  --pf-v5-c-page__main-section--BackgroundColor: var(--ac-bg);
+  --pf-v5-c-page__main-section--m-light--BackgroundColor: var(--ac-bg);
+  background: var(--ac-bg);
+}
+
+/* ---------- 页头：标志 · 账号中心 · LiteSync & Nexus …… 返回产品 · 账号 ---------- */
+.pf-v5-c-masthead {
   --pf-v5-c-masthead--BackgroundColor: var(--ac-surface);
+  --pf-v5-c-masthead--PaddingLeft: 42px;
+  --pf-v5-c-masthead--PaddingRight: 42px;
+  --pf-v5-c-masthead--PaddingTop: 0;
+  --pf-v5-c-masthead--PaddingBottom: 0;
+  --pf-v5-c-masthead--ColumnGap: 24px;
+  --pf-v5-c-masthead--RowGap: 0;
+  --pf-v5-c-masthead__content--MinHeight: 72px;
+  --pf-v5-c-masthead__main--MinHeight: 72px;
+  --pf-v5-global--Color--100: var(--ac-text);
+  --pf-v5-global--Color--200: var(--ac-muted);
+  --pf-v5-global--BackgroundColor--100: var(--ac-surface);
+  --pf-v5-c-toolbar--BackgroundColor: transparent;
   background-color: var(--ac-surface) !important;
   color: var(--ac-text);
+  border-bottom: 1px solid var(--ac-line);
+  min-height: 72px;
 }
-.pf-v5-c-masthead {
-  border-bottom: 1px solid var(--ac-border);
+.pf-v5-c-masthead .pf-v5-c-toolbar,
+.pf-v5-c-masthead .pf-v5-c-toolbar__content {
+  background: transparent;
+  --pf-v5-c-toolbar--PaddingTop: 0;
+  --pf-v5-c-toolbar--PaddingBottom: 0;
 }
-.pf-v5-c-masthead .pf-v5-c-brand,
-.pf-v5-c-masthead img {
-  max-height: 28px;
+/* 导航一直在：桌面是左栏，窄屏是页签——不需要汉堡菜单 */
+.pf-v5-c-masthead__toggle {
+  display: none !important;
 }
-html.pf-v5-theme-dark .pf-v5-c-masthead img {
-  filter: invert(1) hue-rotate(180deg);
+.pf-v5-c-masthead__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ac-text) !important;
+  text-decoration: none !important;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  white-space: nowrap;
 }
-/* Side navigation lighter than the content. */
+.pf-v5-c-masthead__brand img {
+  display: none;
+}
+.pf-v5-c-masthead__brand::before {
+  content: '';
+  flex: none;
+  width: 31px;
+  height: 31px;
+  border-radius: 9px;
+  background: var(--ac-accent-soft) var(--ac-mark) center / 18px 18px no-repeat;
+}
+.pf-v5-c-masthead__brand::after {
+  content: '账号中心';
+}
+html[lang^='en'] .pf-v5-c-masthead__brand::after {
+  content: 'Account center';
+}
+.pf-v5-c-masthead__content {
+  min-width: 0;
+  gap: 0;
+}
+.pf-v5-c-masthead__content::before {
+  content: 'LiteSync & Nexus';
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding-left: 24px;
+  border-left: 1px solid var(--ac-line);
+  font-size: 11px;
+  color: var(--ac-muted);
+  white-space: nowrap;
+}
+.pf-v5-c-masthead .pf-v5-c-toolbar__content-section {
+  align-items: center;
+  column-gap: 18px;
+  flex-wrap: nowrap;
+}
+/* 「返回 LiteSync →」：安静的文字链接，换掉外链图标 */
+.pf-v5-c-masthead a.pf-v5-c-button.pf-m-link {
+  --pf-v5-c-button--m-link--Color: var(--ac-muted);
+  --pf-v5-c-button--m-link--hover--Color: var(--ac-text);
+  --pf-v5-c-button--m-link--focus--Color: var(--ac-text);
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 400;
+  gap: 7px;
+  white-space: nowrap;
+  min-height: 44px;
+  padding-block: 0;
+}
+.pf-v5-c-masthead a.pf-v5-c-button.pf-m-link .pf-v5-c-button__icon {
+  display: none;
+}
+.pf-v5-c-masthead a.pf-v5-c-button.pf-m-link::after {
+  content: '';
+  position: static;
+  inset: auto;
+  border: 0;
+  flex: none;
+  width: 15px;
+  height: 15px;
+  background-color: currentColor;
+  -webkit-mask: var(--ac-icon-arrow) center / contain no-repeat;
+  mask: var(--ac-icon-arrow) center / contain no-repeat;
+}
+/* 账号菜单（显示 Keycloak 的用户名 / 姓名，菜单里是「管理账号 / 退出登录」） */
+.pf-v5-c-masthead .pf-v5-c-menu-toggle {
+  --pf-v5-c-menu-toggle--Color: var(--ac-text);
+  --pf-v5-c-menu-toggle--BackgroundColor: transparent;
+  --pf-v5-c-menu-toggle--hover--BackgroundColor: var(--ac-subtle);
+  --pf-v5-c-menu-toggle--expanded--BackgroundColor: var(--ac-subtle);
+  --pf-v5-c-menu-toggle--before--BorderColor: var(--ac-line);
+  --pf-v5-c-menu-toggle--hover--before--BorderColor: var(--ac-line-strong);
+  --pf-v5-c-menu-toggle--expanded--before--BorderColor: var(--ac-line-strong);
+  --pf-v5-c-menu-toggle--after--BorderColor: transparent;
+  --pf-v5-c-menu-toggle--hover--after--BorderColor: transparent;
+  --pf-v5-c-menu-toggle--expanded--after--BorderColor: transparent;
+  color: var(--ac-text) !important;
+  background-color: transparent;
+  border-radius: 8px;
+  font-size: 13px;
+  min-height: 40px;
+}
+.pf-v5-c-masthead .pf-v5-c-menu-toggle::before {
+  border: 1px solid var(--ac-line) !important;
+  border-radius: 8px;
+}
+.pf-v5-c-masthead .pf-v5-c-menu-toggle:hover::before {
+  border-color: var(--ac-line-strong) !important;
+}
+.pf-v5-c-masthead .pf-v5-c-menu-toggle::after {
+  border: 0 !important;
+}
+.pf-v5-c-masthead .pf-v5-c-menu-toggle.pf-m-plain::before {
+  border-color: transparent !important;
+}
+.pf-v5-c-masthead .pf-v5-c-toolbar__item.pf-m-overflow-menu svg {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--ac-line);
+  background: var(--ac-subtle);
+}
+.pf-v5-c-menu {
+  --pf-v5-c-menu--BackgroundColor: var(--ac-surface);
+  --pf-v5-c-menu__item--Color: var(--ac-text);
+  --pf-v5-c-menu__list-item--hover--BackgroundColor: var(--ac-subtle);
+  border-radius: 10px;
+  border: 1px solid var(--ac-line);
+}
+
+/* ---------- 左侧导航 ---------- */
 .pf-v5-c-page__sidebar {
+  --pf-v5-c-page__sidebar--Width: 240px;
   --pf-v5-c-page__sidebar--BackgroundColor: var(--ac-bg);
-  border-right: 1px solid var(--ac-border);
+  --pf-v5-c-page__sidebar--BoxShadow: none;
+  background: var(--ac-bg);
+  box-shadow: none;
+  border-right: 1px solid var(--ac-line);
+}
+.pf-v5-c-page__sidebar-body {
+  padding: 38px 18px 32px 26px;
 }
 .pf-v5-c-nav {
-  --pf-v5-c-nav__link--Color: var(--ac-text-2);
+  --pf-v5-c-nav--BackgroundColor: transparent;
+  --pf-v5-c-nav__link--Color: var(--ac-muted);
   --pf-v5-c-nav__link--hover--Color: var(--ac-text);
-  --pf-v5-c-nav__link--m-current--Color: var(--ac-text);
+  --pf-v5-c-nav__link--focus--Color: var(--ac-text);
+  --pf-v5-c-nav__link--active--Color: var(--ac-text);
+  --pf-v5-c-nav__link--m-current--Color: var(--ac-accent);
   --pf-v5-c-nav__link--BackgroundColor: transparent;
-  --pf-v5-c-nav__link--m-current--BackgroundColor: var(--ac-subtle);
+  --pf-v5-c-nav__link--hover--BackgroundColor: var(--ac-subtle);
+  --pf-v5-c-nav__link--focus--BackgroundColor: var(--ac-subtle);
+  --pf-v5-c-nav__link--active--BackgroundColor: var(--ac-subtle);
+  --pf-v5-c-nav__link--m-current--BackgroundColor: var(--ac-accent-soft);
+  --pf-v5-c-nav__link--before--BorderColor: transparent;
+  --pf-v5-c-nav__link--after--BorderColor: transparent;
+  --pf-v5-c-nav__link--hover--after--BorderColor: transparent;
+  --pf-v5-c-nav__link--m-current--after--BorderColor: transparent;
+  --pf-v5-c-nav__item--before--BorderColor: transparent;
+  --pf-v5-c-nav__item--after--BorderColor: transparent;
+  background: transparent;
 }
-.pf-v5-c-page__main-section {
-  --pf-v5-c-page__main-section--BackgroundColor: var(--ac-bg);
+.pf-v5-c-nav::before {
+  content: '你的账号';
+  display: block;
+  padding: 0 14px 12px;
+  font-size: 10px;
+  letter-spacing: 1.6px;
+  color: var(--ac-muted);
 }
-.pf-v5-c-page__main-section .pf-v5-c-card,
-.pf-v5-c-page__main-section .pf-v5-c-data-list {
+html[lang^='en'] .pf-v5-c-nav::before {
+  content: 'YOUR ACCOUNT';
+}
+.pf-v5-c-nav__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pf-v5-c-nav__item::before,
+.pf-v5-c-nav__item::after {
+  border: 0 !important;
+}
+.pf-v5-c-nav__link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--pf-v5-c-nav__link--Color);
+  background-color: var(--pf-v5-c-nav__link--BackgroundColor);
+}
+.pf-v5-c-nav__link:hover {
+  color: var(--ac-text);
+  background-color: var(--ac-subtle);
+}
+.pf-v5-c-nav__link.pf-m-current,
+.pf-v5-c-nav__link.pf-m-current:hover {
+  color: var(--ac-accent);
+  background-color: var(--ac-accent-soft);
+  font-weight: 550;
+}
+.pf-v5-c-nav__link::after {
+  display: none !important;
+}
+.pf-v5-c-nav__link::before {
+  content: '';
+  position: static !important;
+  inset: auto !important;
+  border: 0 !important;
+  flex: none;
+  width: 17px;
+  height: 17px;
+  background-color: currentColor;
+  -webkit-mask: var(--ac-nav-icon, var(--ac-icon-dot)) center / contain no-repeat;
+  mask: var(--ac-nav-icon, var(--ac-icon-dot)) center / contain no-repeat;
+}
+.pf-v5-c-nav__link[href$='/account/'],
+.pf-v5-c-nav__link[href*='/account/?'] {
+  --ac-nav-icon: var(--ac-icon-user);
+}
+.pf-v5-c-nav__link[href*='signing-in'] {
+  --ac-nav-icon: var(--ac-icon-shield);
+}
+.pf-v5-c-nav__link[href*='device-activity'] {
+  --ac-nav-icon: var(--ac-icon-monitor);
+}
+.pf-v5-c-nav__link[href*='linked-accounts'] {
+  --ac-nav-icon: var(--ac-icon-link);
+}
+
+/* ---------- 主区：标题、说明、卡片 ---------- */
+.pf-v5-c-page__main {
+  background: var(--ac-bg);
+}
+.pf-v5-c-page__main > .pf-v5-c-page__main-section {
+  background: var(--ac-bg);
+  width: 100%;
+  max-width: 930px;
+  box-sizing: border-box;
+  padding: 0 56px;
+}
+.pf-v5-c-page__main > .pf-v5-c-page__main-section:first-child {
+  padding-top: 42px;
+}
+.pf-v5-c-page__main > .pf-v5-c-page__main-section:last-child {
+  padding-bottom: 60px;
+}
+.pf-v5-c-page__main > .pf-v5-c-page__main-section + .pf-v5-c-page__main-section {
+  margin-top: 29px;
+}
+.pf-v5-c-page__main-section .pf-v5-c-page__main-section {
+  background: transparent;
+  padding: 0;
+}
+.pf-v5-c-page__main > .pf-v5-c-page__main-section:first-child .pf-v5-c-title {
+  font-size: 29px;
+  line-height: 1.4;
+  font-weight: 650;
+  letter-spacing: -0.8px;
+  color: var(--ac-text);
+}
+.pf-v5-c-page__main > .pf-v5-c-page__main-section:first-child .pf-v5-c-content p {
+  margin-top: 8px;
+  max-width: 640px;
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--ac-muted);
+}
+.pf-v5-c-title {
+  font-family: var(--ac-font);
+  color: var(--ac-text);
+}
+.pf-v5-c-content {
+  --pf-v5-c-content--Color: var(--ac-text);
+  --pf-v5-c-content--FontSize: 14px;
+}
+
+/* ---------- 个人资料：表单在一张卡片里，标签在字段上方 ---------- */
+.pf-v5-c-page__main form.pf-v5-c-form {
+  --pf-v5-c-form--GridGap: 22px;
+  background: var(--ac-surface);
+  border: 1px solid var(--ac-line);
   border-radius: 12px;
+  padding: 26px 28px 24px;
+}
+/* 只有一节「基本资料」时，「跳转到章节」和这一节的小标题都是多余的 */
+.pf-v5-l-grid:has(.pf-v5-c-jump-links__item:only-child) > .pf-v5-l-grid__item:has(.pf-v5-c-jump-links) {
+  display: none;
+}
+.pf-v5-l-grid:has(.pf-v5-c-jump-links__item:only-child) > .pf-v5-l-grid__item {
+  grid-column: 1 / -1;
+}
+form.pf-v5-c-form:has(.pf-v5-c-jump-links__item:only-child) section > .pf-v5-c-title {
+  display: none;
+}
+/* 这一节的上边距是 React 写在行内的（style="margin-top: …"），只有 !important 能盖过 */
+form.pf-v5-c-form:has(.pf-v5-c-jump-links__item:only-child) section {
+  margin-top: 0 !important;
+}
+.pf-v5-c-page__main form .pf-v5-c-title.pf-m-xl {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 14px;
+}
+.pf-v5-c-form.pf-m-horizontal .pf-v5-c-form__group {
+  display: block;
+}
+.pf-v5-c-form__group-label {
+  padding-top: 0 !important;
+  padding-bottom: 8px;
+}
+.pf-v5-c-form__label-text {
+  font-size: 14px;
+  font-weight: 550;
+  color: var(--ac-text);
+}
+.pf-v5-c-form__label-required {
+  color: var(--ac-muted);
+}
+.pf-v5-c-page__main form .pf-v5-c-form__group-control {
+  max-width: 460px;
+}
+.pf-v5-c-helper-text__item-text {
+  font-size: 12px;
+  line-height: 1.7;
+}
+.pf-v5-c-helper-text__item:not(.pf-m-error) .pf-v5-c-helper-text__item-text {
+  color: var(--ac-muted);
+}
+.pf-v5-c-helper-text__item.pf-m-error .pf-v5-c-helper-text__item-text {
+  color: var(--ac-danger);
+}
+.pf-v5-c-form__group.pf-m-action {
+  margin-top: 2px;
+  padding-top: 21px;
+  border-top: 1px solid var(--ac-line);
+}
+.pf-v5-c-form__actions {
+  gap: 10px;
+}
+
+/* 字段：完整边框、圆角、同一个焦点环（PatternFly 5 用 ::before 画四边、::after 画底线，这里只留 ::before） */
+.pf-v5-c-form-control {
+  --pf-v5-c-form-control--BackgroundColor: var(--ac-field);
+  --pf-v5-c-form-control--Color: var(--ac-text);
+  --pf-v5-c-form-control--m-disabled--BackgroundColor: var(--ac-subtle);
+  --pf-v5-c-form-control--m-disabled--Color: var(--ac-muted);
+  background-color: var(--ac-field);
+  border-radius: 8px;
+  min-height: 46px;
+  align-items: center;
+  font-size: 14px;
+}
+.pf-v5-c-form-control::before {
+  border: 1px solid var(--ac-line) !important;
+  border-radius: 8px;
+}
+.pf-v5-c-form-control::after {
+  border: 0 !important;
+}
+.pf-v5-c-form-control:hover::before {
+  border-color: var(--ac-line-strong) !important;
+}
+.pf-v5-c-form-control:focus-within {
+  box-shadow: 0 0 0 3px var(--ac-focus);
+}
+.pf-v5-c-form-control:focus-within::before {
+  border-color: var(--ac-accent) !important;
+}
+.pf-v5-c-form-control.pf-m-error::before,
+.pf-v5-c-form-control:has([aria-invalid='true'])::before {
+  border-color: var(--ac-danger) !important;
+}
+.pf-v5-c-form-control.pf-m-disabled::before,
+.pf-v5-c-form-control.pf-m-readonly::before {
+  border-color: transparent !important;
+}
+.pf-v5-c-form-control > input,
+.pf-v5-c-form-control > select,
+.pf-v5-c-form-control > textarea {
+  min-height: 44px;
+  padding-inline: 13px;
+  font-size: 14px;
+  color: var(--ac-text);
+}
+.pf-v5-c-form-control > input:focus,
+.pf-v5-c-form-control > input:focus-visible {
+  outline: none;
+}
+.pf-v5-c-form-control.pf-m-disabled,
+.pf-v5-c-form-control.pf-m-readonly {
+  background-color: var(--ac-subtle);
+}
+.pf-v5-c-form-control.pf-m-disabled > input {
+  color: var(--ac-muted);
+}
+/* 选择界面语言（Keycloak 的下拉按钮）与字段同一个样子 */
+.pf-v5-c-page__main .pf-v5-c-menu-toggle.pf-m-full-width {
+  --pf-v5-c-menu-toggle--BackgroundColor: var(--ac-field);
+  --pf-v5-c-menu-toggle--Color: var(--ac-text);
+  --pf-v5-c-menu-toggle--before--BorderColor: var(--ac-line);
+  --pf-v5-c-menu-toggle--after--BorderColor: transparent;
+  --pf-v5-c-menu-toggle--hover--after--BorderColor: transparent;
+  --pf-v5-c-menu-toggle--expanded--after--BorderColor: transparent;
+  min-height: 46px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+.pf-v5-c-page__main .pf-v5-c-menu-toggle.pf-m-full-width::before {
+  border: 1px solid var(--ac-line) !important;
+  border-radius: 8px;
+}
+.pf-v5-c-page__main .pf-v5-c-menu-toggle.pf-m-full-width:hover::before {
+  border-color: var(--ac-line-strong) !important;
+}
+.pf-v5-c-page__main .pf-v5-c-menu-toggle.pf-m-full-width::after {
+  border: 0 !important;
+}
+
+/* ---------- 按钮 ---------- */
+.pf-v5-c-button {
+  --pf-v5-c-button--FontSize: 14px;
+  border-radius: 8px;
+  font-family: var(--ac-font);
+  font-size: 14px;
+}
+.pf-v5-c-button::after {
+  border-radius: 8px;
 }
 .pf-v5-c-button.pf-m-primary {
   --pf-v5-c-button--m-primary--BackgroundColor: var(--ac-accent);
   --pf-v5-c-button--m-primary--hover--BackgroundColor: var(--ac-accent-hover);
+  --pf-v5-c-button--m-primary--focus--BackgroundColor: var(--ac-accent-hover);
+  --pf-v5-c-button--m-primary--active--BackgroundColor: var(--ac-accent-hover);
   --pf-v5-c-button--m-primary--Color: var(--ac-on-accent);
   --pf-v5-c-button--m-primary--hover--Color: var(--ac-on-accent);
-  border-radius: 8px;
+  --pf-v5-c-button--m-primary--focus--Color: var(--ac-on-accent);
+  --pf-v5-c-button--m-primary--active--Color: var(--ac-on-accent);
+  min-height: 44px;
+  padding-inline: 18px;
+  font-weight: 600;
 }
-.pf-v5-c-button,
-.pf-v5-c-form-control {
-  border-radius: 8px;
-}
-
-/* Secondary and link buttons: ink text, quiet border — one accent per page. */
 .pf-v5-c-button.pf-m-secondary {
   --pf-v5-c-button--m-secondary--Color: var(--ac-text);
   --pf-v5-c-button--m-secondary--hover--Color: var(--ac-text);
-  --pf-v5-c-button--m-secondary--BorderColor: var(--ac-border);
-  --pf-v5-c-button--m-secondary--hover--BorderColor: var(--ac-text-2);
-  --pf-v5-c-button--m-secondary--BackgroundColor: transparent;
-  --pf-v5-c-button--after--BorderColor: var(--ac-border);
+  --pf-v5-c-button--m-secondary--focus--Color: var(--ac-text);
+  --pf-v5-c-button--m-secondary--active--Color: var(--ac-text);
+  --pf-v5-c-button--m-secondary--BackgroundColor: var(--ac-surface);
+  --pf-v5-c-button--m-secondary--hover--BackgroundColor: var(--ac-subtle);
+  --pf-v5-c-button--m-secondary--focus--BackgroundColor: var(--ac-subtle);
+  --pf-v5-c-button--m-secondary--after--BorderColor: var(--ac-line);
+  --pf-v5-c-button--m-secondary--hover--after--BorderColor: var(--ac-line-strong);
+  --pf-v5-c-button--m-secondary--focus--after--BorderColor: var(--ac-line-strong);
+  --pf-v5-c-button--m-secondary--active--after--BorderColor: var(--ac-line-strong);
+  min-height: 40px;
+  padding-inline: 16px;
+  font-weight: 500;
 }
-.pf-v5-c-button.pf-m-link {
+.pf-v5-c-page__main .pf-v5-c-button.pf-m-link {
   --pf-v5-c-button--m-link--Color: var(--ac-text);
   --pf-v5-c-button--m-link--hover--Color: var(--ac-text);
+  --pf-v5-c-button--m-link--focus--Color: var(--ac-text);
+  min-height: 40px;
+}
+.pf-v5-c-button:focus-visible,
+.pf-v5-c-nav__link:focus-visible,
+.pf-v5-c-masthead__brand:focus-visible {
+  outline: 2px solid var(--ac-accent);
+  outline-offset: 3px;
+}
+
+/* ---------- 登录与安全（登录方式页）：每一类一张卡片 ---------- */
+.pf-v5-c-page__main [id$='-categ-title'] {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 0;
+}
+.pf-v5-c-page__main [id$='-categ-title'] + .pf-v5-l-split {
+  margin-top: 8px !important;
+  margin-bottom: 14px !important;
+  align-items: center;
+}
+/* 「账号密码」类别下 Keycloak 还有一行同名小标题，留说明、去重复 */
+#basic-authentication-categ-title + .pf-v5-l-split h3 {
+  display: none;
+}
+.pf-v5-c-page__main [id$='-categ-title'] + .pf-v5-l-split h3 {
+  font-size: 13px;
+  font-weight: 550;
+  margin-bottom: 4px !important;
+}
+.pf-v5-c-page__main [id$='-categ-title'] + .pf-v5-l-split .pf-v5-l-split__item > span {
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--ac-muted);
+}
+.pf-v5-c-page__main [id$='-categ-title'] + .pf-v5-l-split .pf-v5-c-button.pf-m-link {
+  --pf-v5-c-button--m-link--Color: var(--ac-text);
+  border: 1px solid var(--ac-line);
+  background: var(--ac-surface);
+  padding-inline: 16px;
+}
+.pf-v5-c-page__main > .pf-v5-c-page__main-section > .pf-v5-c-page__main-section + .pf-v5-c-page__main-section {
+  margin-top: 30px;
+}
+
+/* ---------- 列表（凭据、已登录的浏览器）：卡片 + 细分隔线 ---------- */
+.pf-v5-c-data-list {
+  --pf-v5-c-data-list--BorderTopColor: transparent;
+  --pf-v5-c-data-list--BorderTopWidth: 0;
+  --pf-v5-c-data-list--sm--BorderTopColor: transparent;
+  --pf-v5-c-data-list--sm--BorderTopWidth: 0;
+  --pf-v5-c-data-list__item--sm--BorderTopColor: transparent;
+  --pf-v5-c-data-list__item--sm--BorderTopWidth: 0;
+  --pf-v5-c-data-list__item--BackgroundColor: transparent;
+  --pf-v5-c-data-list__item--BorderBottomColor: var(--ac-line);
+  --pf-v5-c-data-list__item--m-selected--BackgroundColor: transparent;
+  --pf-v5-c-data-list__item-row--PaddingLeft: 22px;
+  --pf-v5-c-data-list__item-row--PaddingRight: 22px;
+  border: 1px solid var(--ac-line) !important;
+  border-radius: 12px;
+  background: var(--ac-surface);
+  overflow: hidden;
+}
+.pf-v5-c-data-list__item {
+  background: transparent;
+}
+/* 行与行之间只有一条细线；PatternFly 在窄屏给每行加的粗顶边（深色下是一条色带）去掉 */
+.pf-v5-c-data-list__item {
+  border-top: 0 !important;
+  border-bottom: 0 !important;
+}
+.pf-v5-c-data-list__item + .pf-v5-c-data-list__item {
+  border-top: 1px solid var(--ac-line) !important;
+}
+.pf-v5-c-data-list__item-row + .pf-v5-c-data-list__item-row {
+  border-top: 1px solid var(--ac-line);
+}
+.pf-v5-c-data-list__cell {
+  font-size: 13px;
+  color: var(--ac-text);
+}
+.pf-v5-c-data-list__cell strong {
+  font-weight: 400;
+  color: var(--ac-muted);
+  margin-right: 6px !important;
+}
+
+/* 网页登录：「退出所有浏览器」影响所有浏览器，不做成主按钮，用克制的危险色 */
+#refresh-page {
+  --pf-v5-c-button--m-link--Color: var(--ac-muted);
+  font-size: 13px;
+}
+#refresh-page ~ .pf-v5-c-button.pf-m-primary {
+  --pf-v5-c-button--m-primary--BackgroundColor: var(--ac-surface);
+  --pf-v5-c-button--m-primary--hover--BackgroundColor: var(--ac-danger-bg);
+  --pf-v5-c-button--m-primary--focus--BackgroundColor: var(--ac-danger-bg);
+  --pf-v5-c-button--m-primary--active--BackgroundColor: var(--ac-danger-bg);
+  --pf-v5-c-button--m-primary--Color: var(--ac-danger);
+  --pf-v5-c-button--m-primary--hover--Color: var(--ac-danger);
+  --pf-v5-c-button--m-primary--focus--Color: var(--ac-danger);
+  --pf-v5-c-button--m-primary--active--Color: var(--ac-danger);
+  border: 1px solid var(--ac-line);
+  font-weight: 500;
+}
+.pf-v5-c-page__main .pf-v5-l-split.pf-m-gutter > .pf-v5-l-split__item .pf-v5-c-title.pf-m-xl {
+  font-size: 15px;
+  font-weight: 600;
+}
+.signed-in-device-list .pf-v5-c-data-list__item-row {
+  padding-block: 16px;
+}
+/* PatternFly 的展开区自带 24 px 内边距（逻辑属性、选择器更具体），这里统一归零，间距只由行来给 */
+.signed-in-device-list .pf-v5-c-data-list__expandable-content,
+.signed-in-device-list .pf-v5-c-data-list__expandable-content-body {
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+.signed-in-device-list .pf-v5-l-grid.pf-m-gutter {
+  --pf-v5-l-grid--m-gutter--GridGap: 6px 12px;
+  gap: 6px 12px;
+}
+.signed-in-device-list .pf-v5-c-button {
+  font-size: 13px;
+  min-height: 36px;
+}
+.signed-in-device-list .session-title {
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--ac-text);
+}
+.signed-in-device-list svg {
+  color: var(--ac-muted);
+}
+.signed-in-device-grid {
+  --pf-v5-c-description-list--RowGap: 8px;
+  --pf-v5-c-description-list__group--RowGap: 2px;
+  row-gap: 8px;
+  margin-top: 4px;
+}
+.signed-in-device-grid .pf-v5-c-description-list__term {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ac-muted);
+}
+.signed-in-device-grid .pf-v5-c-description-list__description {
+  font-size: 13px;
+  color: var(--ac-text);
+}
+.pf-v5-c-label.pf-m-green {
+  --pf-v5-c-label--m-green--BackgroundColor: var(--ac-success-bg);
+  --pf-v5-c-label--m-green__content--Color: var(--ac-success);
+  --pf-v5-c-label--m-green__content--before--BorderColor: transparent;
+  --pf-v5-c-label--FontSize: 11px;
+  border-radius: 5px;
+}
+
+/* ---------- 提示与确认框 ---------- */
+.pf-v5-c-alert {
+  border-radius: 10px;
+  font-family: var(--ac-font);
+}
+.pf-v5-c-modal-box {
+  --pf-v5-c-modal-box--BackgroundColor: var(--ac-surface);
+  background: var(--ac-surface);
+  border: 1px solid var(--ac-line);
+  border-radius: 16px;
+  font-family: var(--ac-font);
+}
+.pf-v5-c-modal-box__title,
+.pf-v5-c-modal-box__title-text {
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--ac-text);
+}
+.pf-v5-c-modal-box__body {
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--ac-muted);
+}
+.pf-v5-c-backdrop {
+  --pf-v5-c-backdrop--BackgroundColor: rgba(9, 10, 13, 0.55);
+}
+
+/* ---------- 手机与平板：导航变成主区上方的一排页签 ---------- */
+@media (max-width: 1199.98px) {
+  .pf-v5-c-page {
+    grid-template-areas: 'header' 'nav' 'main' !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: max-content max-content 1fr !important;
+  }
+  .pf-v5-c-page__sidebar,
+  .pf-v5-c-page__sidebar.pf-m-collapsed,
+  .pf-v5-c-page__sidebar.pf-m-expanded {
+    grid-area: nav !important;
+    position: static !important;
+    transform: none !important;
+    width: auto !important;
+    max-width: none !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    border-right: 0;
+    border-bottom: 1px solid var(--ac-line);
+    background: var(--ac-surface);
+    z-index: auto;
+  }
+  .pf-v5-c-page__sidebar-body {
+    padding: 12px 16px 0;
+  }
+  .pf-v5-c-nav::before {
+    display: none;
+  }
+  .pf-v5-c-nav__list {
+    flex-direction: row;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .pf-v5-c-nav__item {
+    flex: 1 0 auto;
+  }
+  .pf-v5-c-nav__link {
+    justify-content: center;
+    border-radius: 8px 8px 0 0;
+    white-space: nowrap;
+  }
+  .pf-v5-c-page__main {
+    grid-area: main !important;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .pf-v5-c-masthead {
+    --pf-v5-c-masthead--PaddingLeft: 16px;
+    --pf-v5-c-masthead--PaddingRight: 12px;
+    --pf-v5-c-masthead--ColumnGap: 8px;
+    --pf-v5-c-masthead__content--MinHeight: 60px;
+    --pf-v5-c-masthead__main--MinHeight: 60px;
+    min-height: 60px;
+    display: flex !important;
+    flex-wrap: nowrap;
+    align-items: center;
+  }
+  .pf-v5-c-masthead__brand {
+    font-size: 14px;
+  }
+  .pf-v5-c-masthead__content {
+    flex: 1 1 auto;
+    justify-content: flex-end;
+  }
+  .pf-v5-c-masthead__content::before {
+    display: none;
+  }
+  .pf-v5-c-masthead .pf-v5-c-toolbar__content-section {
+    column-gap: 4px;
+    justify-content: flex-end;
+  }
+  .pf-v5-c-masthead .pf-v5-c-toolbar__item.pf-m-overflow-menu {
+    display: none;
+  }
+  .pf-v5-c-masthead a.pf-v5-c-button.pf-m-link {
+    font-size: 12px;
+    padding-inline: 6px;
+  }
+  .pf-v5-c-masthead .pf-v5-c-menu-toggle.pf-m-plain {
+    min-width: 44px;
+    min-height: 44px;
+    justify-content: center;
+  }
+  .pf-v5-c-page__sidebar-body {
+    padding: 10px 12px 0;
+  }
+  .pf-v5-c-nav__link {
+    font-size: 13px;
+    padding: 10px 12px;
+  }
+  .pf-v5-c-page__main > .pf-v5-c-page__main-section {
+    padding: 0 18px;
+  }
+  .pf-v5-c-page__main > .pf-v5-c-page__main-section:first-child {
+    padding-top: 26px;
+  }
+  .pf-v5-c-page__main > .pf-v5-c-page__main-section:last-child {
+    padding-bottom: 40px;
+  }
+  .pf-v5-c-page__main > .pf-v5-c-page__main-section + .pf-v5-c-page__main-section {
+    margin-top: 22px;
+  }
+  .pf-v5-c-page__main > .pf-v5-c-page__main-section:first-child .pf-v5-c-title {
+    font-size: 25px;
+  }
+  .pf-v5-c-page__main form.pf-v5-c-form {
+    padding: 22px 20px;
+  }
+  .pf-v5-c-page__main form .pf-v5-c-form__group-control {
+    max-width: none;
+  }
+  .pf-v5-c-form-control > input,
+  .pf-v5-c-form-control > select,
+  .pf-v5-c-form-control > textarea {
+    font-size: 16px;
+  }
+  .pf-v5-c-form__actions .pf-v5-c-button {
+    min-height: 44px;
+  }
+  .pf-v5-c-data-list {
+    --pf-v5-c-data-list__item-row--PaddingLeft: 16px;
+    --pf-v5-c-data-list__item-row--PaddingRight: 16px;
+  }
+  .pf-v5-c-data-list .pf-v5-c-button {
+    min-height: 44px;
+  }
+  .pf-v5-c-page__main .pf-v5-c-menu-toggle.pf-m-plain {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  /* 凭据行：左边名称和设置时间，右边「修改」（PatternFly 窄屏会把按钮夹在两格中间） */
+  .pf-v5-c-data-list:not(.signed-in-device-list) .pf-v5-c-data-list__item-row {
+    padding: 4px 16px !important;
+  }
+  .pf-v5-c-data-list:not(.signed-in-device-list) .pf-v5-c-data-list__item-content {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 12px;
+    row-gap: 2px;
+    align-items: center;
+    padding-block: 14px;
+  }
+  .pf-v5-c-data-list:not(.signed-in-device-list) .pf-v5-c-data-list__cell {
+    padding: 0 !important;
+    grid-column: 1;
+  }
+  .pf-v5-c-data-list:not(.signed-in-device-list) .pf-v5-c-data-list__cell + .pf-v5-c-data-list__cell {
+    font-size: 12px;
+    color: var(--ac-muted);
+  }
+  .pf-v5-c-data-list:not(.signed-in-device-list) .pf-v5-c-data-list__item-action {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  /* 网页登录页：标题一行，刷新与「退出所有浏览器」换到下一行 */
+  .pf-v5-c-page__main .pf-v5-l-split.pf-m-gutter {
+    flex-wrap: wrap;
+    row-gap: 10px;
+  }
+  .pf-v5-c-page__main .pf-v5-l-split.pf-m-gutter > .pf-v5-l-split__item.pf-m-fill {
+    flex-basis: 100%;
+  }
+  .signed-in-device-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
 }

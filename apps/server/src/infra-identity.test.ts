@@ -160,6 +160,42 @@ describe('identity realm template', () => {
     expect(`${template}\n${css}`).not.toMatch(/(src|href)=["']https?:|url\(\s*['"]?https?:|@import/);
   });
 
+  it("I2 (UI v2): the account console keeps Keycloak 26's React app — only navigation, styles, wording and a small script change", () => {
+    const base = join(dir, 'themes', 'accounts', 'account');
+    const props = readFileSync(join(base, 'theme.properties'), 'utf8');
+    expect(props).toMatch(/^parent=keycloak\.v3$/m);
+    expect(props).toMatch(/^styles=css\/accounts\.css$/m);
+    expect(props).toMatch(/^scripts=js\/console\.js$/m);
+    // No copied page template or bundled app code: the console stays Keycloak's, so upgrades keep working.
+    const files = readdirSync(base, { recursive: true }).map((f) => String(f).replace(/\\/g, '/'));
+    expect(files.filter((f) => /\.(ftl|tsx?|jsx)$/.test(f))).toEqual([]);
+    expect(files.filter((f) => f.endsWith('.js'))).toEqual(['resources/js/console.js']);
+    // Navigation: 个人资料 / 登录与安全 / 网页登录 always; anything else only when Keycloak's own switch turns it on.
+    // 「已授权的应用」 is left out on purpose (README「账号中心的样子」).
+    const nav = JSON.parse(readFileSync(join(base, 'resources', 'content.json'), 'utf8')) as { label: string; path: string; isVisible?: string }[];
+    expect(nav.filter((n) => !n.isVisible).map((n) => [n.label, n.path])).toEqual([
+      ['personalInfo', ''],
+      ['signingIn', 'account-security/signing-in'],
+      ['deviceActivity', 'account-security/device-activity'],
+    ]);
+    expect(nav.map((n) => n.label)).not.toContain('applications');
+    // The script reads only the page's own environment and the URL: no network, no cookies or tokens, and it
+    // marks one of our two clients only after Keycloak has validated the referrer (referrerName is set).
+    const js = readFileSync(join(base, 'resources', 'js', 'console.js'), 'utf8');
+    expect(js).not.toMatch(/fetch\(|XMLHttpRequest|WebSocket|sendBeacon|document\.cookie|innerHTML|insertAdjacentHTML/);
+    expect(js).toContain("'litesync-web': 'litesync', 'nexus-web': 'nexus'");
+    expect(js).toContain('env.referrerName');
+    // Local assets only (data: icons in CSS are fine).
+    const css = readFileSync(join(base, 'resources', 'css', 'accounts.css'), 'utf8');
+    expect(`${css}\n${js}`).not.toMatch(/(src|href)=["']https?:|url\(\s*['"]?https?:|@import/);
+    // Wording: zh_CN and zh_Hans identical; the placeholders Keycloak fills in are kept.
+    const msg = (f: string) => readFileSync(join(base, 'messages', f), 'utf8');
+    expect(msg('messages_zh_Hans.properties')).toBe(msg('messages_zh_CN.properties'));
+    expect(msg('messages_zh_CN.properties')).toMatch(/^backTo=.*\{\{app\}\}/m);
+    expect(msg('messages_zh_CN.properties')).toMatch(/^credentialCreatedAt=.*<0>.*<\/0>.*\{\{date\}\}/m);
+    expect(msg('messages_en.properties')).toMatch(/^backTo=.*\{\{app\}\}/m);
+  });
+
   it('I1: username / nickname / e-mail are a user-profile file applied by ./configure.sh profile, never an import file', () => {
     const profile = JSON.parse(readFileSync(join(dir, 'profiles', 'user-profile.json'), 'utf8')) as {
       attributes: { name: string; required?: unknown; permissions: { view: string[]; edit: string[] }; validations: Record<string, Record<string, unknown>>; annotations?: Record<string, string> }[];
