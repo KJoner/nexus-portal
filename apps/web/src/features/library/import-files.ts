@@ -89,7 +89,7 @@ export function readBackup(text: string): { file: unknown; version: number; item
   } catch {
     throw new Error('文件不是有效的 JSON');
   }
-  if (!raw || raw.format !== 'nexus-collection' || !Array.isArray(raw.items)) throw new Error('不是 Nexus 收藏库导出的文件');
+  if (!raw || raw.format !== 'nexus-collection' || !Array.isArray(raw.items)) throw new Error('不是 Nexus 导出的收藏文件');
   const version = typeof raw.version === 'number' ? raw.version : 1;
   if (version > BACKUP_VERSION) throw new Error(`这个文件来自更新版本的 Nexus（格式第 ${version} 版），请先升级再恢复`);
   return { file: raw, version, items: raw.items.length };
@@ -102,7 +102,7 @@ export function parseNexusJson(text: string): { items: ImportCandidate[]; unsupp
   } catch {
     throw new Error('文件不是有效的 JSON');
   }
-  if (raw.format !== 'nexus-collection' || !Array.isArray(raw.items)) throw new Error('不是 Nexus 收藏库导出的文件');
+  if (raw.format !== 'nexus-collection' || !Array.isArray(raw.items)) throw new Error('不是 Nexus 导出的收藏文件');
   const items: ImportCandidate[] = [];
   let unsupported = 0;
   for (const i of raw.items) {

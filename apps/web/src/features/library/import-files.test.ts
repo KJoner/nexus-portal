@@ -47,7 +47,7 @@ describe('bookmark import (EX-05)', () => {
     const p = previewImport('nexus-collection-2026-11-21.json', json, new Set());
     expect(p.items).toEqual([{ title: '文章', url: 'https://a.example.org/x?y=1#z', path: [], tags: ['读'], note: '备注', folderId: 'work', kind: 'page' }]);
     expect(p.unsupported).toBe(1);
-    expect(() => previewImport('x.json', '{"apps":[]}', new Set())).toThrow('不是 Nexus 收藏库导出的文件');
+    expect(() => previewImport('x.json', '{"apps":[]}', new Set())).toThrow('不是 Nexus 导出的收藏文件');
   });
 });
 
@@ -62,7 +62,7 @@ describe('Nexus backups (NEX-06)', () => {
     // UI v2 (N2): version 3 is this release's (the group tree); 4 is newer.
     expect(readBackup(JSON.stringify({ ...backup, version: 3 }))).toMatchObject({ version: 3 });
     expect(() => readBackup(JSON.stringify({ ...backup, version: 4 }))).toThrow('更新版本');
-    expect(() => readBackup('{"format":"nexus-config"}')).toThrow('不是 Nexus 收藏库导出的文件');
+    expect(() => readBackup('{"format":"nexus-config"}')).toThrow('不是 Nexus 导出的收藏文件');
     expect(() => readBackup('{')).toThrow('不是有效的 JSON');
   });
 
