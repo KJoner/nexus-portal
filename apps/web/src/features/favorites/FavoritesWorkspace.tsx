@@ -530,9 +530,18 @@ export function FavoritesWorkspace() {
             )}
             {status === 'ready' && shown.length > 0 && (mode === 'grid' && !compact ? (
               <ul aria-label={`${title}，${shown.length} 项`} className="m-0 grid grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-3 p-5">
-                {shown.slice(0, 300).map((i) => (
+                {shown.slice(0, GRID_MAX).map((i) => (
                   <Card key={i.id} item={i} pinned={pinSet.has(i.id)} path={pathLabel(categories, i.folderId)} selected={selected.has(i.id)} onSelect={(v) => setSelected((s) => toggleSet(s, i.id, v))} onPin={() => void pinToggle(i)} onMore={(el) => openActions(i, el)} readOnly={readOnly} />
                 ))}
+                {/* Never a silent cut: the rest is one click away. */}
+                {shown.length > GRID_MAX && (
+                  <li className="col-span-full flex list-none flex-wrap items-center gap-3 rounded-xl px-4 py-3 text-[13px] text-ink/66" style={{ background: 'rgb(var(--nx-ink-rgb)/0.04)' }}>
+                    网格只显示前 {GRID_MAX} 项，另有 {shown.length - GRID_MAX} 项；切换到列表可以看到全部，或用搜索缩小范围。
+                    <Button size="sm" onClick={() => setMode('list')}>
+                      切换到列表
+                    </Button>
+                  </li>
+                )}
               </ul>
             ) : (
               <ItemList
@@ -771,6 +780,8 @@ function PinButton({ pinned, title, onPin, compact, disabled }: { pinned: boolea
   );
 }
 
+/** The grid shows at most this many cards (the list, windowed, shows any number). */
+const GRID_MAX = 300;
 /** Above this many rows the list is windowed (only what is on screen is in the document) and dragging is off. */
 const WINDOW_AT = 120;
 const ROW_H = { desk: 52, phone: 68 } as const;

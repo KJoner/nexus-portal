@@ -341,6 +341,8 @@ export function DesktopHome() {
               />
             }
           />
+          {/* The dock's expand handle hangs below the slab: what follows starts under it, never on it. */}
+          {showShortcuts && canToggle && <div aria-hidden className="h-9" />}
           {/* An empty collection: 添加收藏 (its 应用商店 tab) instead of an empty dock. */}
           {!edit && !privacy.guest && config.apps.length === 0 && !ro && (
             <button
