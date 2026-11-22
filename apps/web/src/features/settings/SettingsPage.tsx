@@ -401,9 +401,15 @@ function MobileShell({ page }: { page: PageId | null }) {
             首页
           </Link>
         )}
-        <span className="absolute right-24 left-24 truncate text-center text-[16px] font-semibold transition-opacity duration-200" style={{ opacity: page ? 1 : scrolled ? 1 : 0 }}>
-          {title || '设置'}
-        </span>
+        {/* On a sub-page this is the page's heading (screen readers jump by headings); the settings root already
+            has its large 「设置」 h1 in the content, so there it stays a plain label. */}
+        {page ? (
+          <h1 className="absolute right-24 left-24 m-0 truncate text-center text-[16px] font-semibold">{title}</h1>
+        ) : (
+          <span className="absolute right-24 left-24 truncate text-center text-[16px] font-semibold transition-opacity duration-200" style={{ opacity: scrolled ? 1 : 0 }}>
+            设置
+          </span>
+        )}
         <span className="flex-1" />
         {page === 'favorites' && (
           <button type="button" onClick={() => openAddFavorite()} aria-label="添加收藏" className="grid size-11 place-items-center border-0 bg-transparent text-amber-hi">
