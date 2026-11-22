@@ -2,7 +2,7 @@ import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type D
 import { horizontalListSortingStrategy, rectSortingStrategy, SortableContext, useSortable } from '@dnd-kit/sortable';
 import { CSS as DndCSS } from '@dnd-kit/utilities';
 import { hostOf, paginate } from '@nexus/shared';
-import type { AppEntry } from '@nexus/shared';
+import type { AppEntry, StatusLevel } from '@nexus/shared';
 import { ChevronDown, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type RefObject } from 'react';
 import type { ServiceView } from '../../../data/status';
@@ -37,6 +37,8 @@ interface Props {
   /** Edit mode with room left: an add tile closes the extension. */
   addToExtension: boolean;
   allRef: RefObject<HTMLButtonElement | null>;
+  /** UI v2: a pinned self-hosted service shows its status badge on its own tile (operators only). */
+  statusOf?(id: string): StatusLevel | undefined;
   onMenu(e: MouseEvent<HTMLElement>, app: AppEntry, from: MenuSource): void;
   onOpenDrawer(): void;
   onUnpin(id: string): void;
@@ -149,7 +151,7 @@ function Label({ name, labels, onHover, cell }: { name: string; labels: boolean;
   );
 }
 
-type SiteProps = { app: AppEntry; index: number; total: number; cell: number; onReveal(id: string): void } & Pick<Props, 'edit' | 'iconSize' | 'labels' | 'labelsOnHover' | 'onMenu' | 'onUnpin' | 'onMove'>;
+type SiteProps = { app: AppEntry; index: number; total: number; cell: number; onReveal(id: string): void } & Pick<Props, 'edit' | 'iconSize' | 'labels' | 'labelsOnHover' | 'onMenu' | 'onUnpin' | 'onMove' | 'statusOf'>;
 
 function DockSite(p: SiteProps) {
   const { app, edit, cell, iconSize, index, total } = p;
@@ -186,7 +188,7 @@ function DockSite(p: SiteProps) {
         onKeyDown={onKey}
         className={cn(itemClass, !edit && liftClass, edit && 'cursor-[inherit]')}
       >
-        <AppTile target={{ kind: 'app', app }} size={iconSize} />
+        <AppTile target={{ kind: 'app', app }} size={iconSize} status={p.statusOf?.(app.id)} />
         <Label name={app.name} labels={p.labels} onHover={p.labelsOnHover && !edit} cell={cell} />
       </a>
       {edit && (
@@ -196,7 +198,7 @@ function DockSite(p: SiteProps) {
           onPointerDown={(e) => e.stopPropagation()}
           onClick={() => p.onUnpin(app.id)}
           className="absolute -top-[7px] grid size-[22px] place-items-center rounded-full border-0 p-0"
-          style={{ left: (cell - iconSize) / 2 - 7, background: 'rgba(60,56,50,0.96)', boxShadow: '0 2px 6px rgba(0,0,0,0.4), inset 0 0 0 1px rgba(239,234,225,0.16)' }}
+          style={{ left: (cell - iconSize) / 2 - 7, background: 'rgb(var(--nx-s6-rgb)/0.96)', boxShadow: '0 2px 6px rgba(0,0,0,0.4), inset 0 0 0 1px rgb(var(--nx-ink-rgb)/0.16)' }}
         >
           <span className="h-0.5 w-2.5 rounded-[1px] bg-ink" />
         </button>
@@ -246,7 +248,7 @@ export function DockHandle({ state, count, hover, onToggle }: { state: DockHandl
       title={title}
       className="group/handle grid h-11 w-32 place-items-center border-0 bg-transparent p-0 outline-none"
     >
-      <span className="grid size-[30px] place-items-center rounded-full bg-[rgba(26,25,22,0.6)] text-ink/70 opacity-45 shadow-[0_6px_18px_rgba(0,0,0,0.28),inset_0_0_0_1px_rgba(239,234,225,0.1)] transition-[opacity,color,box-shadow] duration-200 ease-soft group-hover/handle:text-amber-hi group-hover/handle:opacity-100 group-hover/handle:shadow-[0_6px_18px_rgba(0,0,0,0.28),inset_0_0_0_1px_rgba(230,192,138,0.42)] group-hover/slab:opacity-100 group-focus-visible/handle:opacity-100 group-focus-visible/handle:outline-2 group-focus-visible/handle:outline-offset-2 group-focus-visible/handle:outline-amber pointer-coarse:opacity-100">
+      <span className="grid size-[30px] place-items-center rounded-full bg-[rgb(var(--nx-s1-rgb)/0.6)] text-ink/70 opacity-45 shadow-[0_6px_18px_rgba(0,0,0,0.28),inset_0_0_0_1px_rgb(var(--nx-ink-rgb)/0.1)] transition-[opacity,color,box-shadow] duration-200 ease-soft group-hover/handle:text-amber-hi group-hover/handle:opacity-100 group-hover/handle:shadow-[0_6px_18px_rgba(0,0,0,0.28),inset_0_0_0_1px_rgb(var(--nx-amber-rgb)/0.42)] group-hover/slab:opacity-100 group-focus-visible/handle:opacity-100 group-focus-visible/handle:outline-2 group-focus-visible/handle:outline-offset-2 group-focus-visible/handle:outline-amber pointer-coarse:opacity-100">
         <span className={cn('grid transition-transform duration-240 ease-soft', state === 'pinned' && 'rotate-180')}>
           <ChevronDown className="size-4 group-hover/handle:animate-nudge" />
         </span>
@@ -363,7 +365,7 @@ export function Dock(props: Props) {
     }
   };
 
-  const siteProps = { edit, iconSize, labels, labelsOnHover, onMenu: props.onMenu, onUnpin: props.onUnpin, onMove: props.onMove, onReveal: reveal, total };
+  const siteProps = { edit, iconSize, labels, labelsOnHover, onMenu: props.onMenu, onUnpin: props.onUnpin, onMove: props.onMove, onReveal: reveal, total, statusOf: props.statusOf };
 
   return (
     <DndContext accessibility={dndAccessibility} sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
@@ -436,7 +438,7 @@ export function Dock(props: Props) {
                 </button>
                 {pages.map((_, p) => (
                   <button key={p} type="button" aria-label={`第 ${p + 1} 页`} aria-current={p === current ? 'page' : undefined} onClick={() => goTo(p)} className="grid h-7 w-4 place-items-center border-0 bg-transparent p-0">
-                    <span className="block h-1.5 rounded-full transition-[width,background] duration-200 ease-soft" style={{ width: p === current ? 14 : 6, background: p === current ? 'rgba(239,234,225,0.78)' : 'rgba(239,234,225,0.26)' }} />
+                    <span className="block h-1.5 rounded-full transition-[width,background] duration-200 ease-soft" style={{ width: p === current ? 14 : 6, background: p === current ? 'rgb(var(--nx-ink-rgb)/0.78)' : 'rgb(var(--nx-ink-rgb)/0.26)' }} />
                   </button>
                 ))}
                 <button type="button" aria-label="下一页" disabled={lastPage} onClick={() => go(1)} className="grid size-7 place-items-center rounded-full border-0 bg-transparent text-ink/60 hover:bg-ink/10 hover:text-ink disabled:opacity-25">

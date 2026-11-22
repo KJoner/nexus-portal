@@ -1,4 +1,4 @@
-import { hostOf, matchApps, MAX_PINS, mobileShortcuts, paginate, shownServices, uiPreset, type AppEntry, type SearchRow } from '@nexus/shared';
+import { hostOf, matchApps, MAX_PINS, mobileShortcuts, paginate, uiPreset, type AppEntry, type SearchRow } from '@nexus/shared';
 import { Activity, Ban, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, ExternalLink, EyeOff, Heart, Image, LayoutTemplate, Lock, Pencil, Pin, PinOff, Plus, Search, Settings } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
@@ -18,6 +18,8 @@ import { SpaceBadge } from '../../account/SpaceBadge';
 import { useCollectionApps } from '../collection';
 import { storage } from '../../../lib/storage';
 import { formatClock, formatDate } from '../../../lib/time';
+import { openAddFavorite, openEditFavorite } from '../../favorites/dialog-store';
+import { LazyFavoriteDialogs } from '../../favorites/lazy-dialogs';
 import { homeActions } from '../actions';
 import { activateRow, rowTile, useSearchModel, type QuickActionId } from '../search-model';
 import { actionStyle, dotStyle, messageColor, pillStyle, rowHighlighted } from '../status-style';
@@ -31,7 +33,7 @@ type Mode = 'home' | 'search' | 'apps';
 type From = 'home' | 'apps' | 'hosted';
 
 const TILE = { s: 54, m: 60, l: 66 } as const;
-const GLASS: CSSProperties = { background: 'rgba(239,234,225,0.1)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), inset 0 0 0 1px rgba(239,234,225,0.08)' };
+const GLASS: CSSProperties = { background: 'rgb(var(--nx-ink-rgb)/0.1)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), inset 0 0 0 1px rgb(var(--nx-ink-rgb)/0.08)' };
 const PANEL_BOTTOM = 'max(12px, calc(env(safe-area-inset-bottom) - 10px))';
 const SAFE_TOP = 'max(env(safe-area-inset-top), 20px)';
 /** Per-browser memory of the expanded shortcut sheet (设置 · 记住展开状态). */
@@ -63,9 +65,9 @@ export function MobileHome() {
   const isAdmin = useIsAdmin();
   const showStatus = !privacy.guest && isAdmin;
   const statusPill = showStatus && (ui.status === 'show' || summary.level === 'error');
-  const shownIds = useMemo(() => new Set(shownServices(config).map((a) => a.id)), [config]);
-  const homeServices = services.filter((s) => shownIds.has(s.app.id));
-  const capacity = Math.max(0, home.mobileRows * 4 - homeServices.length);
+  // UI v2: no separate services area — a pinned service is a pin like any other, with its status badge.
+  const viewById = useMemo(() => new Map(services.map((s) => [s.app.id, s])), [services]);
+  const capacity = Math.max(0, home.mobileRows * 4);
   const { first: homeSites, extra } = useMemo(() => mobileShortcuts(config), [config]);
   // The Chrome extension's new tab is read-only: nothing here may write to the server.
   const ro = host.readOnly;
@@ -94,8 +96,8 @@ export function MobileHome() {
     const app = c.apps.find((a) => a.id === id);
     if (!app) return;
     const i = c.pins.indexOf(id);
-    // U2b: a site is edited where the collection is (收藏库); a self-hosted service where services are.
-    const toSettings: SheetItem = !ro && app.kind === 'site' ? { label: '编辑收藏', icon: Pencil, hint: '›', onSelect: () => navigate(`/library?edit=${encodeURIComponent(id)}`) } : { label: app.kind === 'service' ? '编辑服务' : '在设置中编辑', icon: Pencil, hint: '›', onSelect: () => navigate(`/settings/apps?edit=${id}`) };
+    // UI v2: one editor for every favorite (site or service), opened right here; read-only views hand over.
+    const toSettings: SheetItem = ro ? { label: '在我的收藏中编辑', icon: Pencil, hint: '›', onSelect: () => navigate(`/settings/favorites?edit=${encodeURIComponent(id)}`) } : { label: '编辑收藏', icon: Pencil, onSelect: () => openEditFavorite(id) };
     const hide: SheetItem = { label: '隐藏此应用', icon: EyeOff, danger: true, onSelect: () => homeActions.hide(id) };
     const newTab: SheetItem = { label: '在新标签页打开', icon: ExternalLink, onSelect: () => openApp(app, true) };
     const usage = `${c.pins.length}/${MAX_PINS}`;
@@ -165,7 +167,7 @@ export function MobileHome() {
   const statusH = statusPill ? 32 : 0;
   const homeH = 26 + statusH + 16 + rowsH + (dots ? DOTS_H : 0) + 8 + 14 + 52 + 14;
   // Pulled up: every pinned site in one scrolling grid, never covering the clock.
-  const allRows = Math.ceil((homeSites.length + homeServices.length + (showAdd ? 1 : 0) + extra.length) / 4);
+  const allRows = Math.ceil((homeSites.length + (showAdd ? 1 : 0) + extra.length) / 4);
   const expandedH = 26 + statusH + 16 + allRows * rowH + (allRows - 1) * 16 + 8 + 14 + 52 + 14;
   const panelH = isHome ? (expanded ? `min(${expandedH}px, calc(100% - ${SAFE_TOP} - ${small ? 150 : 170}px))` : `${homeH}px`) : `calc(100% - ${SAFE_TOP} - 5px)`;
   const rowB = mode === 'apps' ? 'calc(max(env(safe-area-inset-bottom), 12px) + 6px)' : mode === 'search' ? '10px' : '14px';
@@ -203,7 +205,7 @@ export function MobileHome() {
         <span className="flex-1" />
         <SpaceBadge variant="mobile" className="pointer-events-auto mt-1 mr-2" />
         {ui.settings === 'show' && (
-          <Link to="/settings" aria-label="设置" className="pointer-events-auto grid size-11 flex-none place-items-center rounded-full text-ink/85 backdrop-blur-[24px]" style={{ background: 'rgba(26,25,22,0.36)' }}>
+          <Link to="/settings" aria-label="设置" className="pointer-events-auto grid size-11 flex-none place-items-center rounded-full text-ink/85 backdrop-blur-[24px]" style={{ background: 'rgb(var(--nx-s1-rgb)/0.36)' }}>
             <Settings className="size-[18px]" />
           </Link>
         )}
@@ -217,7 +219,7 @@ export function MobileHome() {
           bottom: isHome ? PANEL_BOTTOM : 0,
           height: panelH,
           borderRadius: isHome ? 34 : '30px 30px 0 0',
-          background: isHome ? 'rgba(26,25,22,0.5)' : 'rgba(28,26,23,0.72)',
+          background: isHome ? 'rgb(var(--nx-s1-rgb)/0.5)' : 'rgb(var(--nx-s2-rgb)/0.72)',
           boxShadow: '0 20px 50px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.07)',
           transitionProperty: 'left, right, bottom, height, border-radius, background',
           transitionDuration: '420ms',
@@ -242,7 +244,7 @@ export function MobileHome() {
                 <span className="flex h-8 items-center gap-2 rounded-full pr-3 pl-[11px] text-[12.5px]" style={pillStyle(summary.level)}>
                   <span
                     className={cn('size-1.5 flex-none rounded-full', summary.level === 'error' && motion === 'full' && 'animate-breathe')}
-                    style={{ ...dotStyle(summary.level, 0.5), ...(summary.level === 'error' && motion !== 'full' ? { boxShadow: '0 0 0 2px rgba(233,118,95,0.4)' } : {}) }}
+                    style={{ ...dotStyle(summary.level, 0.5), ...(summary.level === 'error' && motion !== 'full' ? { boxShadow: '0 0 0 2px rgb(var(--nx-error-rgb)/0.4)' } : {}) }}
                   />
                   <span>{summary.text}</span>
                   {summary.more && <span className="opacity-66">{summary.more}</span>}
@@ -252,7 +254,7 @@ export function MobileHome() {
             </div>
           )}
           <HomeGrid
-            pages={[[...homeSites.map((a) => ({ app: a, view: undefined as ServiceView | undefined })), ...homeServices.map((s) => ({ app: s.app, view: s }))], ...extraPages.map((p) => p.map((a) => ({ app: a, view: undefined as ServiceView | undefined })))]}
+            pages={[homeSites.map((a) => ({ app: a, view: viewById.get(a.id) as ServiceView | undefined })), ...extraPages.map((p) => p.map((a) => ({ app: a, view: viewById.get(a.id) as ServiceView | undefined })))]}
             expanded={expanded}
             dots={dots}
             showAdd={showAdd}
@@ -261,12 +263,12 @@ export function MobileHome() {
             showStatus={showStatus}
             bind={bind}
             pressed={pressed}
-            // Nothing collected yet: 添加 goes to 应用目录, not to an empty 收藏库 (v0.4).
-            onAdd={config.apps.length ? openApps : () => navigate('/catalog')}
+            // 添加: pick one of your favorites (快速打开, long press → 添加到首页); nothing collected yet: 添加收藏 › 应用商店.
+            onAdd={config.apps.length ? openApps : () => openAddFavorite({ tab: 'store' })}
           />
           {!ro && !privacy.guest && config.apps.length === 0 && (
             <p className="m-0 mt-3 px-2 text-center text-[12.5px] leading-[1.6] text-ink/70" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.5)' }}>
-              收藏库还是空的 · 点「添加」从应用目录挑选常用网站
+              还没有收藏 · 点「添加」从应用商店挑选常用网站
             </p>
           )}
         </div>
@@ -298,7 +300,7 @@ export function MobileHome() {
         >
           <div
             className="flex h-[52px] min-w-0 flex-1 items-center gap-[11px] rounded-[18px] pr-1 pl-3.5 transition-[background,box-shadow] duration-200"
-            style={{ background: isHome ? 'rgba(239,234,225,0.09)' : 'rgba(239,234,225,0.11)', boxShadow: mode === 'search' ? 'inset 0 0 0 1px rgba(230,192,138,0.4)' : 'none' }}
+            style={{ background: isHome ? 'rgb(var(--nx-ink-rgb)/0.09)' : 'rgb(var(--nx-ink-rgb)/0.11)', boxShadow: mode === 'search' ? 'inset 0 0 0 1px rgb(var(--nx-amber-rgb)/0.4)' : 'none' }}
           >
             <LeadIcon mode={mode} engineId={engineId} />
             <input
@@ -344,6 +346,7 @@ export function MobileHome() {
       </div>
 
       <ToastHost variant="mobile" bottom={toastB} />
+      <LazyFavoriteDialogs />
       <ActionSheet sheet={sheet} onClose={() => setSheet(null)} />
     </div>
   );
@@ -396,7 +399,7 @@ function MobileSearch({ mode, q, engineId, setEngineId, contentB, layer, onActio
                   data-first-result={isFirst || undefined}
                   onClick={(e) => activate(row, e)}
                   className="flex min-h-[54px] items-center gap-3 rounded-[14px] px-2.5 text-ink no-underline active:bg-ink/10"
-                  style={{ background: isFirst ? 'rgba(239,234,225,0.08)' : 'transparent' }}
+                  style={{ background: isFirst ? 'rgb(var(--nx-ink-rgb)/0.08)' : 'transparent' }}
                 >
                   <AppTile target={rowTile(row, searchConfig, result.engine)} size={34} />
                   <span className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -419,7 +422,7 @@ function MobileSearch({ mode, q, engineId, setEngineId, contentB, layer, onActio
             <button key={e.id} type="button" onMouseDown={(ev) => ev.preventDefault()} onClick={() => setEngineId(e.id)} aria-pressed={sel} className="h-11 flex-none border-0 bg-transparent px-0.5">
               <span
                 className="flex h-[34px] items-center gap-[7px] rounded-full pr-[11px] pl-[7px] text-[12.5px] whitespace-nowrap"
-                style={{ background: sel ? 'rgba(239,234,225,0.16)' : 'rgba(239,234,225,0.06)', boxShadow: sel ? 'inset 0 0 0 1px rgba(239,234,225,0.16)' : 'none', color: sel ? '#efeae1' : 'rgba(239,234,225,0.7)' }}
+                style={{ background: sel ? 'rgb(var(--nx-ink-rgb)/0.16)' : 'rgb(var(--nx-ink-rgb)/0.06)', boxShadow: sel ? 'inset 0 0 0 1px rgb(var(--nx-ink-rgb)/0.16)' : 'none', color: sel ? 'var(--color-ink)' : 'rgb(var(--nx-ink-rgb)/0.7)' }}
               >
                 <AppTile target={{ kind: 'engine', engine: e }} size={20} />
                 {e.kind === 'linkwarden' ? '收藏' : e.name}
@@ -467,30 +470,34 @@ function MobileApps({ open, q, contentB, layer, all, showStatus, bind, pressed, 
         <span className="text-[12.5px] text-ink/46">{count} 个收藏</span>
         <span className="flex-1" />
         {count > 0 && <span className="text-[12px] text-ink/46">长按管理</span>}
-        <Link to="/catalog" className="-my-2 flex h-11 items-center rounded-xl px-3 text-[13px] text-amber-hi no-underline">
-          应用目录
-        </Link>
+        {!host.readOnly && (
+          <button type="button" onClick={() => openAddFavorite({ tab: 'store' })} className="-my-2 flex h-11 items-center rounded-xl border-0 bg-transparent px-3 text-[13px] text-amber-hi">
+            添加收藏
+          </button>
+        )}
       </div>
       {count === 0 && !fl && (
         <div className="mx-6 mt-4 flex flex-col gap-2.5 rounded-2xl bg-ink/6 p-4">
           <span className="text-[15px] font-medium">还没有收藏</span>
-          <span className="text-[13px] leading-[1.6] text-ink/56">从应用目录挑几个常用网站，或者粘贴网址自己添加。新加的网站不会自动固定到首页。</span>
-          <div className="flex gap-2.5">
-            <Link to="/catalog" className="flex h-11 items-center rounded-xl bg-amber px-4 text-[14px] font-semibold text-on-amber no-underline">
-              浏览应用目录
-            </Link>
-            <Link to="/settings/apps?new=" className="flex h-11 items-center rounded-xl bg-ink/10 px-4 text-[14px] text-ink no-underline">
-              自定义添加
-            </Link>
-          </div>
+          <span className="text-[13px] leading-[1.6] text-ink/56">从应用商店挑几个常用网站，或者粘贴网址自己添加。</span>
+          {!host.readOnly && (
+            <div className="flex gap-2.5">
+              <button type="button" onClick={() => openAddFavorite({ tab: 'store' })} className="flex h-11 items-center rounded-xl border-0 bg-amber px-4 text-[14px] font-semibold text-on-amber">
+                从应用商店添加
+              </button>
+              <button type="button" onClick={() => openAddFavorite({ tab: 'manual' })} className="flex h-11 items-center rounded-xl border-0 bg-ink/10 px-4 text-[14px] text-ink">
+                添加网址
+              </button>
+            </div>
+          )}
         </div>
       )}
       <div className="nx-scroll-hidden min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-3.5 pb-2">
-        {services.length > 0 && <div className="px-2.5 pt-4 pb-1.5 text-[11.5px] text-ink/50">我的服务</div>}
+        {services.length > 0 && <div className="px-2.5 pt-4 pb-1.5 text-[11.5px] text-ink/50">服务</div>}
         {services.map((s) => {
           const { consumeClick, ...handlers } = bind(s.app.id);
           return (
-            <div key={s.app.id} className="flex min-h-[62px] items-center gap-3 rounded-2xl px-2.5" style={{ background: showStatus && rowHighlighted(s.level) ? 'rgba(239,234,225,0.045)' : 'transparent' }}>
+            <div key={s.app.id} className="flex min-h-[62px] items-center gap-3 rounded-2xl px-2.5" style={{ background: showStatus && rowHighlighted(s.level) ? 'rgb(var(--nx-ink-rgb)/0.045)' : 'transparent' }}>
               <span {...handlers} onClick={(e) => consumeClick(e)} style={{ transform: pressed === s.app.id ? 'scale(.92)' : undefined }} className="transition-transform duration-160">
                 <AppTile target={{ kind: 'app', app: s.app }} size={44} lazy />
               </span>
@@ -511,9 +518,9 @@ function MobileApps({ open, q, contentB, layer, all, showStatus, bind, pressed, 
               {s.level === 'unknown' && showStatus ? (
                 <RetryButton appId={s.app.id} style={actionStyle(s.level)} className="flex h-11 flex-none items-center rounded-xl border-0 px-3.5 text-[13px] disabled:opacity-60" />
               ) : s.level === 'off' && showStatus ? (
-                <Link to={`/settings/apps?edit=${s.app.id}`} className="flex h-11 flex-none items-center rounded-xl px-3.5 text-[13px] no-underline" style={actionStyle(s.level)}>
+                <button type="button" onClick={() => (host.readOnly ? undefined : openEditFavorite(s.app.id))} className="flex h-11 flex-none items-center rounded-xl border-0 px-3.5 text-[13px]" style={actionStyle(s.level)}>
                   开启
-                </Link>
+                </button>
               ) : (
                 <a {...appLinkProps(s.app)} onClick={() => recordAppOpen(s.app)} className="flex h-11 flex-none items-center rounded-xl px-3.5 text-[13px] no-underline" style={actionStyle(showStatus ? s.level : 'ok')}>
                   打开
@@ -543,7 +550,7 @@ function MobileApps({ open, q, contentB, layer, all, showStatus, bind, pressed, 
                   >
                     <AppTile target={{ kind: 'app', app: a }} size={56} lazy />
                     <span className="max-w-full truncate px-0.5 text-[11.5px] text-ink/82">{a.name}</span>
-                    <span className="-mt-[3px] size-1 rounded-full" style={{ background: pinned ? '#e6c08a' : 'transparent' }} />
+                    <span className="-mt-[3px] size-1 rounded-full" style={{ background: pinned ? 'var(--color-amber)' : 'transparent' }} />
                   </a>
                 );
               })}
@@ -697,7 +704,7 @@ function HomeGrid({ pages, expanded, dots, showAdd, tile, labels, showStatus, bi
               onClick={() => strip.current?.scrollTo({ left: p * strip.current.clientWidth, behavior: 'smooth' })}
               className="grid h-4 w-3 place-items-center border-0 bg-transparent p-0"
             >
-              <span className="block size-1.5 rounded-full" style={{ background: p === page ? 'rgba(239,234,225,0.8)' : 'rgba(239,234,225,0.28)' }} />
+              <span className="block size-1.5 rounded-full" style={{ background: p === page ? 'rgb(var(--nx-ink-rgb)/0.8)' : 'rgb(var(--nx-ink-rgb)/0.28)' }} />
             </button>
           ))}
         </div>

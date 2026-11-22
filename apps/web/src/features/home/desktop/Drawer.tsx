@@ -1,8 +1,10 @@
-import { engineSearchUrl, hostOf, matchApps, type AppEntry } from '@nexus/shared';
-import { LayoutGrid, Search, X } from 'lucide-react';
+import { engineSearchUrl, hostOf, looksLikeUrl, matchApps, type AppEntry } from '@nexus/shared';
+import { LayoutGrid, Plus, Search, X } from 'lucide-react';
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { Link } from 'react-router';
 import { useConfig } from '../../../data/config-store';
+import { host } from '../../../lib/host';
+import { openAddFavorite } from '../../favorites/dialog-store';
 import { useCollectionApps } from '../collection';
 import { useRecentStore } from '../../../data/recent';
 import type { ServiceView } from '../../../data/status';
@@ -147,7 +149,11 @@ export const Drawer = forwardRef<DrawerHandle, Props>(function Drawer({ open, wi
     }
   };
 
-  const ring = (i: number) => (i === sel ? 'inset 0 0 0 2px rgba(230,192,138,0.75)' : 'none');
+  const add = (req: Parameters<typeof openAddFavorite>[0]) => {
+    onClose(false);
+    openAddFavorite(req);
+  };
+  const ring = (i: number) => (i === sel ? 'inset 0 0 0 2px rgb(var(--nx-amber-rgb)/0.75)' : 'none');
   const tab = open ? 0 : -1;
   const empty = !!filter.trim() && flat.length === 0;
   // A new account starts with an empty collection: point at 应用目录 instead of a blank panel.
@@ -155,14 +161,14 @@ export const Drawer = forwardRef<DrawerHandle, Props>(function Drawer({ open, wi
 
   return (
     <div role="dialog" aria-modal="true" aria-label="快速打开" aria-hidden={!open} inert={!open} className="absolute inset-0 z-10 transition-opacity duration-280 ease-soft" style={{ opacity: open ? 1 : 0, pointerEvents: open ? 'auto' : 'none' }}>
-      <div className="absolute inset-0" style={{ background: 'rgba(17,16,14,0.38)' }} onClick={() => onClose(true)} />
+      <div className="absolute inset-0" style={{ background: 'rgb(var(--nx-s0-rgb)/0.38)' }} onClick={() => onClose(true)} />
       <div
         className="absolute left-1/2 flex flex-col overflow-hidden rounded-[30px] backdrop-blur-[44px] backdrop-saturate-[1.15] transition-transform duration-420 ease-emph"
         style={{
           top,
           bottom,
           width,
-          background: 'rgba(32,30,27,0.66)',
+          background: 'rgb(var(--nx-s2-rgb)/0.66)',
           boxShadow: '0 40px 100px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.07)',
           transform: `translateX(-50%) ${open ? 'none' : 'translateY(18px) scale(.985)'}`,
         }}
@@ -170,12 +176,12 @@ export const Drawer = forwardRef<DrawerHandle, Props>(function Drawer({ open, wi
         <div className="flex items-center gap-4 pt-[26px] pr-[30px] pb-5 pl-[34px]">
           <h2 className="m-0 text-[22px] font-medium tracking-[-0.01em]">快速打开</h2>
           <span className="text-[13px] text-ink/46">{collection.filter((a) => !a.hidden).length} 个收藏</span>
-          {/* Folders, tags, the trash, import and export: the collection's own page. */}
-          <Link to="/library" tabIndex={tab} className="flex h-9 items-center rounded-lg px-3 text-[13px] text-ink/72 no-underline transition-colors duration-150 hover:bg-ink/8 hover:text-ink">
-            查看全部收藏
+          {/* Groups, the trash, import and export: 我的收藏 (快速打开 only opens and finds). */}
+          <Link to="/settings/favorites" tabIndex={tab} className="flex h-9 items-center rounded-lg px-3 text-[13px] text-ink/72 no-underline transition-colors duration-150 hover:bg-ink/8 hover:text-ink">
+            管理我的收藏
           </Link>
           <span className="flex-1" />
-          <div className="box-border flex h-10 w-[300px] items-center gap-2.5 rounded-xl pr-2 pl-3.5" style={{ background: 'rgba(239,234,225,0.07)', boxShadow: focused ? 'inset 0 0 0 1px rgba(230,192,138,0.4)' : 'none' }}>
+          <div className="box-border flex h-10 w-[300px] items-center gap-2.5 rounded-xl pr-2 pl-3.5" style={{ background: 'rgb(var(--nx-ink-rgb)/0.07)', boxShadow: focused ? 'inset 0 0 0 1px rgb(var(--nx-amber-rgb)/0.4)' : 'none' }}>
             <Search className="size-[15px] flex-none text-ink/55" />
             <input
               ref={filterRef}
@@ -198,10 +204,12 @@ export const Drawer = forwardRef<DrawerHandle, Props>(function Drawer({ open, wi
             />
             <span className="flex-none text-[11.5px] text-ink/40">{filter ? `${flat.length} 项` : '/'}</span>
           </div>
-          <Link to="/catalog" tabIndex={tab} className="flex h-10 flex-none items-center gap-2 rounded-xl px-3.5 text-[13.5px] text-ink/85 no-underline transition-colors duration-140 hover:bg-ink/12" style={{ background: 'rgba(239,234,225,0.07)' }}>
-            <LayoutGrid className="size-[15px]" />
-            应用目录
-          </Link>
+          {!host.readOnly && (
+            <button type="button" tabIndex={tab} onClick={() => add({ tab: 'store' })} className="flex h-10 flex-none items-center gap-2 rounded-xl border-0 px-3.5 text-[13.5px] text-ink/85 transition-colors duration-140 hover:bg-ink/12" style={{ background: 'rgb(var(--nx-ink-rgb)/0.07)' }}>
+              <Plus className="size-[15px]" />
+              添加收藏
+            </button>
+          )}
           <button type="button" tabIndex={tab} onClick={() => onClose(true)} title="关闭（esc）" aria-label="关闭" className="grid size-10 place-items-center rounded-full border-0 bg-ink/7 text-ink/80 transition-colors duration-140 hover:bg-ink/14">
             <X className="size-4" />
           </button>
@@ -210,7 +218,7 @@ export const Drawer = forwardRef<DrawerHandle, Props>(function Drawer({ open, wi
         <div ref={scrollRef} id="nx-drawer-grid" className="flex min-h-0 flex-1 flex-col gap-[26px] overflow-auto px-[34px] pt-1 pb-[30px]">
           {model.hosted.length > 0 && (
             <section className="flex flex-col gap-3">
-              <h3 className="m-0 text-[12px] font-normal text-ink/50">我的服务</h3>
+              <h3 className="m-0 text-[12px] font-normal text-ink/50">服务</h3>
               <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${hostedCols}, minmax(0,1fr))` }}>
                 {model.hosted.map((s, k) => {
                   const di = model.hostedStart + k;
@@ -223,7 +231,7 @@ export const Drawer = forwardRef<DrawerHandle, Props>(function Drawer({ open, wi
                       onClick={() => recordAppOpen(s.app)}
                       onContextMenu={(e) => onMenu(e, s.app, 'hosted')}
                       className={cn('flex items-center gap-3.5 rounded-[20px] p-3.5 text-ink no-underline transition-colors duration-140 hover:bg-ink/8', s.app.hidden && 'opacity-42')}
-                      style={{ background: di === sel ? 'rgba(239,234,225,0.09)' : 'rgba(239,234,225,0.045)', boxShadow: ring(di) }}
+                      style={{ background: di === sel ? 'rgb(var(--nx-ink-rgb)/0.09)' : 'rgb(var(--nx-ink-rgb)/0.045)', boxShadow: ring(di) }}
                     >
                       <AppTile target={{ kind: 'app', app: s.app }} size={52} lazy />
                       <span className="flex min-w-0 flex-col gap-[3px]">
@@ -263,11 +271,11 @@ export const Drawer = forwardRef<DrawerHandle, Props>(function Drawer({ open, wi
                       // A saved page that is not on the home page has no home-page actions here: it opens; 收藏库 edits it.
                       onContextMenu={onHome.has(a.id) ? (e) => onMenu(e, a, 'drawer') : undefined}
                       className={cn('flex flex-col items-center gap-[9px] rounded-[18px] pt-2 pb-1.5 text-ink no-underline transition-[transform,background] duration-140 ease-soft hover:-translate-y-[3px] active:-translate-y-px active:scale-[.96]', a.hidden && 'opacity-42')}
-                      style={{ background: di === sel ? 'rgba(239,234,225,0.08)' : 'transparent', boxShadow: ring(di) }}
+                      style={{ background: di === sel ? 'rgb(var(--nx-ink-rgb)/0.08)' : 'transparent', boxShadow: ring(di) }}
                     >
                       <AppTile target={{ kind: 'app', app: a }} size={60} lazy />
                       <span className="max-w-full truncate px-1 text-[12.5px] text-ink/82">{a.name}</span>
-                      <span className="-mt-1 size-1 rounded-full" style={{ background: pinned ? '#e6c08a' : 'transparent' }} />
+                      <span className="-mt-1 size-1 rounded-full" style={{ background: pinned ? 'var(--color-amber)' : 'transparent' }} />
                     </a>
                   );
                 })}
@@ -280,15 +288,17 @@ export const Drawer = forwardRef<DrawerHandle, Props>(function Drawer({ open, wi
                 <LayoutGrid className="size-[22px] text-ink/50" />
               </span>
               <span className="mt-1.5 text-[17px] font-medium">还没有收藏</span>
-              <span className="text-[13px] text-ink/50">从应用目录挑几个常用网站，或者自己添加。新加的网站不会自动固定到首页。</span>
-              <div className="mt-3 flex gap-2.5">
-                <Link to="/catalog" tabIndex={tab} className="flex h-10 items-center gap-2 rounded-xl bg-amber px-4 text-[13.5px] font-semibold text-on-amber no-underline">
-                  浏览应用目录
-                </Link>
-                <Link to="/settings/apps?new=" tabIndex={tab} className="flex h-10 items-center rounded-xl bg-ink/10 px-4 text-[13.5px] text-ink no-underline">
-                  自定义添加
-                </Link>
-              </div>
+              <span className="text-[13px] text-ink/50">从应用商店挑几个常用网站，或者自己添加网址。</span>
+              {!host.readOnly && (
+                <div className="mt-3 flex gap-2.5">
+                  <button type="button" tabIndex={tab} onClick={() => add({ tab: 'store' })} className="flex h-10 items-center gap-2 rounded-xl border-0 bg-amber px-4 text-[13.5px] font-semibold text-on-amber">
+                    从应用商店添加
+                  </button>
+                  <button type="button" tabIndex={tab} onClick={() => add({ tab: 'manual' })} className="flex h-10 items-center rounded-xl border-0 bg-ink/10 px-4 text-[13.5px] text-ink">
+                    添加网址
+                  </button>
+                </div>
+              )}
             </div>
           )}
           {empty && (
@@ -314,12 +324,16 @@ export const Drawer = forwardRef<DrawerHandle, Props>(function Drawer({ open, wi
                     在 {webEngine.name} 中搜索「{filter}」
                   </button>
                 )}
-                <Link to={`/catalog?q=${encodeURIComponent(filter)}`} tabIndex={tab} className="flex h-10 items-center rounded-xl bg-ink/10 px-4 text-[13.5px] text-ink no-underline hover:bg-ink/16">
-                  在应用目录中查找
-                </Link>
-                <Link to={`/settings/apps?new=${encodeURIComponent(filter)}`} tabIndex={tab} className="flex h-10 items-center gap-2 rounded-xl px-4 text-[13.5px] text-amber-hi no-underline" style={{ background: 'rgba(230,192,138,0.14)' }}>
-                  添加为新应用 →
-                </Link>
+                {!host.readOnly && (
+                  <button type="button" tabIndex={tab} onClick={() => add({ tab: 'store', q: filter })} className="flex h-10 items-center rounded-xl border-0 bg-ink/10 px-4 text-[13.5px] text-ink hover:bg-ink/16">
+                    在应用商店中查找
+                  </button>
+                )}
+                {!host.readOnly && (
+                  <button type="button" tabIndex={tab} onClick={() => add(looksLikeUrl(filter.trim()) ? { tab: 'manual', url: filter.trim() } : { tab: 'manual', title: filter.trim() })} className="flex h-10 items-center gap-2 rounded-xl border-0 px-4 text-[13.5px] text-amber-hi" style={{ background: 'rgb(var(--nx-amber-rgb)/0.14)' }}>
+                    添加收藏 →
+                  </button>
+                )}
               </div>
             </div>
           )}

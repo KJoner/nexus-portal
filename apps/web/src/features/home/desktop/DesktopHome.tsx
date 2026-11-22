@@ -1,5 +1,5 @@
-import { appHref, desktopShortcuts, hostOf, MAX_PINS, pinnedSites, shownServices, uiPreset, type AppEntry } from '@nexus/shared';
-import { Activity, ArrowRight, ArrowUpRight, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, ExternalLink, Eye, EyeOff, GripVertical, Image, LayoutTemplate, Pencil, Pin, PinOff, Settings, SlidersHorizontal } from 'lucide-react';
+import { appHref, desktopShortcuts, hostOf, MAX_PINS, pinnedSites, uiPreset, type AppEntry, type StatusLevel } from '@nexus/shared';
+import { Activity, ArrowRight, ArrowUpRight, Bookmark, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, ExternalLink, Eye, EyeOff, GripVertical, Image, LayoutTemplate, Pencil, Pin, PinOff, Plus, Settings, SlidersHorizontal, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { ContextMenu, menuPoint, type MenuItem, type MenuState } from '../../../components/ContextMenu';
@@ -13,7 +13,10 @@ import { openApp } from '../../../lib/open';
 import { useProximity } from '../../../lib/proximity';
 import { storage } from '../../../lib/storage';
 import { formatClock, formatDate } from '../../../lib/time';
+import { openAddFavorite, openEditFavorite } from '../../favorites/dialog-store';
+import { LazyFavoriteDialogs } from '../../favorites/lazy-dialogs';
 import { homeActions } from '../actions';
+import { useStarterHint } from '../starter-hint';
 import type { QuickActionId } from '../search-model';
 import { useCurrentWallpaper } from '../rotation';
 import { Wallpaper } from '../Wallpaper';
@@ -67,10 +70,9 @@ export function DesktopHome() {
   const pinned = useMemo(() => pinnedSites(config), [config]);
   const { first: dockSites, extra } = useMemo(() => desktopShortcuts(config), [config]);
   const { shortcuts } = home;
-  const dockServices = useMemo(() => {
-    const shown = new Set(shownServices(config).map((a) => a.id));
-    return services.filter((s) => shown.has(s.app.id));
-  }, [config, services]);
+  // UI v2: no separate services strip — a pinned service sits among the pins with its status badge.
+  const statusById = useMemo(() => new Map<string, StatusLevel>(services.map((s) => [s.app.id, s.level])), [services]);
+  const starter = useStarterHint(config);
 
   useEffect(() => {
     if (summary.level !== 'error') setErrorSeen(false);
@@ -185,8 +187,8 @@ export function DesktopHome() {
     }
     const pins = useConfigStore.getState().snapshot.config.pins;
     const i = pins.indexOf(app.id);
-    // U2b: a site is edited where the collection is (收藏库); a self-hosted service where services are.
-    const toSettings: MenuItem = !ro && app.kind === 'site' ? { label: '编辑收藏', icon: Pencil, hint: '↗', onSelect: () => navigate(`/library?edit=${encodeURIComponent(app.id)}`) } : { label: app.kind === 'service' ? '编辑服务' : '在设置中编辑', icon: Pencil, hint: '↗', onSelect: () => navigate(`/settings/apps?edit=${app.id}`) };
+    // UI v2: one editor for every favorite (site or service), opened right here; read-only views hand over.
+    const toSettings: MenuItem = ro ? { label: '在我的收藏中编辑', icon: Pencil, hint: '↗', onSelect: () => navigate(`/settings/favorites?edit=${encodeURIComponent(app.id)}`) } : { label: '编辑收藏', icon: Pencil, onSelect: () => openEditFavorite(app.id) };
     const open: MenuItem[] = [
       { label: '打开', icon: ArrowUpRight, onSelect: () => openApp(app) },
       { label: '在新标签页打开', icon: ExternalLink, hint: '中键', onSelect: () => openApp(app, true) },
@@ -321,7 +323,8 @@ export function DesktopHome() {
                 rows={rows}
                 showPager={shortcuts.pager}
                 addToExtension={addToExtension}
-                services={dockServices}
+                services={[]}
+                statusOf={showStatus ? (id) => statusById.get(id) : undefined}
                 dockSize={home.dockSize}
                 edit={edit}
                 iconSize={iconSize}
@@ -338,20 +341,46 @@ export function DesktopHome() {
               />
             }
           />
-          {/* A new account's empty collection: point to 应用目录 instead of an empty dock (v0.4). */}
-          {!edit && !privacy.guest && config.apps.length === 0 && (
+          {/* An empty collection: 添加收藏 (its 应用商店 tab) instead of an empty dock. */}
+          {!edit && !privacy.guest && config.apps.length === 0 && !ro && (
             <button
               type="button"
-              onClick={() => navigate('/catalog')}
+              onClick={() => openAddFavorite({ tab: 'store' })}
               className="mx-auto mt-3.5 flex h-11 w-fit items-center gap-2 rounded-2xl border-0 px-4 text-[13px] text-ink/80 backdrop-blur-[30px] transition-colors duration-140 hover:text-ink"
-              style={{ background: 'rgba(26,25,22,0.5)', boxShadow: 'inset 0 0 0 1px rgba(239,234,225,0.06)' }}
+              style={{ background: 'rgb(var(--nx-s1-rgb)/0.5)', boxShadow: 'inset 0 0 0 1px rgb(var(--nx-ink-rgb)/0.06)' }}
             >
-              收藏库还是空的 · 去「应用目录」挑几个常用网站
+              还没有收藏 · 从应用商店添加常用网站
               <ArrowRight className="size-4" />
             </button>
           )}
+          {!edit && !privacy.guest && starter.show && (
+            <div role="status" className="mx-auto mt-3.5 flex h-10 w-fit items-center gap-1 rounded-2xl pr-1 pl-4 text-[13px] text-ink/80 backdrop-blur-[30px]" style={{ background: 'rgb(var(--nx-s1-rgb)/0.5)', boxShadow: 'inset 0 0 0 1px rgb(var(--nx-ink-rgb)/0.06)' }}>
+              已为你放好常用网站
+              <button type="button" onClick={() => navigate('/settings/favorites?view=pinned')} className="ml-1 h-8 rounded-lg border-0 bg-transparent px-2 text-[13px] text-amber-hi hover:bg-ink/8">
+                调整
+              </button>
+              <button type="button" onClick={starter.dismiss} aria-label="不再提示" className="grid size-8 place-items-center rounded-lg border-0 bg-transparent text-ink/50 hover:bg-ink/8 hover:text-ink">
+                <X className="size-3.5" />
+              </button>
+            </div>
+          )}
+          {!edit && (
+            <nav aria-label="收藏" className="mt-3 flex flex-wrap items-center justify-center gap-1.5 text-[13px]">
+              <button type="button" onClick={() => navigate('/settings/favorites')} className="flex h-9 items-center gap-2 rounded-xl border-0 bg-transparent px-3 text-ink/72 transition-colors duration-140 hover:bg-ink/8 hover:text-ink">
+                <Bookmark className="size-3.5" />
+                打开我的收藏
+                <ArrowRight className="size-3.5" />
+              </button>
+              {!ro && (
+                <button type="button" onClick={() => openAddFavorite()} className="flex h-9 items-center gap-1.5 rounded-xl border-0 bg-transparent px-3 text-ink/72 transition-colors duration-140 hover:bg-ink/8 hover:text-ink">
+                  <Plus className="size-3.5" />
+                  添加收藏
+                </button>
+              )}
+            </nav>
+          )}
           {edit && (
-            <div className="mt-3.5 flex h-12 animate-pop items-center gap-3.5 rounded-2xl pr-2 pl-[18px] text-[13px] text-ink/78 backdrop-blur-[30px]" style={{ background: 'rgba(26,25,22,0.62)', boxShadow: 'inset 0 0 0 1px rgba(230,192,138,0.28)' }}>
+            <div className="mt-3.5 flex h-12 animate-pop items-center gap-3.5 rounded-2xl pr-2 pl-[18px] text-[13px] text-ink/78 backdrop-blur-[30px]" style={{ background: 'rgb(var(--nx-s1-rgb)/0.62)', boxShadow: 'inset 0 0 0 1px rgb(var(--nx-amber-rgb)/0.28)' }}>
               <span className="font-medium text-ink">编辑首页</span>
               <span>拖动排序 · 点 − 移除 · 键盘 Alt ←→ 移动、Delete 移除</span>
               <span className="flex-1" />
@@ -392,6 +421,7 @@ export function DesktopHome() {
         />
       )}
       <ToastHost variant="desktop" />
+      <LazyFavoriteDialogs />
     </div>
   );
 }

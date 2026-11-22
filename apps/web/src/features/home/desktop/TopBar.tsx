@@ -1,9 +1,11 @@
 import type { StatusSummary, UiSettings } from '@nexus/shared';
-import { Settings } from 'lucide-react';
-import { forwardRef } from 'react';
+import { Moon, Settings, Sun } from 'lucide-react';
+import { forwardRef, type CSSProperties } from 'react';
 import { Link } from 'react-router';
 import { cn } from '../../../lib/cn';
 import { reveal, type Near } from '../../../lib/proximity';
+import { useResolvedTheme } from '../../../lib/theme';
+import { patch } from '../../settings/model';
 import { SpaceBadge } from '../../account/SpaceBadge';
 import { dotStyle, pillStyle } from '../status-style';
 
@@ -22,8 +24,10 @@ interface Props {
 }
 
 /**
- * Logo, navigation, service status and settings, each following 首页显示 (always / on hover /
- * hidden). A failing service is shown whatever the setting says.
+ * Logo, navigation (首页 · 我的收藏), the save status, service status for operators, the theme and
+ * settings — each following 首页显示 (always / on hover / hidden). A failing service is shown whatever
+ * the setting says. UI v2: nothing here names the account (spec 02 N1); 应用目录 is a source of
+ * 添加收藏 now, not a destination of its own.
  */
 export const TopBar = forwardRef<HTMLButtonElement, Props>(function TopBar({ summary, showStatus, statusOpen, breathe, staticRing, ui, near, onToggleStatus, onOpenOverview }, pillRef) {
   const navLink = 'text-ink/60 no-underline transition-colors duration-140 hover:text-ink';
@@ -39,8 +43,12 @@ export const TopBar = forwardRef<HTMLButtonElement, Props>(function TopBar({ sum
       {!left.hidden && (ui.brand || nav) && (
         <div className={cn('flex items-center gap-9', left.className)} style={left.style}>
           {ui.brand && (
-            <div className="flex items-center gap-2.5 text-[15px] font-semibold tracking-[0.01em]">
-              <span className="size-2 rounded-full bg-amber" style={{ boxShadow: '0 0 14px rgba(230,192,138,0.75)' }} />
+            <div className="flex items-center gap-2.5 text-[16px] font-semibold tracking-[-0.01em]">
+              <span aria-hidden className="flex h-5 -rotate-[14deg] items-center gap-[2.5px]">
+                <i className="block h-4 w-1 rounded-[2px] bg-amber" />
+                <i className="block h-5 w-1 rounded-[2px] bg-amber" />
+                <i className="block h-3 w-1 rounded-[2px] bg-amber" />
+              </span>
               Nexus
             </div>
           )}
@@ -52,13 +60,8 @@ export const TopBar = forwardRef<HTMLButtonElement, Props>(function TopBar({ sum
                 </a>
               )}
               {ui.navApps && (
-                <Link to="/library" className={navLink}>
-                  收藏库
-                </Link>
-              )}
-              {ui.navApps && (
-                <Link to="/catalog" className={navLink}>
-                  应用目录
+                <Link to="/settings/favorites" className={navLink}>
+                  我的收藏
                 </Link>
               )}
               {ui.navOverview && showStatus && (
@@ -91,22 +94,23 @@ export const TopBar = forwardRef<HTMLButtonElement, Props>(function TopBar({ sum
         >
           <span
             className={cn('size-[7px] flex-none rounded-full', breathe && 'animate-breathe')}
-            style={{ ...dotStyle(summary.level, 0.5), ...(staticRing ? { boxShadow: '0 0 0 2px rgba(233,118,95,0.4)' } : {}) }}
+            style={{ ...dotStyle(summary.level, 0.5), ...(staticRing ? { boxShadow: '0 0 0 2px rgb(var(--nx-error-rgb)/0.4)' } : {}) }}
           />
           <span>{summary.text}</span>
           {summary.more && <span className="opacity-66">{summary.more}</span>}
         </button>
       )}
       {!where.hidden && <SpaceBadge variant="desktop" className={where.className} style={where.style} />}
+      {!settings.hidden && <ThemeButton className={settings.className} style={settings.style} />}
       {!settings.hidden && (
         <Link
           to="/settings"
           title="设置（,）"
           aria-label="设置"
           className={cn('grid size-9 place-items-center rounded-full text-ink/80 backdrop-blur-[24px] transition-colors duration-140', settings.className)}
-          style={{ background: 'rgba(26,25,22,0.36)', ...settings.style }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(46,43,38,0.6)')}
-          onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(26,25,22,0.36)')}
+          style={{ background: 'rgb(var(--nx-s1-rgb)/0.36)', ...settings.style }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = 'rgb(var(--nx-s5-rgb)/0.6)')}
+          onMouseLeave={(e) => (e.currentTarget.style.background = 'rgb(var(--nx-s1-rgb)/0.36)')}
         >
           <Settings className="size-4" />
         </Link>
@@ -114,3 +118,21 @@ export const TopBar = forwardRef<HTMLButtonElement, Props>(function TopBar({ sum
     </header>
   );
 });
+
+/** 深色 / 浅色 at one click (the choice is the collection's 主题; 跟随系统 is set in 设置). */
+function ThemeButton({ className, style }: { className?: string; style?: CSSProperties }) {
+  const theme = useResolvedTheme();
+  const next = theme === 'dark' ? 'light' : 'dark';
+  return (
+    <button
+      type="button"
+      onClick={() => patch('look', { theme: next })}
+      aria-label={next === 'light' ? '切换到浅色' : '切换到深色'}
+      title={next === 'light' ? '切换到浅色' : '切换到深色'}
+      className={cn('grid size-9 place-items-center rounded-full border-0 text-ink/80 backdrop-blur-[24px] transition-colors duration-140 hover:text-ink', className)}
+      style={{ background: 'rgb(var(--nx-s1-rgb)/0.36)', ...style }}
+    >
+      {theme === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />}
+    </button>
+  );
+}
