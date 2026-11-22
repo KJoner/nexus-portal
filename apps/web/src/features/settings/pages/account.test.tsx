@@ -1,15 +1,17 @@
-import type { PairingRequest } from '@nexus/shared';
+import type { Item, PairingRequest } from '@nexus/shared';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useToastStore } from '../../../components/toast-store';
 import { refresh, resetSync, useConfigStore } from '../../../data/config-store';
+import { useLibrary } from '../../../data/library';
 import { MemoryTransport } from '../../../data/transport';
+import { useFavoriteDialogs } from '../../favorites/dialog-store';
+import { FavoriteEditor } from '../../favorites/FavoriteEditor';
 import { LoginPage } from '../../auth/LoginPage';
 import { AccountSection } from './AccountSection';
 import { AdminAccountsSection } from './AdminAccountsSection';
-import { AppEditor } from './AppEditor';
 import { DevicesSection } from './DevicesSection';
 import { SearchPage } from './SearchPage';
 
@@ -59,10 +61,13 @@ describe('operator tools are offered to the administrator only', () => {
     ['admin', true],
   ] as const)('health checks on a self-hosted service: offered to %s → %s', async (role, offered) => {
     await signInAs(role);
-    open(<AppEditor appId={null} initialName="Jellyfin" initialUrl="https://jellyfin.example.org" onClose={() => undefined} onDelete={() => undefined} />, '/settings/apps');
+    // UI v2: the one editor of 我的收藏; a service opens with its 服务选项 shown.
+    const jf: Item = { id: 'jf', kind: 'app', source: 'manual', catalogId: null, title: 'Jellyfin', url: 'https://jellyfin.example.org', folderId: 'none', tags: [], note: '', iconRef: '', version: 1, pinned: false, position: 1, createdAt: 1, updatedAt: 1, deletedAt: null, importId: null, app: { kind: 'service' } };
+    useLibrary.setState({ status: 'ready', owner: 'test', items: { jf }, pins: [], folders: [] });
+    useFavoriteDialogs.setState({ edit: 'jf', add: null });
+    open(<FavoriteEditor />, '/settings/favorites');
     await screen.findByRole('textbox', { name: /名称/ });
-    await userEvent.setup().click(screen.getByRole('radio', { name: /自托管服务/ }));
-    expect(!!screen.queryByRole('switch', { name: '健康检查' })).toBe(offered);
+    expect(!!screen.queryByRole('switch', { name: '检查服务状态' })).toBe(offered);
   });
 });
 

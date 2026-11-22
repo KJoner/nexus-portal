@@ -31,8 +31,8 @@ const MODE_SUB: Record<Shortcuts['mode'], string> = {
   double: '扩展区始终展开显示',
 };
 
-const whereStyle = { both: 'bg-ink/7 text-ink/66', one: 'bg-warn/13 text-[#f1c690]', none: 'bg-error/13 text-[#f4b2a3]' };
-const whereText = { both: 'text-ink/50', one: 'text-[#f1c690]', none: 'text-[#f4b2a3]' };
+const whereStyle = { both: 'bg-ink/7 text-ink/66', one: 'bg-warn/13 text-[var(--nx-warn-ink)]', none: 'bg-error/13 text-[var(--nx-danger-soft)]' };
+const whereText = { both: 'text-ink/50', one: 'text-[var(--nx-warn-ink)]', none: 'text-[var(--nx-danger-soft)]' };
 
 function PinRow({ app, index, count, where }: { app: AppEntry; index: number; count: number; where: Where }) {
   const compact = useCompact();
@@ -99,7 +99,7 @@ function AddShortcut() {
   const ref = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const list = config.apps.filter((a) => a.kind === 'site' && !a.hidden && !config.pins.includes(a.id) && (!q.trim() || (a.name + a.url).toLowerCase().includes(q.trim().toLowerCase())));
-  const catLabel = (id: string) => config.categories.find((c) => c.id === id)?.label ?? '未分类';
+  const catLabel = (id: string) => config.categories.find((c) => c.id === id)?.label ?? '未分组';
 
   useEffect(() => {
     if (!open) return;
@@ -123,7 +123,7 @@ function AddShortcut() {
       {open && (
         <div
           className={cn('absolute z-5 animate-[nx-pop_.14s_var(--ease-soft)] rounded-2xl p-2', compact ? 'right-2 bottom-full left-2 mb-1' : 'top-[52px] left-3 w-[340px]')}
-          style={{ background: 'rgba(40,38,34,0.97)', boxShadow: '0 24px 60px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.07)' }}
+          style={{ background: 'rgb(var(--nx-s4-rgb)/0.97)', boxShadow: '0 24px 60px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.07)' }}
           onKeyDown={(e) => {
             if (e.key === 'Escape') {
               e.stopPropagation();
@@ -174,7 +174,7 @@ function Preview({ device }: { device: 'pc' | 'mobile' }) {
   if (device === 'pc') {
     const items = [...pins.slice(0, home.dockSize).map((a) => ({ a, sep: false })), ...services.map((a) => ({ a, sep: false }))];
     return (
-      <div className="box-border w-[416px] rounded-2xl px-3 pt-3.5 pb-3" style={{ background: 'rgba(26,25,22,0.6)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.07)' }}>
+      <div className="box-border w-[416px] rounded-2xl px-3 pt-3.5 pb-3" style={{ background: 'rgb(var(--nx-s1-rgb)/0.6)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.07)' }}>
         <div className="flex h-[30px] items-center border-b border-ink/8 px-1.5 text-[11px] text-ink/46">搜索、输入网址，或打开应用</div>
         <div className="flex justify-center gap-[3px] pt-3.5">
           {items.map(({ a }, i) => (
@@ -208,7 +208,7 @@ function Preview({ device }: { device: 'pc' | 'mobile' }) {
   const grid = [...pins.slice(0, mobileCap), ...services].slice(0, home.mobileRows * 4);
   const empty = home.mobileRows * 4 - grid.length;
   return (
-    <div className="box-border w-[208px] rounded-[22px] px-2.5 py-3" style={{ background: 'rgba(26,25,22,0.6)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.07)' }}>
+    <div className="box-border w-[208px] rounded-[22px] px-2.5 py-3" style={{ background: 'rgb(var(--nx-s1-rgb)/0.6)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.07)' }}>
       <div className="grid grid-cols-4 justify-items-center gap-y-2.5">
         {grid.map((a) => (
           <span key={a.id} className="flex flex-col items-center gap-1">

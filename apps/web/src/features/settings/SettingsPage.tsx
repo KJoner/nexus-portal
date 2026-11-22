@@ -1,10 +1,13 @@
 import '@fontsource/jetbrains-mono/400.css';
-import { ArrowLeft, Check, ChevronLeft, ChevronRight, Plus, Search, SlidersHorizontal } from 'lucide-react';
+import { ArrowLeft, Check, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen, Plus, Search, SlidersHorizontal } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { PageBackdrop as Backdrop } from '../../components/PageBackdrop';
 import { ToastHost } from '../../components/ToastHost';
 import { useConfig, useConfigStore, useSaveState } from '../../data/config-store';
+import { useLibrary } from '../../data/library';
+import { openAddFavorite } from '../favorites/dialog-store';
+import { FavoritesWorkspace } from '../favorites/FavoritesWorkspace';
 import { cn } from '../../lib/cn';
 import { host } from '../../lib/host';
 import { useViewport } from '../../lib/hooks';
@@ -14,7 +17,6 @@ import { lookDiff, useLookDraft } from './look-draft';
 import { attention, GROUPS, groupOf, groupSummary, isPage, pageOf, searchIndex, summaries, whereIs, type GroupId, type PageId } from './model';
 import { AccountPage } from './pages/AccountPage';
 import { AppearancePage } from './pages/AppearancePage';
-import { AppsPage } from './pages/AppsPage';
 import { DataPage } from './pages/DataPage';
 import { DisplayPage } from './pages/DisplayPage';
 import { HomeLayoutPage } from './pages/HomeLayoutPage';
@@ -26,7 +28,7 @@ const PAGE_VIEW: Record<PageId, () => ReactNode> = {
   appearance: () => <AppearancePage />,
   display: () => <DisplayPage />,
   home: () => <HomeLayoutPage />,
-  apps: () => <AppsPage />,
+  favorites: () => <FavoritesWorkspace />,
   search: () => <SearchPage />,
   account: () => <AccountPage />,
   data: () => <DataPage />,
@@ -37,6 +39,12 @@ const PAGE_VIEW: Record<PageId, () => ReactNode> = {
 const firstPage = (g: GroupId) => GROUPS.find((x) => x.id === g)!.pages[0]!;
 const MAIN = GROUPS.filter((g) => !g.manage);
 const MANAGE = GROUPS.filter((g) => g.manage);
+/** 我的收藏 counted from the whole collection once it is loaded (the home view only lists part of it). */
+function useFavoritesCount(fallback: number): number {
+  const ready = useLibrary((s) => s.status === 'ready');
+  const n = useLibrary((s) => (s.status === 'ready' ? Object.values(s.items).filter((i) => i.deletedAt === null).length : 0));
+  return ready ? n : fallback;
+}
 
 /**
  * 一组里的几页（首页与外观：壁纸与主题 / 首页显示 / 快捷方式），用页内分页切换。每页仍是自己的地址，
@@ -126,11 +134,11 @@ function Overview({ onGo }: { onGo(page: PageId, edit?: string): void }) {
     <div className="flex max-w-[880px] flex-col gap-7">
       <div className="flex flex-col gap-2">
         <h1 className="m-0 text-[28px] font-medium tracking-[-0.01em]">设置</h1>
-        <p className="m-0 text-[14px] leading-[1.7] text-ink/56">首页与外观、搜索、账号与同步、数据与备份、隐私与展示。开关类设置即时保存；壁纸与主题在预览确认后应用；网站编辑需要手动保存。</p>
+        <p className="m-0 text-[14px] leading-[1.7] text-ink/56">首页与外观、搜索、我的收藏、账号与同步、数据与备份、隐私与展示。开关类设置即时保存；壁纸与主题在预览确认后应用；收藏的编辑点「保存」后生效。</p>
       </div>
       <div className="grid grid-cols-2 gap-4">
         {[...MAIN, ...MANAGE].map((g) => (
-          <button key={g.id} type="button" onClick={() => onGo(firstPage(g.id))} className="flex items-start gap-4 rounded-[20px] border-0 bg-ink/[0.045] p-5 text-left text-ink shadow-[inset_0_0_0_1px_rgba(239,234,225,0.05)] transition-colors duration-140 hover:bg-ink/8">
+          <button key={g.id} type="button" onClick={() => onGo(firstPage(g.id))} className="flex items-start gap-4 rounded-[20px] border-0 bg-ink/[0.045] p-5 text-left text-ink shadow-[inset_0_0_0_1px_rgb(var(--nx-ink-rgb)/0.05)] transition-colors duration-140 hover:bg-ink/8">
             <span className="grid size-10 flex-none place-items-center rounded-xl bg-ink/8">
               <g.icon className="size-[18px] text-amber" />
             </span>
@@ -145,7 +153,7 @@ function Overview({ onGo }: { onGo(page: PageId, edit?: string): void }) {
       {attn.length > 0 && (
         <div className="flex flex-col gap-2.5">
           <span className="px-1 text-[12.5px] font-medium text-ink/52">需要注意</span>
-          <div className="flex flex-col divide-y divide-ink/6 rounded-[20px] bg-ink/[0.045] shadow-[inset_0_0_0_1px_rgba(239,234,225,0.05)]">
+          <div className="flex flex-col divide-y divide-ink/6 rounded-[20px] bg-ink/[0.045] shadow-[inset_0_0_0_1px_rgb(var(--nx-ink-rgb)/0.05)]">
             {attn.map((t) => (
               <div key={t.key} className="flex min-h-16 items-center gap-4 px-5 py-3">
                 <span className="size-2 flex-none rounded-full" style={{ background: t.dot }} />
@@ -153,7 +161,7 @@ function Overview({ onGo }: { onGo(page: PageId, edit?: string): void }) {
                   <span className="text-[14.5px]">{t.title}</span>
                   <span className="text-[12.5px] text-ink/50">{t.sub}</span>
                 </span>
-                <button type="button" onClick={() => onGo('apps', t.appId)} className="h-[34px] rounded-[10px] border-0 bg-ink/9 px-3.5 text-[13px] text-ink hover:bg-ink/15">
+                <button type="button" onClick={() => onGo('favorites', t.appId)} className="h-[34px] rounded-[10px] border-0 bg-ink/9 px-3.5 text-[13px] text-ink hover:bg-ink/15">
                   {t.action}
                 </button>
               </div>
@@ -168,9 +176,15 @@ function Overview({ onGo }: { onGo(page: PageId, edit?: string): void }) {
 function DesktopShell({ page }: { page: PageId | null }) {
   const navigate = useNavigate();
   const config = useConfig();
+  const { w } = useViewport();
   const [q, setQ] = useState('');
   const hits = searchIndex(q);
-  const counts: Partial<Record<GroupId, number>> = { apps: config.apps.length, search: config.engines.length };
+  const favorites = useFavoritesCount(config.apps.length);
+  const counts: Partial<Record<GroupId, number>> = { favorites, search: config.engines.length };
+  // UI v2 (spec 01 §3): 我的收藏 needs its tree and list wide; at <= 1280 px the settings navigation folds to icons.
+  const wide = page === 'favorites';
+  const [folded, setFolded] = useState<boolean | null>(null);
+  const fold = folded ?? (wide && w <= 1280);
   const here = page ? groupOf(page).id : null;
   const go = (p: PageId | null, edit?: string) => {
     setQ('');
@@ -179,7 +193,7 @@ function DesktopShell({ page }: { page: PageId | null }) {
   return (
     <div className="fixed inset-0 overflow-clip bg-base">
       <Backdrop />
-      <div className="absolute inset-0 grid grid-cols-[264px_minmax(0,1fr)] grid-rows-[64px_minmax(0,1fr)]">
+      <div className={cn('absolute inset-0 grid grid-rows-[64px_minmax(0,1fr)]', fold ? 'grid-cols-[72px_minmax(0,1fr)]' : 'grid-cols-[264px_minmax(0,1fr)]')}>
         <header className="col-span-2 flex items-center gap-4 border-b border-ink/6 pr-7 pl-5">
           <Link to="/" className="flex h-9 items-center gap-2 rounded-[10px] pr-3 pl-2 text-[13.5px] text-ink/78 no-underline transition-colors duration-140 hover:bg-ink/8">
             <ArrowLeft className="size-4" />
@@ -187,12 +201,24 @@ function DesktopShell({ page }: { page: PageId | null }) {
           </Link>
           <span className="h-[18px] w-px bg-ink/12" />
           <span className="flex items-center gap-[9px] text-[15px] font-semibold">
-            <span className="size-2 rounded-full bg-amber" style={{ boxShadow: '0 0 12px rgba(230,192,138,0.7)' }} />
+            <span className="size-2 rounded-full bg-amber" style={{ boxShadow: '0 0 12px rgb(var(--nx-amber-rgb)/0.7)' }} />
             Nexus 设置
           </span>
           <span className="flex-1" />
           <SaveIndicator />
+          <button type="button" onClick={() => setFolded(!fold)} aria-label={fold ? '展开设置导航' : '收起设置导航'} aria-pressed={fold} className="grid size-9 place-items-center rounded-[10px] border-0 bg-transparent text-ink/66 hover:bg-ink/8 hover:text-ink">
+            {fold ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
+          </button>
         </header>
+        {fold ? (
+          <nav aria-label="设置分组" className="flex min-h-0 flex-col items-center gap-1 border-r border-ink/6 py-5">
+            {[...MAIN, ...MANAGE].map((g) => (
+              <button key={g.id} type="button" onClick={() => go(firstPage(g.id))} aria-current={here === g.id ? 'page' : undefined} aria-label={g.label} title={g.label} className={cn('grid size-11 place-items-center rounded-xl border-0', here === g.id ? 'bg-ink/10 text-ink' : 'bg-transparent text-ink/62 hover:bg-ink/7')}>
+                <g.icon className="size-[18px]" />
+              </button>
+            ))}
+          </nav>
+        ) : (
         <nav aria-label="设置分组" className="flex min-h-0 flex-col gap-1 border-r border-ink/6 px-4 py-5">
           <div className="mb-3 flex h-10 items-center gap-[9px] rounded-xl bg-ink/6 px-3">
             <Search className="size-3.5 flex-none text-ink/50" />
@@ -228,7 +254,7 @@ function DesktopShell({ page }: { page: PageId | null }) {
               {MAIN.map((g) => (
                 <NavItem key={g.id} current={here === g.id} onClick={() => go(firstPage(g.id))} icon={<g.icon className="size-4" />} label={g.label} count={counts[g.id]} />
               ))}
-              <div className="mx-3 mt-3 mb-1 text-[11.5px] text-ink/42">管理</div>
+              {MANAGE.length > 0 && <div className="mx-3 mt-3 mb-1 text-[11.5px] text-ink/42">管理</div>}
               {MANAGE.map((g) => (
                 <NavItem key={g.id} current={here === g.id} onClick={() => go(firstPage(g.id))} icon={<g.icon className="size-4" />} label={g.label} count={counts[g.id]} />
               ))}
@@ -237,9 +263,10 @@ function DesktopShell({ page }: { page: PageId | null }) {
           <span className="flex-1" />
           <span className="px-3 text-[12px] leading-[1.6] text-ink/42">按 esc 关闭面板与对话框</span>
         </nav>
+        )}
         <div className="relative min-h-0">
           <div className="absolute inset-0 overflow-x-hidden overflow-y-auto" id="nx-settings-scroll">
-            <div className="box-border flex flex-col gap-7 px-12 pt-9 pb-36">
+            <div className={cn('box-border flex flex-col gap-7', wide ? 'px-8 pt-7 pb-16' : 'px-12 pt-9 pb-36')}>
               {page ? (
                 <>
                   <GroupTabs page={page} />
@@ -303,7 +330,7 @@ function MobileRoot() {
         </div>
       ) : (
         <>
-          {[MAIN, MANAGE].map((list, i) => (
+          {[MAIN, MANAGE].filter((l) => l.length).map((list, i) => (
             <div key={i} className="flex flex-col gap-2">
               {i > 0 && <span className="px-4 text-[13px] text-ink/50">管理</span>}
               <div className="flex flex-col divide-y divide-ink/7 overflow-hidden rounded-2xl bg-ink/6">
@@ -327,7 +354,7 @@ function MobileRoot() {
               <span className="px-4 text-[13px] text-ink/50">需要注意</span>
               <div className="flex flex-col divide-y divide-ink/7 overflow-hidden rounded-2xl bg-ink/6">
                 {attn.map((t) => (
-                  <button key={t.key} type="button" onClick={() => navigate(`/settings/apps?edit=${t.appId}`)} className="flex min-h-[60px] items-center gap-3 border-0 bg-transparent px-4 py-2.5 text-left text-ink active:bg-ink/10">
+                  <button key={t.key} type="button" onClick={() => navigate(`/settings/favorites?edit=${encodeURIComponent(t.appId)}`)} className="flex min-h-[60px] items-center gap-3 border-0 bg-transparent px-4 py-2.5 text-left text-ink active:bg-ink/10">
                     <span className="size-2 flex-none rounded-full" style={{ background: t.dot }} />
                     <span className="flex flex-1 flex-col gap-0.5">
                       <span className="text-[15px]">{t.title}</span>
@@ -348,14 +375,11 @@ function MobileRoot() {
 
 function MobileShell({ page }: { page: PageId | null }) {
   const navigate = useNavigate();
-  const [params] = useSearchParams();
-  const config = useConfig();
-  const editing = page === 'apps' && (params.has('edit') || params.has('new'));
-  const editApp = editing ? config.apps.find((a) => a.id === params.get('edit')) : undefined;
   const [scrolled, setScrolled] = useState(false);
-  // An existing site's address and title are edited in 收藏库 (U2b): here only how it shows on the home page.
-  const title = editing ? (editApp ? (editApp.kind === 'site' ? `首页显示 · ${editApp.name}` : `编辑 ${editApp.name}`) : '添加网站') : page ? groupOf(page).label : '';
-  const back = editing ? { label: '网站与服务', to: '/settings/apps' } : page ? { label: '设置', to: '/settings' } : null;
+  const editing = false;
+  // UI v2: 我的收藏 edits and adds in dialogs on the same page (no separate editing route).
+  const title = page ? groupOf(page).label : '';
+  const back = page ? { label: '设置', to: '/settings' } : null;
 
   useEffect(() => setScrolled(false), [page, editing]);
 
@@ -364,7 +388,7 @@ function MobileShell({ page }: { page: PageId | null }) {
       <Backdrop />
       <div
         className="absolute inset-x-0 z-5 flex h-12 items-center px-2 backdrop-blur-[24px] transition-colors duration-200"
-        style={{ top: 'env(safe-area-inset-top)', background: scrolled ? 'rgba(27,26,23,0.72)' : 'transparent' }}
+        style={{ top: 'env(safe-area-inset-top)', background: scrolled ? 'rgb(var(--nx-s1-rgb)/0.72)' : 'transparent' }}
       >
         {back ? (
           <button type="button" onClick={() => navigate(back.to)} className="flex h-11 min-w-11 items-center gap-0.5 border-0 bg-transparent pr-2.5 pl-1 text-[16px] text-amber-hi">
@@ -381,8 +405,8 @@ function MobileShell({ page }: { page: PageId | null }) {
           {title || '设置'}
         </span>
         <span className="flex-1" />
-        {page === 'apps' && !editing && (
-          <button type="button" onClick={() => navigate('/settings/apps?new=')} aria-label="添加网站" className="grid size-11 place-items-center border-0 bg-transparent text-amber-hi">
+        {page === 'favorites' && (
+          <button type="button" onClick={() => openAddFavorite()} aria-label="添加收藏" className="grid size-11 place-items-center border-0 bg-transparent text-amber-hi">
             <Plus className="size-[22px]" />
           </button>
         )}
@@ -418,6 +442,17 @@ export default function SettingsPage() {
   // (identity claim: /settings/data?linked=1 | ?auth_error=…; an extension's pairing: ?pair=…) land there.
   useEffect(() => {
     if (page === 'data' && (params.has('linked') || params.has('auth_error') || params.has('pair'))) navigate(`/settings/account?${params}`, { replace: true });
+    // UI v2: 网站与服务 is 我的收藏 now. ?edit=<id> opens the same editor; ?new=<name>&url=<address> the add dialog, prefilled.
+    if (page === 'apps') {
+      const next = new URLSearchParams();
+      if (params.get('edit')) next.set('edit', params.get('edit')!);
+      else if (params.has('new')) {
+        next.set('add', 'manual');
+        if (params.get('new')) next.set('title', params.get('new')!);
+        if (params.get('url')) next.set('url', params.get('url')!);
+      }
+      navigate(`/settings/favorites${next.size ? `?${next}` : ''}`, { replace: true });
+    }
   }, [page, params, navigate]);
   const compact = !(w >= 900 && h >= 560);
   useEffect(() => {

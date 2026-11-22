@@ -27,7 +27,7 @@ function configCounts(c: Config) {
   return [
     { n: c.apps.filter((a) => a.kind === 'site').length, label: '网站' },
     { n: c.apps.filter((a) => a.kind === 'service').length, label: '自托管服务' },
-    { n: c.categories.length, label: '分类' },
+    { n: c.categories.length, label: '分组' },
     { n: c.engines.length, label: '搜索引擎' },
   ];
 }
@@ -216,7 +216,7 @@ export function DataPage() {
         onOpenChange={(o) => !o && setImporting(null)}
         width={480}
         title={importing ? `导入「${importing.name}」？` : ''}
-        description="导入会替换当前的应用、分类、搜索引擎、首页与外观设置。"
+        description="导入会替换当前的首页快捷方式、分组、搜索引擎、首页与外观设置。"
         footer={
           <>
             <Button className="h-10 px-[18px]" onClick={() => setImporting(null)}>
@@ -263,7 +263,7 @@ export function DataPage() {
             placeholder="输入「重置」以确认"
             aria-label="输入重置以确认"
             className="box-border h-11 rounded-xl border-0 px-3.5 text-[14px] text-ink caret-amber outline-none"
-            style={{ background: 'rgba(239,234,225,0.06)', boxShadow: 'inset 0 0 0 1px rgba(233,118,95,0.4)', fontSize: compact ? 16 : undefined }}
+            style={{ background: 'rgb(var(--nx-ink-rgb)/0.06)', boxShadow: 'inset 0 0 0 1px rgb(var(--nx-error-rgb)/0.4)', fontSize: compact ? 16 : undefined }}
           />
         )}
       </Dialog>
@@ -294,7 +294,7 @@ export function DataPage() {
           placeholder="输入「删除」以确认"
           aria-label="输入删除以确认"
           className="box-border h-11 rounded-xl border-0 px-3.5 text-[14px] text-ink caret-amber outline-none"
-          style={{ background: 'rgba(239,234,225,0.06)', boxShadow: 'inset 0 0 0 1px rgba(233,118,95,0.4)', fontSize: compact ? 16 : undefined }}
+          style={{ background: 'rgb(var(--nx-ink-rgb)/0.06)', boxShadow: 'inset 0 0 0 1px rgb(var(--nx-error-rgb)/0.4)', fontSize: compact ? 16 : undefined }}
         />
       </Dialog>
     </div>

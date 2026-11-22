@@ -2,13 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { returnedWithout } from '../auth/LoginPage';
 import { GROUPS, groupOf, isPage, searchIndex, whereIs } from './model';
 
-// U2b（01-UX-PLAN §3.1、06-ACCEPTANCE A08）：设置收成五组，旧的菜单名仍能找到新位置。
-describe('设置的五组', () => {
-  it('五组之外只有管理用的「网站与服务」；首页与外观一组三页，地址不变', () => {
-    expect(GROUPS.filter((g) => !g.manage).map((g) => g.label)).toEqual(['首页与外观', '搜索', '账号与同步', '数据与备份', '隐私与展示']);
-    expect(GROUPS.filter((g) => g.manage).map((g) => g.label)).toEqual(['网站与服务']);
+// UI v2（v12.0.3，spec 01 §3、06 A06/A08）：设置六组，「我的收藏」取代「网站与服务」；旧的菜单名仍能找到新位置。
+describe('设置的六组', () => {
+  it('首页与外观 / 搜索 / 我的收藏 / 账号与同步 / 数据与备份 / 隐私与展示；首页与外观一组三页，地址不变', () => {
+    expect(GROUPS.filter((g) => !g.manage).map((g) => g.label)).toEqual(['首页与外观', '搜索', '我的收藏', '账号与同步', '数据与备份', '隐私与展示']);
+    expect(GROUPS.filter((g) => g.manage)).toEqual([]);
     expect(groupOf('appearance').pages).toEqual(['appearance', 'display', 'home']);
-    for (const old of ['appearance', 'display', 'home', 'apps', 'data']) expect(isPage(old)).toBe(true);
+    for (const old of ['appearance', 'display', 'home', 'favorites', 'data']) expect(isPage(old)).toBe(true);
+    // 网站与服务 (/settings/apps) is no page any more: the settings page sends it to /settings/favorites.
+    expect(isPage('apps')).toBe(false);
     expect(whereIs('home')).toBe('首页与外观 › 快捷方式');
     expect(whereIs('privacy')).toBe('隐私与展示');
   });
@@ -20,6 +22,8 @@ describe('设置的五组', () => {
     expect(first('首页与快捷方式')).toBe('home');
     expect(first('访客模式')).toBe('privacy');
     expect(searchIndex('数据、同步与安全').map((h) => h.page)).toContain('account');
+    // spec copy.json legacyAliases: 收藏库 / 网站与服务 / 应用目录 / 管理分类 → 我的收藏
+    for (const q of ['收藏库', '网站与服务', '应用目录', '分类管理']) expect(first(q)).toBe('favorites');
   });
 });
 

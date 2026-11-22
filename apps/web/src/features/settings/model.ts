@@ -1,25 +1,25 @@
-import { homeCapacity, pinnedSites, shownServices, type Config, type Op, type SettingsSection } from '@nexus/shared';
-import { DatabaseBackup, EyeOff, LayoutGrid, Palette, Search, UserRound, type LucideIcon } from 'lucide-react';
+import { homeCapacity, pinnedSites, UNFILED, type Config, type Op, type SettingsSection } from '@nexus/shared';
+import { Bookmark, DatabaseBackup, EyeOff, Palette, Search, UserRound, type LucideIcon } from 'lucide-react';
 import { toast } from '../../components/toast-store';
 import { dispatch } from '../../data/config-store';
 import type { WallpaperEntry } from '../home/Wallpaper';
 
-export type PageId = 'appearance' | 'display' | 'home' | 'apps' | 'search' | 'account' | 'data' | 'privacy';
-export type GroupId = 'look' | 'search' | 'account' | 'data' | 'privacy' | 'apps';
+export type PageId = 'appearance' | 'display' | 'home' | 'favorites' | 'search' | 'account' | 'data' | 'privacy';
+export type GroupId = 'look' | 'search' | 'favorites' | 'account' | 'data' | 'privacy';
 
 /**
- * 设置的五组（v0.5 · U2b，01-UX-PLAN §3.1、审查 7.2）：首页与外观 / 搜索 / 账号与同步 / 数据与备份 /
- * 隐私与展示，加上管理用的「网站与服务」。「首页与外观」一组三页（壁纸与主题、首页显示、快捷方式），
- * 用页内分页切换；每页的地址不变（/settings/appearance、/display、/home），旧链接照常打开（A08）。
+ * 设置的六组（UI v2 · v12.0.3，spec 01 §3）：首页与外观 / 搜索 / 我的收藏 / 账号与同步 / 数据与备份 /
+ * 隐私与展示。「我的收藏」取代原来的「网站与服务」：首页的「我的收藏」打开的就是这一页（同一个组件、
+ * 同一份数据、同一个编辑器）。「首页与外观」一组三页用页内分页切换；每页的地址不变，旧链接照常打开。
  */
 export const GROUPS: { id: GroupId; label: string; icon: LucideIcon; pages: PageId[]; manage?: true }[] = [
   { id: 'look', label: '首页与外观', icon: Palette, pages: ['appearance', 'display', 'home'] },
   { id: 'search', label: '搜索', icon: Search, pages: ['search'] },
+  { id: 'favorites', label: '我的收藏', icon: Bookmark, pages: ['favorites'] },
   // v0.5: who is signed in and where data goes is one task; backups another (01-UX-PLAN §7).
   { id: 'account', label: '账号与同步', icon: UserRound, pages: ['account'] },
   { id: 'data', label: '数据与备份', icon: DatabaseBackup, pages: ['data'] },
   { id: 'privacy', label: '隐私与展示', icon: EyeOff, pages: ['privacy'] },
-  { id: 'apps', label: '网站与服务', icon: LayoutGrid, pages: ['apps'], manage: true },
 ];
 
 /** Every page: its title, its name inside its group (a tab, and the phone's title bar), and its group. */
@@ -31,7 +31,7 @@ export const PAGES: { id: PageId; label: string; group: GroupId }[] = [
   { id: 'account', label: '账号与同步', group: 'account' },
   { id: 'data', label: '数据与备份', group: 'data' },
   { id: 'privacy', label: '隐私与展示', group: 'privacy' },
-  { id: 'apps', label: '网站与服务', group: 'apps' },
+  { id: 'favorites', label: '我的收藏', group: 'favorites' },
 ];
 
 export const pageOf = (id: PageId) => PAGES.find((p) => p.id === id)!;
@@ -64,10 +64,13 @@ export const INDEX: { page: PageId; label: string; kw: string }[] = [
   ['home', '首页快捷方式', '固定 排序 移除 dock'],
   ['home', '布局偏好', 'dock 数量 手机行数 标签 名称'],
   ['home', '已隐藏的应用', '恢复 隐藏'],
-  ['apps', '添加网站', '新增 新增应用 应用与服务 名称 网址 图标 添加'],
-  ['apps', '分类管理', '分类 重命名'],
-  ['apps', '健康检查', '监测 状态'],
-  ['apps', '内外网地址', '内网 外网 局域网 lan'],
+  // UI v2: 旧名称（收藏库、网站与服务、应用目录、分类）仍能搜到「我的收藏」（spec copy.json legacyAliases）
+  ['favorites', '我的收藏', '收藏库 网站与服务 网站 收藏 书签 应用 服务'],
+  ['favorites', '添加收藏', '添加网站 新增 新增应用 名称 网址 图标 添加'],
+  ['favorites', '应用商店', '应用目录 目录 常用网站 推荐'],
+  ['favorites', '管理分组', '分类管理 分类 分组 子分组 重命名 未分组 未分类'],
+  ['favorites', '服务选项与服务状态', '健康检查 监测 状态 内网 外网 局域网 lan 内外网地址 自托管'],
+  ['favorites', '导入书签', '导入 导出 书签 html 回收站'],
   ['search', '默认搜索引擎', 'google bing duckduckgo'],
   ['search', '自定义引擎', '%s 前缀'],
   ['search', '搜索历史', '历史 清除 最近'],
@@ -97,17 +100,15 @@ const PRESET = { daily: '日常模式', minimal: '极简模式', custom: '自定
 
 export function summaries(c: Config, wp: WallpaperEntry, sync: string, data = '导出、导入与重置'): Record<PageId, string> {
   const pr = c.settings.privacy;
-  const sites = c.apps.filter((a) => a.kind === 'site');
-  const services = c.apps.filter((a) => a.kind === 'service');
-  const hidden = c.apps.filter((a) => a.hidden).length;
   const engine = c.engines.find((e) => e.id === c.settings.search.defaultEngine);
   const pins = pinnedSites(c).length;
   const cap = homeCapacity(c);
+  const groups = c.categories.filter((k) => k.id !== UNFILED).length;
   return {
     appearance: `${c.settings.look.rotation.mode === 'potd' ? '' : `${wp.name} · `}${ROTATION[c.settings.look.rotation.mode]} · 动画${MOTION[c.settings.look.motion]}`,
     display: `${PRESET[c.settings.ui.preset]} · 搜索面板 ${c.settings.ui.desktop.searchWidth}px`,
-    home: `桌面 ${Math.min(pins, cap.desktop)} 个网站 + ${shownServices(c).length} 个服务 · 手机 ${c.settings.home.mobileRows} 行`,
-    apps: `${sites.length} 个网站、${services.length} 个自托管服务${hidden ? ` · ${hidden} 个已隐藏` : ''}`,
+    home: `首页 ${pins} 个快捷方式（桌面首排 ${Math.min(pins, cap.desktop)} 个）· 手机 ${c.settings.home.mobileRows} 行`,
+    favorites: `${groups} 个分组 · ${pins} 个固定到首页`,
     search: `默认 ${engine?.name ?? '—'} · ${c.engines.length} 个引擎 · 历史${c.settings.search.history ? '开启' : '关闭'}`,
     account: sync,
     data,
@@ -134,7 +135,7 @@ export interface Attention {
 export function attention(c: Config): Attention[] {
   const out: Attention[] = [];
   for (const a of c.apps.filter((x) => x.kind === 'service' && !x.hidden)) {
-    if (!a.health.enabled) out.push({ key: `${a.id}:health`, title: `${a.name} 没有开启健康检查`, sub: '首页会显示为「未监测」，无法提示故障', action: '去开启', dot: 'rgba(239,234,225,0.5)', appId: a.id });
+    if (!a.health.enabled) out.push({ key: `${a.id}:health`, title: `${a.name} 没有开启健康检查`, sub: '首页会显示为「未监测」，无法提示故障', action: '去开启', dot: 'rgb(var(--nx-ink-rgb)/0.5)', appId: a.id });
     if (!a.lanUrl) out.push({ key: `${a.id}:lan`, title: `${a.name} 没有内网地址`, sub: '在家中访问时会绕道外网；填写后可选择默认打开内网', action: '编辑', dot: '#e3a35b', appId: a.id });
   }
   return out;

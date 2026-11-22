@@ -7,16 +7,16 @@ import { localImageHook, localWallpaperHook } from '../data/local/assets';
 import { webLocalTransport } from '../data/local/web';
 import { forgetSignIn, signInIntent, takeNotice } from '../data/workspace';
 import { AUTH_ERRORS, LoginPage } from '../features/auth/LoginPage';
+import { LegacyCatalogRedirect, LegacyLibraryRedirect } from '../features/favorites/redirects';
 import { HomePage } from '../features/home/HomePage';
 import { Wallpaper } from '../features/home/Wallpaper';
 import { configureHost } from '../lib/host';
 import { useMotionLevel, useViewport } from '../lib/hooks';
 import { preloadPinyin } from '../lib/pinyin';
 import { storage } from '../lib/storage';
+import { ThemeRoot } from '../lib/theme';
 
 const SettingsPage = lazy(() => import('../features/settings/SettingsPage'));
-const CatalogPage = lazy(() => import('../features/catalog/CatalogPage'));
-const LibraryPage = lazy(() => import('../features/library/LibraryPage'));
 const ConnectPage = lazy(() => import('../features/account/ConnectPage'));
 
 /**
@@ -35,8 +35,9 @@ const lazyPage = (el: ReactNode) => <Suspense fallback={<div className="fixed in
 const router = createBrowserRouter([
   { path: '/', element: <HomePage /> },
   { path: '/settings/:page?', element: lazyPage(<SettingsPage />) },
-  { path: '/library', element: lazyPage(<LibraryPage />) },
-  { path: '/catalog', element: lazyPage(<CatalogPage />) },
+  // UI v2: 收藏库 and 应用目录 are 我的收藏 (and its 添加收藏 › 应用商店); old links keep working.
+  { path: '/library', element: <LegacyLibraryRedirect /> },
+  { path: '/catalog', element: <LegacyCatalogRedirect /> },
   { path: '/account/connect', element: lazyPage(<ConnectPage />) },
   { path: '*', element: <HomePage /> },
 ]);
@@ -157,6 +158,7 @@ export function App() {
   return (
     <ErrorBoundary>
       <MotionRoot />
+      <ThemeRoot />
       <SpaceGate>
         <RouterProvider router={router} />
       </SpaceGate>
