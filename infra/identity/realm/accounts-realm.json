@@ -71,7 +71,7 @@
   "clients": [
     {
       "clientId": "nexus-web",
-      "name": "Nexus Portal",
+      "name": "Nexus",
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": false,

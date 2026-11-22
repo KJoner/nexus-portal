@@ -208,7 +208,7 @@ docker compose exec -T postgres pg_dump -U postgres -Fc nexus    > nexus-$(date 
   - `resources/css/accounts.css`：72 px 页头（标志、账号中心、LiteSync & Nexus、返回产品、账号菜单）、240 px 左导航、930 px 以内的标题和卡片，与登录页同一套颜色变量；窄于 1200 px 时导航变成主区上方一直可见的页签（不再收进汉堡菜单）。强调色默认中性墨色，从 LiteSync / Nexus 打开时换成该产品的颜色。
   - `resources/js/console.js`（`scripts=`，以 module 加载）：①只在 Keycloak 核对过 referrer（页面 environment 里有 `referrerName`）且是我们两个 client 时，在 `<html>` 上标 `data-ac-product`；②沿用登录页选过的深浅色（localStorage `ac-theme`）；③窄屏下去掉导航容器的 `aria-hidden` 和链接的 `tabindex="-1"`（PatternFly「菜单收起」时加的，页签一直可见，不能让读屏和键盘到不了）；④给窄屏页头里没有名字的账号菜单按钮补 `aria-label`。不读写 Cookie、令牌，不发请求，不改 React 渲染的内容。
   - `messages/*`：「账号 / 登录」用词，「返回 {{app}}」，登录与安全、网页登录页的字段名。注意 26.8 的账号控制台**不显示**用户资料里的 `inputHelperTextAfter`，所以「用户名不能改、昵称可重复、改邮箱要重新验证」写在个人资料页的说明（`personalInfoDescription`）里。
-  - 做不到的（不 fork React 应用就改不了）：个人资料页的「已验证」标记与头像卡片、页面里的提示框、登录与安全把账号密码和已登录的浏览器放在同一页、页头里的深浅色切换按钮；账号菜单显示的是 Keycloak 的用户名。两个产品打开账号中心时带 `?referrer=<client>`，页头的「返回 LiteSync / Nexus Portal」由 Keycloak 生成（client 名来自 realm）。
+  - 做不到的（不 fork React 应用就改不了）：个人资料页的「已验证」标记与头像卡片、页面里的提示框、登录与安全把账号密码和已登录的浏览器放在同一页、页头里的深浅色切换按钮；账号菜单显示的是 Keycloak 的用户名。两个产品打开账号中心时带 `?referrer=<client>`，页头的「返回 LiteSync / Nexus」由 Keycloak 生成（client 名来自 realm 的 client `name`；v12.0.3 起模板里 nexus-web 叫「Nexus」，已部署的 realm 用 kcadm 改 `clients/<id>` 的 `name`）。
 - `accounts/email`：验证邮箱、重设账号密码等邮件的外壳和中文标题。
 
 新部署导入模板即生效；已部署的 realm：`docker compose up -d`（让新挂载生效）后 `./configure.sh theme on`，回退 `./configure.sh theme off`。主题只改展示，不改认证流程、注册开关、会话和退出行为；`theme off` 不会撤回下一节的用户资料改动。
