@@ -196,17 +196,24 @@ docker compose exec -T postgres pg_dump -U postgres -Fc nexus    > nexus-$(date 
 
 `themes/` 是账号中心的三个 Keycloak 主题，compose 把它挂到 `/opt/keycloak/themes`：
 
-- `accounts/login`：登录、注册、找回账号密码、验证邮箱、设置账号密码、补充资料、出错、退出确认等页面。继承 Keycloak 26 自带的 `keycloak.v2`。UI v2（v12.0.3）起**覆盖一个公共外壳** `template.ftl`：左侧品牌与装饰图（文字是 HTML，图是纯装饰），右侧是 Keycloak 自己的表单；`<head>` 原样保留（会话检测、密码显示切换、语言切换等脚本），只多一个 `js/theme-toggle.js`。各页面模板（`login.ftl`、`register.ftl`……）、用户资料的动态字段、表单 action、错误与验证、过期链接仍是 Keycloak 自带的。
+- `accounts/login`：登录、注册、找回账号密码、验证邮箱、设置账号密码、补充资料、出错、退出确认等页面。继承 Keycloak 26 自带的 `keycloak.v2`。UI v2（v12.0.3）起**覆盖一个公共外壳** `template.ftl`：左侧品牌与装饰图（文字是 HTML，图是纯装饰），右侧是 Keycloak 自己的表单；`<head>` 原样保留（会话检测、密码显示切换、语言切换等脚本），只多一个 `ui-v2-1/js/theme-toggle.js`。各页面模板（`login.ftl`、`register.ftl`……）、用户资料的动态字段、表单 action、错误与验证、过期链接仍是 Keycloak 自带的。
   - 产品名与「返回」只取服务器上的配置：产品名来自 client 指定的子主题的文字（`acProductName`），「返回 …」链接是 client 配置的 `baseUrl`；请求参数不参与。没有子主题的页面（例如账号控制台的登录）不显示产品和返回。
   - 深浅色默认跟随系统；右上角可手动切换，选择记在账号中心域名的 localStorage（`ac-theme`），没选过就继续跟随系统。
   - 手机（≤720 px）把装饰图收成一条品牌栏，图片只在宽屏的 CSS 里引用，手机不会下载。
-  - 装饰图 `resources/img/auth-art.webp`：由 v12.0.3 设计包 `prototype/assets/auth-art.png`（1122×1402，sha256 `59020c17542c9e6279d899bd35066b255b05921ebb7af14cc6ae334555b0cd3f`，生成图、无文字）用 Pillow 转成 WebP（quality 85，尺寸不变，sha256 `fe70b55d4deeeec774b0f5eecadd6bbb535fde82c9dd2c10255a14b34da41d2b`，约 46 KB）。
+  - 装饰图 `resources/ui-v2-1/img/auth-art.webp`：由 v12.0.3 设计包 `prototype/assets/auth-art.png`（1122×1402，sha256 `59020c17542c9e6279d899bd35066b255b05921ebb7af14cc6ae334555b0cd3f`，生成图、无文字）用 Pillow 转成 WebP（quality 85，尺寸不变，sha256 `fe70b55d4deeeec774b0f5eecadd6bbb535fde82c9dd2c10255a14b34da41d2b`，约 46 KB）。
   - **升级 Keycloak 时**：`template.ftl` 开头记着所依据的上游版本与 sha256。先取出新版的上游文件对照（`docker create --name kc-up quay.io/keycloak/keycloak:<新版本>`，`docker cp kc-up:/opt/keycloak/lib/lib/main/org.keycloak.keycloak-themes-<新版本>.jar .`，`unzip -p org.keycloak.keycloak-themes-<新版本>.jar theme/keycloak.v2/login/template.ftl > upstream-template.ftl`，`docker rm kc-up`），把上游 `<head>` 与各个 `<#nested>` 区块的改动搬过来，再更新开头的版本与 sha256（测试会核对）。与上游的差异只有：`<body>` 的版式（`ac-*` 结构）、`<head>` 多一行 `theme-toggle.js`、去掉了自带的 `kc-header`（realm 名称改在表单上方的小标题里显示）。
 - `accounts-nexus/login`、`accounts-litesync/login`：两个产品的子主题，realm 模板在各自的 client 上指定（`login_theme`）。只设产品名、一句导语和产品色（Nexus 琥珀 `#986321` / 深色 `#E4BF84`，LiteSync 紫 `#6854BC` / 深色 `#B4A1F3`，取自 v12.0.3 `design/tokens.json`）。
 - `accounts/account`：账号控制台（Keycloak 26 的 keycloak.v3，React 应用）。UI v2（v12.0.3 I2）按设计包 `prototype/identity.html #account / #security` 换了外壳，但**不复制、不改它的程序**，只用主题机制里的四样东西：
+  - **主题资源放在带版本号的目录里（`resources/ui-v2-1/`）**：Keycloak 给主题资源 30 天缓存（`Cache-Control: max-age=2592000`），
+    地址 `/resources/<版本段>/…` 里的版本段只随 Keycloak 版本变；部署在 Cloudflare 后面时，Cloudflare 还会忽略查询参数。v12.0.3 预发布实测时，
+    新模板拿到的是上一版缓存的 `accounts.css`，登录页没有样式。所以自己的样式、脚本、图片都放在 `ui-v2-1/` 下，`theme.properties` 的
+    `styles=` / `scripts=` / `logo=` 和登录主题的 `acAssets`（`template.ftl` 用它拼 `theme-toggle.js` 的地址）都指向它。
+    **任何一个文件改了，就把目录换成新名字**（例如 `ui-v2-2`）并同步这几处，`infra-identity.test.ts` 会核对它们一致、没有文件留在不带版本的路径。
+    例外是 `account/resources/content.json`：keycloak.v3 按固定名字读取它，改它之后要在 Cloudflare 清一次 `/resources/*` 的缓存
+    （或者给这个域名的 `/resources/*` 设「绕过缓存」的规则）。
   - `resources/content.json`：左侧导航改成三项——个人资料 / 登录与安全（账号密码与两步验证）/ 网页登录（已登录的浏览器）。关联账号、群组、组织、资源、可验证凭证照抄 Keycloak 的开关（`isVisible`），平时不出现，以后打开对应功能会自动出现。**「已授权的应用」去掉了**：这里只会列出账号中心和两个产品的网页，按钮「End application session」没有中文翻译；结束网页登录在「网页登录」里做，断开 Obsidian 与扩展在两个产品里做。要恢复，在 `content.json` 加回 `{ "label": "applications", "path": "applications", "isVisible": "isViewApplicationsEnabled" }`。
-  - `resources/css/accounts.css`：72 px 页头（标志、账号中心、LiteSync & Nexus、返回产品、账号菜单）、240 px 左导航、930 px 以内的标题和卡片，与登录页同一套颜色变量；窄于 1200 px 时导航变成主区上方一直可见的页签（不再收进汉堡菜单）。强调色默认中性墨色，从 LiteSync / Nexus 打开时换成该产品的颜色。
-  - `resources/js/console.js`（`scripts=`，以 module 加载）：①只在 Keycloak 核对过 referrer（页面 environment 里有 `referrerName`）且是我们两个 client 时，在 `<html>` 上标 `data-ac-product`；②沿用登录页选过的深浅色（localStorage `ac-theme`）；③窄屏下去掉导航容器的 `aria-hidden` 和链接的 `tabindex="-1"`（PatternFly「菜单收起」时加的，页签一直可见，不能让读屏和键盘到不了）；④给窄屏页头里没有名字的账号菜单按钮补 `aria-label`。不读写 Cookie、令牌，不发请求，不改 React 渲染的内容。
+  - `resources/ui-v2-1/css/accounts.css`：72 px 页头（标志、账号中心、LiteSync & Nexus、返回产品、账号菜单）、240 px 左导航、930 px 以内的标题和卡片，与登录页同一套颜色变量；窄于 1200 px 时导航变成主区上方一直可见的页签（不再收进汉堡菜单）。强调色默认中性墨色，从 LiteSync / Nexus 打开时换成该产品的颜色。
+  - `resources/ui-v2-1/js/console.js`（`scripts=`，以 module 加载）：①只在 Keycloak 核对过 referrer（页面 environment 里有 `referrerName`）且是我们两个 client 时，在 `<html>` 上标 `data-ac-product`；②沿用登录页选过的深浅色（localStorage `ac-theme`）；③窄屏下去掉导航容器的 `aria-hidden` 和链接的 `tabindex="-1"`（PatternFly「菜单收起」时加的，页签一直可见，不能让读屏和键盘到不了）；④给窄屏页头里没有名字的账号菜单按钮补 `aria-label`。不读写 Cookie、令牌，不发请求，不改 React 渲染的内容。
   - `messages/*`：「账号 / 登录」用词，「返回 {{app}}」，登录与安全、网页登录页的字段名。注意 26.8 的账号控制台**不显示**用户资料里的 `inputHelperTextAfter`，所以「用户名不能改、昵称可重复、改邮箱要重新验证」写在个人资料页的说明（`personalInfoDescription`）里。
   - 做不到的（不 fork React 应用就改不了）：个人资料页的「已验证」标记与头像卡片、页面里的提示框、登录与安全把账号密码和已登录的浏览器放在同一页、页头里的深浅色切换按钮；账号菜单显示的是 Keycloak 的用户名。两个产品打开账号中心时带 `?referrer=<client>`，页头的「返回 LiteSync / Nexus」由 Keycloak 生成（client 名来自 realm 的 client `name`；v12.0.3 起模板里 nexus-web 叫「Nexus」，已部署的 realm 用 kcadm 改 `clients/<id>` 的 `name`）。
 - `accounts/email`：验证邮箱、重设账号密码等邮件的外壳和中文标题。

@@ -1,6 +1,9 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+
+/** The versioned directory our theme assets live in (bump it when any of them changes; see README). */
+const ASSETS = 'ui-v2-1';
 
 /**
  * Guards the identity templates in infra/identity (ADR-011): the settings that make sign-in safe
@@ -152,24 +155,49 @@ describe('identity realm template', () => {
     for (const t of ['accounts', 'accounts-litesync', 'accounts-nexus']) expect(props(t, 'messages_zh_Hans.properties'), t).toBe(props(t));
     // Local assets only: the artwork ships with the theme (WebP derived from the design package) and is
     // referenced from CSS for wide screens only, so phones never download it.
-    const css = readFileSync(join(dir, 'themes', 'accounts', 'login', 'resources', 'css', 'accounts.css'), 'utf8');
-    const art = readFileSync(join(dir, 'themes', 'accounts', 'login', 'resources', 'img', 'auth-art.webp'));
+    const css = readFileSync(join(dir, 'themes', 'accounts', 'login', 'resources', ASSETS, 'css', 'accounts.css'), 'utf8');
+    const art = readFileSync(join(dir, 'themes', 'accounts', 'login', 'resources', ASSETS, 'img', 'auth-art.webp'));
     expect(art.subarray(8, 12).toString('latin1')).toBe('WEBP');
     expect(css).toMatch(/@media \(min-width: 721px\) \{[^}]*\.ac-visual \{[^}]*url\('\.\.\/img\/auth-art\.webp'\)/);
     // No remote resource: no external script, stylesheet, font or image (comments may cite URLs).
     expect(`${template}\n${css}`).not.toMatch(/(src|href)=["']https?:|url\(\s*['"]?https?:|@import/);
   });
 
+  it('theme assets of ours live in the versioned directory the theme properties name (a changed file needs a new URL)', () => {
+    // Keycloak caches theme resources for 30 days under a path that only changes with the Keycloak build, and the
+    // stage's Cloudflare ignores query strings: on the v12.0.3 stage the new template got the previous accounts.css.
+    const login = readFileSync(join(dir, 'themes', 'accounts', 'login', 'theme.properties'), 'utf8');
+    expect(login).toMatch(new RegExp(`^acAssets=${ASSETS}$`, 'm'));
+    expect(readFileSync(join(dir, 'themes', 'accounts', 'login', 'template.ftl'), 'utf8')).toContain('${url.resourcesPath}/${properties.acAssets}/js/theme-toggle.js');
+    for (const [theme, type] of [['accounts', 'login'], ['accounts-litesync', 'login'], ['accounts-nexus', 'login'], ['accounts', 'account']] as const) {
+      const props = readFileSync(join(dir, 'themes', theme, type, 'theme.properties'), 'utf8');
+      // Every style / script / logo entry is either Keycloak's own (css/styles.css) or inside the versioned directory.
+      for (const line of props.split(/\r?\n/).filter((l) => /^(styles|scripts|logo|favIcon)=/.test(l))) {
+        for (const ref of line.split('=')[1]!.split(' ').filter(Boolean)) {
+          if (ref === 'css/styles.css') continue;
+          expect(ref.replace(/^\//, ''), `${theme}/${type}: ${line}`).toMatch(new RegExp(`^${ASSETS}/`));
+          // Sub-themes inherit the shared theme's resources, as Keycloak resolves them.
+          const owners = theme === 'accounts' ? [theme] : [theme, 'accounts'];
+          expect(owners.some((o) => existsSync(join(dir, 'themes', o, type, 'resources', ref.replace(/^\//, '')))), `${theme}/${type}: ${ref}`).toBe(true);
+        }
+      }
+      // Nothing of ours left at an unversioned path (content.json is the one file keycloak.v3 reads by a fixed name).
+      const res = join(dir, 'themes', theme, type, 'resources');
+      const loose = existsSync(res) ? readdirSync(res).filter((f) => f !== ASSETS && f !== 'content.json') : [];
+      expect(loose, `${theme}/${type}`).toEqual([]);
+    }
+  });
+
   it("I2 (UI v2): the account console keeps Keycloak 26's React app — only navigation, styles, wording and a small script change", () => {
     const base = join(dir, 'themes', 'accounts', 'account');
     const props = readFileSync(join(base, 'theme.properties'), 'utf8');
     expect(props).toMatch(/^parent=keycloak\.v3$/m);
-    expect(props).toMatch(/^styles=css\/accounts\.css$/m);
-    expect(props).toMatch(/^scripts=js\/console\.js$/m);
+    expect(props).toMatch(new RegExp(`^styles=${ASSETS}/css/accounts\\.css$`, 'm'));
+    expect(props).toMatch(new RegExp(`^scripts=${ASSETS}/js/console\\.js$`, 'm'));
     // No copied page template or bundled app code: the console stays Keycloak's, so upgrades keep working.
     const files = readdirSync(base, { recursive: true }).map((f) => String(f).replace(/\\/g, '/'));
     expect(files.filter((f) => /\.(ftl|tsx?|jsx)$/.test(f))).toEqual([]);
-    expect(files.filter((f) => f.endsWith('.js'))).toEqual(['resources/js/console.js']);
+    expect(files.filter((f) => f.endsWith('.js'))).toEqual([`resources/${ASSETS}/js/console.js`]);
     // Navigation: 个人资料 / 登录与安全 / 网页登录 always; anything else only when Keycloak's own switch turns it on.
     // 「已授权的应用」 is left out on purpose (README「账号中心的样子」).
     const nav = JSON.parse(readFileSync(join(base, 'resources', 'content.json'), 'utf8')) as { label: string; path: string; isVisible?: string }[];
@@ -181,12 +209,12 @@ describe('identity realm template', () => {
     expect(nav.map((n) => n.label)).not.toContain('applications');
     // The script reads only the page's own environment and the URL: no network, no cookies or tokens, and it
     // marks one of our two clients only after Keycloak has validated the referrer (referrerName is set).
-    const js = readFileSync(join(base, 'resources', 'js', 'console.js'), 'utf8');
+    const js = readFileSync(join(base, 'resources', ASSETS, 'js', 'console.js'), 'utf8');
     expect(js).not.toMatch(/fetch\(|XMLHttpRequest|WebSocket|sendBeacon|document\.cookie|innerHTML|insertAdjacentHTML/);
     expect(js).toContain("'litesync-web': 'litesync', 'nexus-web': 'nexus'");
     expect(js).toContain('env.referrerName');
     // Local assets only (data: icons in CSS are fine).
-    const css = readFileSync(join(base, 'resources', 'css', 'accounts.css'), 'utf8');
+    const css = readFileSync(join(base, 'resources', ASSETS, 'css', 'accounts.css'), 'utf8');
     expect(`${css}\n${js}`).not.toMatch(/(src|href)=["']https?:|url\(\s*['"]?https?:|@import/);
     // Wording: zh_CN and zh_Hans identical; the placeholders Keycloak fills in are kept.
     const msg = (f: string) => readFileSync(join(base, 'messages', f), 'utf8');

@@ -94,7 +94,7 @@
           </#outputformat>
       </script>
       <#-- 账号中心：手动选择深浅色（存在本域名的 localStorage；没选过就跟随系统，与上面的自带脚本一致） -->
-      <script type="module" src="${url.resourcesPath}/js/theme-toggle.js" blocking="render"></script>
+      <script type="module" src="${url.resourcesPath}/${properties.acAssets}/js/theme-toggle.js" blocking="render"></script>
     </#if>
     <#if themeResources?? && themeResources.scripts?has_content>
         <@themeResourceTags.renderScripts themeResources.scripts url.resourcesPath "text/javascript" />
