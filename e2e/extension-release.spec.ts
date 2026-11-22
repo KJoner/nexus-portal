@@ -66,12 +66,12 @@ test('右键「收藏此链接」保存链接本身，查询参数与锚点原�
   await page.close();
 });
 
-test('工具栏弹窗（真实弹窗）保存：只有服务端确认后才说「已同步到账号的收藏库」', async () => {
+test('工具栏弹窗（真实弹窗）保存：只有服务端确认后才说「已同步到账号里的「我的收藏」」', async () => {
   const page = await one.context.newPage();
   const url = `${PAGES}/article/popup?x=1#y`;
   await page.goto(url);
   const r = await popupSave(one, page, { title: '弹窗保存的文章', tags: '扩展，测试' });
-  expect(r.out).toContain('已同步到账号的收藏库');
+  expect(r.out).toContain('已同步到账号里的「我的收藏」');
   expect((await itemsOf(A, url))[0]).toMatchObject({ title: '弹窗保存的文章', source: 'extension' });
   await page.keyboard.press('Escape');
   await page.close();

@@ -35,16 +35,18 @@ test.describe('desktop', () => {
     await expect(page.locator('.group\\/slab')).toHaveCount(0);
   });
 
-  test('a category moved while offline is sent when the connection returns', async ({ home: page, context }) => {
-    await page.goto('/settings/apps');
-    await page.getByRole('button', { name: '排序' }).click();
+  test('a group moved while offline is sent when the connection returns', async ({ home: page, context }) => {
+    await page.goto('/settings/favorites');
+    const tree = page.getByRole('navigation', { name: '收藏分组' });
+    await expect(tree.getByRole('button', { name: /^开发，直属/ })).toBeVisible();
     await context.setOffline(true);
-    await page.getByRole('button', { name: '分类「开发」的移动选项' }).click();
+    await tree.getByRole('button', { name: '「开发」的操作' }).click();
     await page.getByRole('menuitem', { name: '移到最后' }).click();
-    await expect(page.locator('[data-sort-cat]').last()).toHaveAttribute('data-sort-cat', 'dev');
+    // Shown at once (top-level groups in their order), sent later.
+    await expect(tree.getByRole('listitem').last()).toContainText('开发');
     await context.setOffline(false);
-    const cats = async () => ((await serverConfig(context.request)) as unknown as { categories: { id: string }[] }).categories.map((k) => k.id);
-    await expect.poll(cats, { timeout: 15_000 }).toEqual(['hosted', 'work', 'media', 'none', 'dev']);
+    const cats = async () => ((await serverConfig(context.request)) as unknown as { categories: { id: string }[] }).categories.map((k) => k.id).filter((id) => id !== 'none');
+    await expect.poll(cats, { timeout: 15_000 }).toEqual(['hosted', 'work', 'media', 'dev']);
   });
 });
 

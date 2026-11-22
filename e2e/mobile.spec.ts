@@ -1,8 +1,11 @@
-import { expect, test } from './fixtures';
+import { expect, ops, test } from './fixtures';
 
 test.skip(({ isMobile }) => !isMobile, 'mobile layout');
 
 test('home panel shows pins and services with 44pt targets', async ({ home: page }) => {
+  // UI v2: a service is a favorite — pinned, it sits with the other shortcuts and keeps its state.
+  await ops(page.context().request, [{ type: 'pin.add', appId: 'litebox' }]);
+  await page.reload();
   await expect(page.getByRole('link', { name: 'GitHub', exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: /LiteBox，未监测/ })).toBeVisible();
   const box = await page.getByRole('button', { name: /服务状态/ }).boundingBox();
@@ -35,9 +38,15 @@ test('search mode: results above the field, 取消 returns home', async ({ home:
 
 test('settings use push navigation with a back label', async ({ home: page }) => {
   await page.goto('/settings');
-  await page.getByRole('button', { name: /网站与服务/ }).tap();
+  // 我的收藏 took the place of 网站与服务 (UI v2).
+  await expect(page.getByRole('button', { name: /网站与服务/ })).toHaveCount(0);
+  await page.getByRole('button', { name: /我的收藏/ }).first().tap();
   await expect(page.getByRole('button', { name: '设置', exact: true })).toBeVisible();
   await page.getByRole('button', { name: /OBsync/ }).first().tap();
-  await expect(page.getByRole('button', { name: '网站与服务', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: '保存' })).toBeDisabled();
+  // The one editor, full screen on a phone, closed with 关闭; nothing to save until something changes.
+  const editor = page.getByRole('dialog', { name: '编辑「OBsync」' });
+  await expect(editor.getByRole('button', { name: '关闭' })).toBeVisible();
+  await expect(editor.getByRole('button', { name: '保存' })).toBeDisabled();
+  await editor.getByRole('textbox', { name: '名称' }).fill('OBsync 笔记');
+  await expect(editor.getByRole('button', { name: '保存' })).toBeEnabled();
 });

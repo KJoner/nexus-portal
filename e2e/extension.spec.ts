@@ -205,7 +205,8 @@ test('read-only: menus offer opening and the portal’s settings, nothing that w
   await page.getByRole('link', { name: 'Notion' }).first().click({ button: 'right' });
   const menu = page.getByRole('menu');
   await expect(menu.getByRole('menuitem', { name: /在新标签页打开/ })).toBeVisible();
-  await expect(menu.getByRole('menuitem', { name: /在设置中编辑/ })).toBeVisible();
+  // Editing happens in the portal's 我的收藏 (the extension's account view is read-only).
+  await expect(menu.getByRole('menuitem', { name: /在我的收藏中编辑/ })).toBeVisible();
   for (const name of [/从首页移除/, /隐藏此应用/, /向前移动/, /编辑首页/]) await expect(menu.getByRole('menuitem', { name })).toHaveCount(0);
   await page.keyboard.press('Escape');
   await page.mouse.click(60, 600, { button: 'right' });
@@ -308,22 +309,22 @@ test('收藏 (EX-01/02): pairing asked for the collection scopes; the popup save
   const targetUrl = target.url();
   const popup = await context.newPage();
   await popup.goto(`chrome-extension://${extId}/popup.html?tab=${await tabIdOf(targetUrl)}`);
-  await expect(popup.getByRole('heading', { name: '收藏到 Nexus' })).toBeVisible();
+  await expect(popup.getByRole('heading', { name: '添加到我的收藏' })).toBeVisible();
   await expect(popup.getByText(targetUrl, { exact: true })).toBeVisible();
   await popup.getByLabel('标题').fill('公共应用目录（扩展收藏）');
   await popup.getByLabel('标签').fill('扩展，测试');
   await expect(popup.getByRole('checkbox')).not.toBeChecked(); // 固定到首页 is off by default
   await popup.screenshot({ path: 'test-results/extension-popup.png' });
   await popup.getByRole('button', { name: '保存', exact: true }).click();
-  await expect(popup.getByRole('status')).toHaveText('已同步到账号的收藏库');
+  await expect(popup.getByRole('status')).toHaveText('已同步到账号里的「我的收藏」');
   const saved = ((await (await api.get(`/api/v2/items?url=${encodeURIComponent(targetUrl)}`)).json()) as { items: { title: string; source: string; tags: string[]; pinned: boolean }[] }).items[0];
   expect(saved).toMatchObject({ title: '公共应用目录（扩展收藏）', source: 'extension', tags: ['扩展', '测试'], pinned: false });
 
   // The same page again: the popup says where it already is, and saving does not make a second one.
   await popup.goto(`chrome-extension://${extId}/popup.html?tab=${await tabIdOf(targetUrl)}`);
-  await expect(popup.getByText(/已在收藏库：「公共应用目录（扩展收藏）」/)).toBeVisible();
+  await expect(popup.getByText(/已在我的收藏：「公共应用目录（扩展收藏）」/)).toBeVisible();
   await popup.getByRole('button', { name: '保存', exact: true }).click();
-  await expect(popup.getByRole('status')).toHaveText('这个网址已在账号的收藏库中');
+  await expect(popup.getByRole('status')).toHaveText('这个网址已在账号里的「我的收藏」中');
   expect(((await (await api.get(`/api/v2/items?q=${encodeURIComponent('公共应用目录')}`)).json()) as { items: unknown[] }).items).toHaveLength(1);
   await popup.close();
   await target.close();

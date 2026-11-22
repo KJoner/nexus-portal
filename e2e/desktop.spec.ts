@@ -7,7 +7,8 @@ const dock = (id: string) => `[data-dock="${id}"]`;
 test('first visit: this browser’s own collection and nothing of any account; signed in, the account survives reload', async ({ page }) => {
   // v0.5 (U1): no login wall — a local collection, nothing private on screen.
   await page.goto('/');
-  await expect(page.getByText('仅保存在此浏览器')).toBeVisible();
+  // The top bar says where the collection is (UI v2: a status pill that never names the account).
+  await expect(page.getByRole('link', { name: /^保存状态：仅此设备/ })).toBeVisible();
   // UI v2 (N3): a new local collection starts with the eight 常用网站 — nothing of any account.
   await expect(page.locator('[data-dock]')).toHaveCount(8);
   await page.goto('/account/connect');
@@ -19,10 +20,10 @@ test('first visit: this browser’s own collection and nothing of any account; s
   await pw.press('Enter');
   await page.getByRole('button', { name: /使用账号里的收藏/ }).click();
   await expect(page.getByRole('combobox', { name: '搜索' })).toBeVisible();
-  await expect(page.getByText('已同步')).toBeVisible();
+  await expect(page.getByRole('link', { name: /^保存状态：已同步/ })).toBeVisible();
   await page.reload();
   await expect(page.getByRole('combobox', { name: '搜索' })).toBeVisible();
-  await expect(page.getByText('已同步')).toBeVisible();
+  await expect(page.getByRole('link', { name: /^保存状态：已同步/ })).toBeVisible();
 });
 
 test('search keyboard model (R1.5 · 01)', async ({ home: page }) => {
@@ -92,19 +93,21 @@ test('offline edits are kept and sent when the connection returns', async ({ hom
   await expect.poll(async () => (await serverConfig(context.request)).pins, { timeout: 10_000 }).not.toContain('gmail');
 });
 
-test('settings: adding an app is validated, saved and survives reload', async ({ home: page }) => {
+test('settings: adding a favorite is validated, saved and survives reload (the old /settings/apps?new link)', async ({ home: page }) => {
   await page.goto('/settings/apps?new=Jellyfin');
-  const dialog = page.getByRole('dialog', { name: '添加网站' });
+  const dialog = page.getByRole('dialog', { name: '添加收藏' });
   await expect(dialog).toBeVisible();
-  await dialog.getByRole('button', { name: '添加' }).click();
-  await expect(dialog.getByText('还有 1 项需要修正')).toBeVisible();
+  await expect(dialog.getByRole('textbox', { name: /名称/ })).toHaveValue('Jellyfin');
+  await dialog.getByRole('button', { name: '添加这个收藏' }).click();
+  await expect(dialog.getByText('请填写网址')).toBeVisible();
   const url = dialog.getByRole('textbox', { name: /网址/ });
   await url.fill('jellyfin.home');
   await url.blur();
   await expect(url).toHaveValue('https://jellyfin.home');
-  await dialog.getByRole('button', { name: '添加' }).click();
+  await dialog.getByRole('button', { name: '添加这个收藏' }).click();
   await expect(dialog).toBeHidden();
   await page.reload();
+  await expect(page).toHaveURL(/\/settings\/favorites$/);
   await expect(page.getByText('jellyfin.home').first()).toBeVisible();
 });
 

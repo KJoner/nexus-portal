@@ -30,35 +30,45 @@ function watchPrivate(page: Page): string[] {
   return seen;
 }
 
+/** 添加收藏 › 应用商店 (UI v2): pick one site, one primary action. */
 async function addFromCatalog(page: Page, name: string) {
-  await page.goto('/catalog');
-  await page.getByRole('textbox', { name: '搜索应用目录' }).fill(name);
-  await page.getByRole('button', { name: `添加 ${name}` }).click();
-  await expect(page.getByRole('status').filter({ hasText: `已把「${name}」加入` })).toBeVisible();
+  await page.goto(`/settings/favorites?add=store&sq=${encodeURIComponent(name)}`);
+  const dialog = page.getByRole('dialog', { name: '添加收藏' });
+  await dialog.getByRole('button', { name: `选择 ${name}` }).click();
+  await dialog.getByRole('button', { name: '添加 1 个网站' }).click();
+  await expect(page.getByRole('status').filter({ hasText: `已添加「${name}」` })).toBeVisible();
 }
 
-/** Finds a saved item in 收藏库 the way a person would with many: its search box. */
+/** Finds a saved item in 我的收藏 the way a person would with many: its search box. */
 async function findInLibrary(page: Page, text: string) {
-  if (!page.url().endsWith('/library')) await page.goto('/library');
-  await page.getByRole('textbox', { name: '搜索收藏库' }).fill(text);
-  return page.getByRole('listbox').getByText(text);
+  if (new URL(page.url()).pathname !== '/settings/favorites') await page.goto('/settings/favorites');
+  await page.getByRole('searchbox', { name: '搜索我的收藏' }).fill(text);
+  return page.getByRole('listbox', { name: /（\d+ 条）$/ }).getByText(text);
 }
 
 async function addPage(page: Page, title: string, url: string) {
-  await page.goto('/library');
-  await page.getByRole('button', { name: '新增' }).first().click();
-  await page.getByLabel('网址').fill(url);
-  await page.getByLabel('标题').fill(title);
-  await page.getByRole('button', { name: '保存', exact: true }).click();
-  await expect(page.getByRole('dialog')).toBeHidden();
+  await page.goto('/settings/favorites');
+  await page.getByRole('button', { name: '添加收藏' }).first().click();
+  const dialog = page.getByRole('dialog', { name: '添加收藏' });
+  await dialog.getByRole('textbox', { name: /网址/ }).fill(url);
+  await dialog.getByRole('textbox', { name: /名称/ }).fill(title);
+  await dialog.getByRole('button', { name: '添加这个收藏' }).click();
+  await expect(dialog).toBeHidden();
+}
+
+/** The top bar's pill on the home page: 仅此设备 for this browser's own collection. */
+async function expectLocalPill(page: Page) {
+  // Changing spaces is a fresh load of the home page by the app itself: let it land, never race it.
+  await page.waitForURL((u) => u.pathname === '/', { timeout: 10_000 });
+  await expect(page.getByRole('link', { name: /^保存状态：仅此设备/ })).toBeVisible();
 }
 
 test('L01/L03/L05/L06: first visit is a usable home; saves stay in this browser, with no private request', async ({ page }) => {
   const priv = watchPrivate(page);
   await page.goto('/');
   await expect(page.getByLabel('搜索', { exact: true })).toBeVisible();
-  await expect(page.getByText('仅保存在此浏览器')).toBeVisible();
-  await expect(page.getByRole('link', { name: /登录同步/ })).toBeVisible();
+  // Where the collection is, and that signing in is what syncs it — in the pill, without any account name.
+  await expect(page.getByRole('link', { name: /^保存状态：仅此设备/ })).toHaveAttribute('aria-label', /登录后可以同步/);
   // The public template (UI v2 N3): the eight 常用网站 pinned, in order; no private service.
   await expect(page.locator('[data-dock]')).toHaveCount(8);
   expect(await page.locator('[data-dock]').evaluateAll((els) => els.map((e) => e.getAttribute('data-dock')))).toEqual(['google', 'youtube', 'github', 'gmail', 'bing', 'bilibili', 'chatgpt', 'wikipedia']);
@@ -72,10 +82,12 @@ test('L01/L03/L05/L06: first visit is a usable home; saves stay in this browser,
 
   // Reload, and a new tab of the same browser: still there.
   await page.reload();
-  await expect(page.getByText('一篇以后读的长文')).toBeVisible();
+  await expect(page.getByRole('listbox', { name: /（\d+ 条）$/ }).getByText('一篇以后读的长文')).toBeVisible();
   const again = await page.context().newPage();
+  // (The old 收藏库 link lands on 我的收藏.)
   await again.goto('/library');
-  await expect(again.getByText('知乎')).toBeVisible();
+  await expect(again).toHaveURL(/\/settings\/favorites$/);
+  await expect(again.getByRole('listbox', { name: /（\d+ 条）$/ }).getByText('知乎')).toBeVisible();
   await expect(again.getByText('一篇以后读的长文')).toBeVisible();
   expect(priv).toEqual([]);
 });
@@ -102,13 +114,15 @@ test('L08: a saved page that is not on the home page is found by the home search
 test('L10: signing in cancelled — back where the person was, the collection untouched', async ({ page }) => {
   await addPage(page, '取消前保存的', 'https://kept.example.org/');
   await page.goto('/');
-  await page.getByRole('link', { name: /登录同步/ }).click();
+  // The pill leads to 账号与同步, where 登录同步 is.
+  await page.getByRole('link', { name: /^保存状态：仅此设备/ }).click();
+  await expect(page).toHaveURL(/\/settings\/account$/);
+  await page.getByRole('button', { name: '登录同步' }).click();
   await expect(page.getByRole('heading', { name: '登录以跨设备同步' })).toBeVisible();
   await shot(page, 'local-3-connect');
   await page.getByRole('button', { name: '继续仅在此浏览器使用' }).click();
-  await expect(page).toHaveURL(/\/$/);
-  await page.goto('/library');
-  await expect(page.getByText('取消前保存的')).toBeVisible();
+  await expect(page).toHaveURL(/\/settings\/account$/);
+  await expect(await findInLibrary(page, '取消前保存的')).toBeVisible();
   // The identity service sending back a cancelled sign-in: a notice, the local home.
   await page.goto('/?auth_error=access_denied');
   await expect(page.getByLabel('搜索', { exact: true })).toBeVisible();
@@ -138,7 +152,7 @@ test('L11/L12: after signing in, nothing is uploaded until a previewed merge is 
 
   await page.getByRole('button', { name: '确认合并' }).click();
   // The account's collection now, with the merged page in it.
-  await expect(page.getByText('已同步')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole('link', { name: /^保存状态：已同步/ })).toBeVisible({ timeout: 10_000 });
   await expect(await findInLibrary(page, '合并测试：本地网页')).toBeVisible();
   expect(imports).toEqual(['preview', 'apply']);
   await shot(page, 'local-6-account-after-merge');
@@ -146,7 +160,7 @@ test('L11/L12: after signing in, nothing is uploaded until a previewed merge is 
   // The local collection is still here, apart from the account's.
   await page.goto('/settings/account');
   await page.getByRole('button', { name: '切回本地收藏' }).click();
-  await expect(page.getByText('仅保存在此浏览器')).toBeVisible();
+  await expectLocalPill(page);
   await expect(await findInLibrary(page, '合并测试：本地网页')).toBeVisible();
 });
 
@@ -157,7 +171,7 @@ test('L11: 「暂时继续本地使用」 keeps the collection local and sends n
   await page.getByLabel('访问密码').fill(PASSWORD);
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await page.getByRole('button', { name: /暂时继续本地使用/ }).click();
-  await expect(page.getByText('仅保存在此浏览器')).toBeVisible();
+  await expectLocalPill(page);
   // Only the identity question (/api/v2/me) went out — no collection request of any kind.
   expect(priv.filter((x) => !x.endsWith('/api/v2/me'))).toEqual([]);
   const r = await page.context().request.get('/api/v2/items?q=只留在本地', { headers: { 'X-Nexus-Client': '1' } });
@@ -170,13 +184,13 @@ test('L14/L16: signing out of the account comes back to this browser’s own col
   await page.getByLabel('访问密码').fill(PASSWORD);
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await page.getByRole('button', { name: /使用账号里的收藏/ }).click();
-  await expect(page.getByText('已同步')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole('link', { name: /^保存状态：已同步/ })).toBeVisible({ timeout: 10_000 });
   await expect(await findInLibrary(page, '退出后仍在的本地收藏')).toHaveCount(0);
 
   await page.goto('/settings/account');
   await page.getByRole('button', { name: '退出', exact: true }).first().click();
   await page.getByRole('dialog').getByRole('button', { name: '退出', exact: true }).click();
-  await expect(page.getByText('仅保存在此浏览器')).toBeVisible();
+  await expectLocalPill(page);
   await expect(await findInLibrary(page, '退出后仍在的本地收藏')).toBeVisible();
 });
 

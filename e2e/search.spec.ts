@@ -54,15 +54,17 @@ test.describe('desktop', () => {
     await expect(page).toHaveURL('https://gtihub.com/');
   });
 
-  test('aliases are edited in the app editor and found by search', async ({ home: page }) => {
-    await page.goto('/settings/apps?edit=github');
-    const dialog = page.getByRole('dialog');
-    const alias = dialog.getByRole('textbox', { name: '添加别名' });
+  test('aliases are edited in the favorite editor and found by search', async ({ home: page }) => {
+    await page.goto('/settings/favorites?edit=github');
+    const dialog = page.getByRole('dialog', { name: '编辑「GitHub」' });
+    await dialog.getByRole('button', { name: /更多选项/ }).click();
+    const alias = dialog.getByRole('textbox', { name: '搜索别名' });
     await alias.fill('代码托管，dm');
     await alias.press('Enter');
-    await expect(dialog.getByRole('button', { name: '删除别名 代码托管' })).toBeVisible();
-    await expect(dialog.getByRole('button', { name: '删除别名 dm' })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: '移除 代码托管' })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: '移除 dm' })).toBeVisible();
     await dialog.getByRole('button', { name: '保存' }).click();
+    await expect(dialog).toBeHidden();
     await expect.poll(async () => ((await serverConfig(page.context().request)) as unknown as { apps: { id: string; aliases: string[] }[] }).apps.find((a) => a.id === 'github')!.aliases).toEqual(['代码托管', 'dm']);
     await page.goto('/');
     await page.getByRole('combobox', { name: '搜索' }).fill('dm');

@@ -72,7 +72,8 @@ test('L02: a fresh install welcomes with a usable new tab — no pairing asked f
   const tab = await context.newPage();
   await tab.goto('chrome://newtab/');
   await expect(tab.getByLabel('搜索', { exact: true })).toBeVisible();
-  await expect(tab.getByText('仅保存在此扩展')).toBeVisible();
+  // The pill says where the collection is: this extension, nothing of any account.
+  await expect(tab.getByRole('link', { name: /^保存状态：仅此设备。收藏只保存在此扩展/ })).toBeVisible();
   await expect(tab.getByText('连接 Nexus Portal')).toHaveCount(0);
 });
 
@@ -117,7 +118,8 @@ test('L02/L17: the context menu saves into the same collection; simultaneous sav
   expect(items).toHaveLength(8 + 1 + 1 + 20);
   // The new tab shows them (收藏 inside the extension, not the website).
   const tab = await context.newPage();
+  // (The old #/library link lands on 我的收藏 inside the extension.)
   await tab.goto(`chrome-extension://${extId}/newtab.html#/library`);
-  await tab.getByRole('textbox', { name: '搜索收藏库' }).fill('并发 7');
-  await expect(tab.getByRole('listbox').getByText('并发 7')).toBeVisible();
+  await tab.getByRole('searchbox', { name: '搜索我的收藏' }).fill('并发 7');
+  await expect(tab.getByRole('listbox', { name: /（\d+ 条）$/ }).getByText('并发 7')).toBeVisible();
 });

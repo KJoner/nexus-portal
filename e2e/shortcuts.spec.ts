@@ -253,7 +253,7 @@ test.describe('desktop', () => {
     const first = page.locator(dock(pins[5]!));
     const last = page.locator(dock(pins[pins.length - 1]!));
 
-    // Folded: the button comes straight after 收藏库, in both directions.
+    // Folded: the button comes straight after 快速打开, in both directions.
     await all.focus();
     await page.keyboard.press('Tab');
     await expect(handle).toBeFocused();
@@ -392,7 +392,7 @@ test.describe('desktop', () => {
     await expect(page.locator('[data-dock]').first()).toHaveAttribute('data-dock', 'youtube');
   });
 
-  test('sort mode: drag inside a category, move across categories, sync and reload', async ({ home: page, browser }) => {
+  test('我的收藏: drag inside a group, move across groups, sync and reload', async ({ home: page, browser }) => {
     // A second device watches the drawer while this one sorts.
     const other = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     await signIn(other);
@@ -402,14 +402,14 @@ test.describe('desktop', () => {
     const devGrid = b.getByRole('dialog', { name: '快速打开' }).locator('section', { hasText: '开发' });
     await expect(devGrid.getByRole('link')).toHaveText(['GitHub', 'Vercel', 'Cloudflare']);
 
-    await page.goto('/settings/apps');
-    await page.getByRole('button', { name: '排序' }).click();
-    const work = page.getByRole('region', { name: '工作' });
-    await expect(work).toBeVisible();
+    // 我的收藏 › 开发 is in its own order: rows can be dragged there (UI v2: no separate 排序 mode).
+    await page.goto('/settings/favorites?view=group:dev');
+    const rows = page.getByRole('listbox', { name: /^开发（\d+ 条）$/ }).getByRole('option');
+    await expect(rows).toHaveCount(3);
 
     // Mouse drag by the handle: Cloudflare above GitHub.
-    const handle = page.getByRole('button', { name: '拖动排序 Cloudflare' });
-    const target = page.locator('[data-sort-app="github"]');
+    const handle = page.getByRole('button', { name: /^拖动以排序「Cloudflare」/ });
+    const target = rows.filter({ hasText: 'GitHub' });
     const h = (await handle.boundingBox())!;
     const t = (await target.boundingBox())!;
     await page.mouse.move(h.x + h.width / 2, h.y + h.height / 2);
@@ -421,30 +421,31 @@ test.describe('desktop', () => {
     await expect.poll(() => inCat('dev')).toEqual(['cloudflare', 'github', 'vercel']);
     await expect(page.getByText('已移动「Cloudflare」')).toBeVisible();
 
-    // No drag needed: the ⋯ menu moves Figma into 开发.
-    await page.getByRole('button', { name: 'Figma 的移动选项' }).click();
-    // The submenu by keyboard: → opens it, Enter picks.
-    await page.getByRole('menuitem', { name: '移到分类' }).press('ArrowRight');
-    await page.getByRole('menuitem', { name: '移到「开发」' }).press('Enter');
+    // No drag needed: the ⋯ menu moves Figma into 开发 (to its end), by keyboard.
+    await page.goto('/settings/favorites?view=group:work');
+    await page.getByRole('button', { name: '「Figma」的操作' }).click();
+    await page.getByRole('menuitem', { name: '移动到分组…' }).press('Enter');
+    const move = page.getByRole('dialog', { name: '移动「Figma」' });
+    await move.getByRole('combobox', { name: '移动到分组' }).selectOption('dev');
+    await move.getByRole('button', { name: '移动' }).press('Enter');
     await expect.poll(() => inCat('dev')).toEqual(['cloudflare', 'github', 'vercel', 'figma']);
 
     // The other device follows without reloading; this one keeps the order after a reload.
     await expect(devGrid.getByRole('link')).toHaveText(['Cloudflare', 'GitHub', 'Vercel', 'Figma'], { timeout: 5000 });
-    await page.reload();
-    await page.getByRole('button', { name: '排序' }).click();
-    await expect(page.getByRole('region', { name: '开发' }).locator('[data-sort-app]')).toHaveCount(4);
+    await page.goto('/settings/favorites?view=group:dev');
+    await expect(page.getByRole('listbox', { name: /^开发（\d+ 条）$/ }).getByRole('option')).toHaveText([/Cloudflare/, /GitHub/, /Vercel/, /Figma/]);
     await other.close();
   });
 
-  test('sort mode: the menu reorders categories, undo restores', async ({ home: page }) => {
-    await page.goto('/settings/apps');
-    await page.getByRole('button', { name: '排序' }).click();
-    await page.getByRole('button', { name: '分类「影音与社区」的移动选项' }).click();
+  test('我的收藏: the group menu reorders groups, undo restores', async ({ home: page }) => {
+    await page.goto('/settings/favorites');
+    const tree = page.getByRole('navigation', { name: '收藏分组' });
+    await tree.getByRole('button', { name: '「影音与社区」的操作' }).click();
     await page.getByRole('menuitem', { name: '移到最前' }).click();
-    const cats = async () => ((await serverConfig(page.context().request)) as unknown as { categories: { id: string }[] }).categories.map((k) => k.id);
-    await expect.poll(cats).toEqual(['media', 'hosted', 'dev', 'work', 'none']);
+    const cats = async () => ((await serverConfig(page.context().request)) as unknown as { categories: { id: string }[] }).categories.map((k) => k.id).filter((id) => id !== 'none');
+    await expect.poll(cats).toEqual(['media', 'hosted', 'dev', 'work']);
     await page.getByRole('button', { name: '撤销' }).click();
-    await expect.poll(cats).toEqual(['hosted', 'dev', 'work', 'media', 'none']);
+    await expect.poll(cats).toEqual(['hosted', 'dev', 'work', 'media']);
   });
 
   test('a v0.1 export imports unchanged: 12 pins, defaults for the new settings', async ({ home: page }) => {
@@ -467,20 +468,22 @@ test.describe('mobile', () => {
   test.skip(({ isMobile }) => !isMobile, 'mobile layout');
 
   test('extra pins sit on swipeable pages and the sheet pulls up to show them all', async ({ home: page }) => {
-    const pins = await addPinnedSites(page.context().request, 10);
+    // 5 + 14 pins at 4 × 2 a page (UI v2: no service area on the first page): 8, 8, 3.
+    const pins = await addPinnedSites(page.context().request, 14);
     await page.reload();
     const strip = page.getByRole('group', { name: /快捷方式，第/ });
     await expect(strip).toHaveAttribute('aria-label', '快捷方式，第 1 / 3 页');
     await strip.evaluate((el) => el.scrollTo({ left: el.clientWidth }));
     await expect(strip).toHaveAttribute('aria-label', '快捷方式，第 2 / 3 页');
     expect(new URL(page.url()).pathname).toBe('/');
-    await expect(page.getByRole('link', { name: '站点 0', exact: true })).toBeInViewport();
+    // The first of page 2: the 9th pin.
+    await expect(page.getByRole('link', { name: '站点 3', exact: true })).toBeInViewport();
 
     await page.getByRole('button', { name: '展开更多快捷方式' }).tap();
     const all = page.getByRole('group', { name: '全部快捷方式' });
     await expect(all).toBeVisible();
-    // Every pin plus the three services, in the shared order.
-    await expect(all.getByRole('link')).toHaveCount(pins.length + 3);
+    // Every pin, in the shared order (services only when pinned — none here).
+    await expect(all.getByRole('link')).toHaveCount(pins.length);
     await expect(page.getByRole('button', { name: '收起快捷方式' })).toHaveAttribute('aria-expanded', 'true');
     await page.getByRole('button', { name: '收起快捷方式' }).tap();
     await expect(all).toBeHidden();
@@ -491,26 +494,26 @@ test.describe('mobile', () => {
     await page.reload();
     const strip = page.getByRole('group', { name: /快捷方式，第/ });
     await strip.evaluate((el) => el.scrollTo({ left: el.clientWidth }));
-    const tile = page.getByRole('link', { name: '站点 2', exact: true });
+    // On page 2 at 4 × 2 a page (5 + 10 pins).
+    const tile = page.getByRole('link', { name: '站点 5', exact: true });
     const b = (await tile.boundingBox())!;
     const at = { pointerType: 'touch', isPrimary: true, pointerId: 9, button: 0, buttons: 1, clientX: b.x + b.width / 2, clientY: b.y + 20 };
     await tile.dispatchEvent('pointerdown', at);
     await page.waitForTimeout(650);
     await tile.dispatchEvent('pointerup', at);
     await tile.dispatchEvent('click');
-    const sheet = page.getByRole('dialog', { name: '站点 2' });
+    const sheet = page.getByRole('dialog', { name: '站点 5' });
     await expect(sheet.getByRole('button', { name: '移到最前' })).toBeVisible();
     expect(new URL(page.url()).pathname).toBe('/');
     await sheet.getByRole('button', { name: '移到最前' }).tap();
-    const site2 = (await serverConfig(page.context().request)).apps.find((a) => a.name === '站点 2')!.id;
-    await expect.poll(async () => (await serverConfig(page.context().request)).pins[0]).toBe(site2);
+    const site5 = (await serverConfig(page.context().request)).apps.find((a) => a.name === '站点 5')!.id;
+    await expect.poll(async () => (await serverConfig(page.context().request)).pins[0]).toBe(site5);
   });
 
-  test('sort mode on a phone offers the non-drag menu', async ({ home: page }) => {
-    await page.goto('/settings/apps');
-    await page.getByRole('button', { name: '调整顺序' }).tap();
-    await page.getByRole('button', { name: 'Telegram 的移动选项' }).tap();
-    await page.getByRole('dialog', { name: 'Telegram' }).getByRole('button', { name: '移到最前' }).tap();
+  test('我的收藏 on a phone orders a group without dragging', async ({ home: page }) => {
+    await page.goto('/settings/favorites?view=group:media');
+    await page.getByRole('button', { name: '「Telegram」的操作' }).tap();
+    await page.getByRole('dialog', { name: 'Telegram' }).getByRole('button', { name: '移到分组最前' }).tap();
     const media = async () => ((await serverConfig(page.context().request)) as unknown as { apps: App[] }).apps.filter((a) => a.categoryId === 'media').map((a) => a.id);
     await expect.poll(media).toEqual(['telegram', 'youtube', 'bilibili', 'spotify', 'reddit', 'x']);
   });
