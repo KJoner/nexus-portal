@@ -109,7 +109,7 @@ describe('identity realm template', () => {
     expect(realm.loginTheme).toBe('accounts');
     expect(realm.accountTheme).toBe('accounts');
     expect(realm.emailTheme).toBe('accounts');
-    const themes = Object.fromEntries(realm.clients.map((c: { clientId: string; attributes: Record<string, string> }) => [c.clientId, c.attributes.login_theme]));
+    const themes = Object.fromEntries(realm.clients.map((c) => [String(c.clientId), (c.attributes as Record<string, string> | undefined)?.login_theme]));
     expect(themes).toEqual({ 'nexus-web': 'accounts-nexus', 'litesync-web': 'accounts-litesync' });
     const parent = (t: string) => /^parent=(.+)$/m.exec(readFileSync(join(dir, 'themes', t, 'theme.properties'), 'utf8'))?.[1];
     expect(parent('accounts/login')).toBe('keycloak.v2');
