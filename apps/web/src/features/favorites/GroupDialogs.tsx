@@ -84,6 +84,10 @@ function CreateGroup({ parentId: initial, categories, onClose, onDone }: { paren
     >
       <form
         className="flex flex-col gap-4"
+        // Enter that ends an IME composition (中文输入法选词) never submits.
+        onKeyDownCapture={(e) => {
+          if (e.key === 'Enter' && (e.nativeEvent.isComposing || e.keyCode === 229)) e.preventDefault();
+        }}
         onSubmit={(e) => {
           e.preventDefault();
           save();
@@ -125,6 +129,10 @@ function RenameGroup({ group, categories, onClose }: { group: Category; categori
       }
     >
       <form
+        // Enter that ends an IME composition (中文输入法选词) never submits.
+        onKeyDownCapture={(e) => {
+          if (e.key === 'Enter' && (e.nativeEvent.isComposing || e.keyCode === 229)) e.preventDefault();
+        }}
         onSubmit={(e) => {
           e.preventDefault();
           save();

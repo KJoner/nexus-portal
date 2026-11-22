@@ -330,7 +330,16 @@ function AddForm({ req, onClose }: { req: AddRequest; onClose(): void }) {
           {storeTab ? <StorePicker query={query} onQuery={setQuery} category={category} onCategory={setCategory} selected={selected.map((s) => s.id)} onToggle={toggle} stateOf={stateOf} onViewExisting={viewExisting} onManual={toManual} phone /> : storeMode ? selection : manualForm}
         </div>
         <div className="flex flex-none flex-col gap-3 border-t border-ink/8 px-4 pt-3" style={{ paddingBottom: `calc(env(safe-area-inset-bottom) + 12px${vv ? ` + ${Math.max(0, window.innerHeight - vv.height - vv.offsetTop)}px` : ''})` }}>
-          {storeTab && storeMode && <span className="text-[12.5px] text-ink/62">加入「{group}」{pin ? '并固定到首页' : ''}</span>}
+          {storeTab && storeMode && (
+            <div className="flex items-center gap-2 text-[12.5px] text-ink/62">
+              <span className="min-w-0 flex-1 truncate">
+                加入「{group}」{pin ? '并固定到首页' : ''}
+              </span>
+              <button type="button" onClick={() => setTab('manual')} className="h-11 flex-none border-0 bg-transparent px-1 text-[13px] text-amber-hi underline underline-offset-2">
+                更改分组与固定
+              </button>
+            </div>
+          )}
           {storeTab && selected.length === 0 ? (
             <Button variant="primary" className="h-12 w-full text-[15px]" disabled>
               选择想添加的网站

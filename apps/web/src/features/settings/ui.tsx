@@ -1,5 +1,5 @@
 import { Dialog as RDialog } from 'radix-ui';
-import { createContext, useContext, useId, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from 'react';
+import { createContext, useContext, useId, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from 'react';
 import { cn } from '../../lib/cn';
 
 /** Desktop and mobile settings share components; sizes follow R2 · 组件 (PC / 手机). */
@@ -180,11 +180,20 @@ interface DialogProps {
 
 /** R2 · 对话框: 440–520 px, radius 24; focus is trapped and returned by Radix. */
 export function Dialog({ open, onOpenChange, title, description, width = 440, children, footer }: DialogProps) {
+  // What had the focus when the dialog was asked for (before an autofocused field took it): closing
+  // gives it back there, not to that field once it is gone.
+  const [opener] = useState(() => (typeof document === 'undefined' ? null : (document.activeElement as HTMLElement | null)));
   return (
     <RDialog.Root open={open} onOpenChange={onOpenChange}>
       <RDialog.Portal>
         <RDialog.Overlay className="fixed inset-0 z-30 animate-[nx-fade_.2s_ease]" style={{ background: 'rgb(var(--nx-s0-rgb)/0.55)' }} />
         <RDialog.Content
+          onCloseAutoFocus={(e) => {
+            if (opener && opener.isConnected && opener !== document.body) {
+              e.preventDefault();
+              opener.focus();
+            }
+          }}
           className="fixed top-1/2 left-1/2 z-31 box-border flex max-h-[calc(100dvh-32px)] max-w-[calc(100vw-32px)] -translate-1/2 animate-pop flex-col gap-4 overflow-y-auto rounded-3xl p-6 text-ink"
           style={{ width, background: 'rgb(var(--nx-s4-rgb)/0.98)', boxShadow: '0 40px 100px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.07)' }}
         >

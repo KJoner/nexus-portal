@@ -224,7 +224,7 @@ export function FavoritesWorkspace() {
     const target = to === 'first' ? 0 : to === 'last' ? others.length : to === 'up' ? Math.max(0, k - 1) : Math.min(others.length, k + 1);
     if (target === k) return;
     const afterId = target === 0 ? null : others[target - 1]!.id;
-    report(await libraryApi.moveItems([i], i.folderId || UNFILED, afterId));
+    report(await libraryApi.moveItems([i], i.folderId || UNFILED, afterId), `已移动「${i.title}」`);
   };
   const moveInto = async (list: Item[], folderId: string) => {
     if (!list.length) return;
@@ -252,7 +252,8 @@ export function FavoritesWorkspace() {
     if (from < 0 || to < 0) return;
     const others = list.filter((x) => x.id !== active.id);
     const afterId = to === 0 ? null : from < to ? list[to]!.id : others[to - 1]!.id;
-    void libraryApi.moveItems([list[from]!], groupIdOfView, afterId).then((r) => report(r));
+    // Said out loud as well (a status toast), like the moves from the ⋯ menu.
+    void libraryApi.moveItems([list[from]!], groupIdOfView, afterId).then((r) => report(r, `已移动「${list[from]!.title}」`));
   };
 
   const actions = (i: Item): { label: string; icon: LucideIcon; onSelect(): void; disabled?: boolean; danger?: boolean }[] => {

@@ -225,7 +225,7 @@ function EditorForm({ item, pinned, phone, onClose }: { item: Item; pinned: bool
           <Button className={cn(phone ? 'h-11' : 'h-10 px-4')} disabled={busy} onClick={requestClose}>
             取消
           </Button>
-          <Button variant="primary" className={cn(phone ? 'h-11 px-6' : 'h-10 px-6')} disabled={busy} onClick={() => void save()}>
+          <Button variant="primary" className={cn(phone ? 'h-11 px-6' : 'h-10 px-6')} disabled={busy || !dirty} onClick={() => void save()}>
             {busy ? <Spinner /> : '保存'}
           </Button>
         </>
