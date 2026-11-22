@@ -73,7 +73,7 @@ interface ExportFile {
 }
 
 /** The newest Nexus backup format this page can restore (the server checks again). */
-export const BACKUP_VERSION = 2;
+export const BACKUP_VERSION = 3;
 
 /** A Nexus collection file (by name or content), as opposed to a browser's bookmark HTML. */
 export const isBackupFile = (name: string, text: string) => /\.json$/i.test(name) || text.trimStart().startsWith('{');

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { type Item, ITEM_LIMITS, itemUrlKey } from './items';
+import { depthOf, GROUP_LIMITS, labelKey, placeGroup } from './groups';
 import { AppSchema, CONFIG_LIMITS, isPinnable, LOCKED_CATEGORY, MAX_PINS, type AppEntry, type Category } from './schema';
 import { canonicalUrl } from './url';
 
@@ -18,15 +19,19 @@ import { canonicalUrl } from './url';
  *    folder: site or service, icon, LAN address, aliases, hidden…), `position`, `iconRef`, and
  *    `icons`: every uploaded icon an app uses, as a PNG data URL — so a backup carries its icons
  *    (库图标、网站图标、字母图标 are references that need no data).
+ *  - version 3 (UI v2 · v12.0.3 N2): `parentId` per folder (the group tree; folders in sibling
+ *    order), items keep `position` (their order within a group), `pins` the home order, `app` the
+ *    advanced fields and the catalog version. Versions 1 and 2 still restore: their folders become
+ *    root groups.
  * Anything newer is refused (UNSUPPORTED_VERSION) rather than half-read.
  */
 export const COLLECTION_FORMAT = 'nexus-collection';
-export const COLLECTION_VERSION = 2;
+export const COLLECTION_VERSION = 3;
 
 export const CollectionFileSchema = z.object({
   format: z.literal(COLLECTION_FORMAT),
   version: z.number().int().min(1),
-  folders: z.array(z.object({ id: z.string().min(1).max(64), label: z.string().max(200), locked: z.boolean().optional() })).max(200).default([]),
+  folders: z.array(z.object({ id: z.string().min(1).max(64), label: z.string().max(200), locked: z.boolean().optional(), parentId: z.string().max(64).nullable().optional() })).max(200).default([]),
   pins: z.array(z.string().max(64)).max(500).default([]),
   items: z.array(z.unknown()).max(5000),
   icons: z.record(z.string().max(64), z.string().max(2_000_000)).default({}),
@@ -114,8 +119,10 @@ export interface RestorePlan {
   categories: Category[];
   createdFolders: Category[];
   mappedFolders: { from: string; to: string; label: string }[];
-  /** Folders beyond the 50-folder limit: their items go to the inbox. */
+  /** Folders beyond the group limit: their items go to the nearest planned ancestor (or 未分组). */
   foldersOverLimit: number;
+  /** Folders deeper than the depth limit (their paths): their items go to the deepest allowed ancestor. */
+  foldersOverDepth: string[];
   create: PlannedItem[];
   update: { id: string; title: string; url: string; folderId: string; tags: string[]; note: string; kind: 'app' | 'page'; catalogId: string | null; extra: string | null }[];
   duplicates: { fileId: string | null; title: string; url: string; existingId: string; existingTitle: string }[];
@@ -163,35 +170,73 @@ export function newItemId(): string {
  * and the real thing use the same plan; the real one re-plans inside the transaction).
  */
 export function planRestore(file: CollectionFile, basis: RestoreBasis, duplicates: DuplicatePolicy): RestorePlan {
-  // ── folders: same id, else same name, else created (in the backup's order, before 未分类) ──
-  const categories = [...basis.categories];
+  // ── folders (UI v2 N2: a tree). Each backup folder is, in this order: the same group (same id);
+  // else the group with the same name at the same place (same parent — never a same-named group
+  // elsewhere: 工作/资料 is not 生活/资料); else created there. Parents are planned before children;
+  // version 1 and 2 folders have no parent and become root groups. A folder deeper than the limit
+  // goes to its deepest allowed ancestor and one over the group limit to its nearest planned
+  // ancestor — both are listed in the preview (nothing is flattened without saying so).
+  let categories = [...basis.categories];
   const byId = new Map(categories.map((k) => [k.id, k]));
-  const byLabel = new Map(categories.map((k) => [k.label.trim().toLowerCase(), k]));
   const folderMap = new Map<string, string>();
   const createdFolders: Category[] = [];
   const mappedFolders: RestorePlan['mappedFolders'] = [];
+  const foldersOverDepth: string[] = [];
   let foldersOverLimit = 0;
-  for (const f of file.folders) {
+  const fileById = new Map(file.folders.map((f) => [f.id, f]));
+  const fileParent = (f: CollectionFile['folders'][number]) => (file.version >= 3 && f.parentId && fileById.has(f.parentId) && f.parentId !== f.id ? f.parentId : null);
+  const filePath = (f: CollectionFile['folders'][number]): string[] => {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (let cur: CollectionFile['folders'][number] | undefined = f; cur && !seen.has(cur.id); cur = fileParent(cur) ? fileById.get(fileParent(cur)!) : undefined) {
+      seen.add(cur.id);
+      out.unshift(clip(cur.label, 16) || cur.id.slice(0, 16));
+    }
+    return out;
+  };
+  // Parents first (a cycle in a damaged file is planned as roots).
+  const folderOrder: CollectionFile['folders'] = [];
+  const placed = new Set<string>();
+  const visit = (f: CollectionFile['folders'][number], stack: Set<string>) => {
+    if (placed.has(f.id) || stack.has(f.id)) return;
+    stack.add(f.id);
+    const p = fileParent(f);
+    if (p) visit(fileById.get(p)!, stack);
+    placed.add(f.id);
+    folderOrder.push(f);
+  };
+  for (const f of file.folders) visit(f, new Set());
+  for (const f of folderOrder) {
     const label = clip(f.label, 16) || f.id.slice(0, 16);
-    if (f.id === LOCKED_CATEGORY.hosted || f.id === LOCKED_CATEGORY.none) folderMap.set(f.id, f.id);
-    else if (byId.has(f.id)) {
+    if (f.id === LOCKED_CATEGORY.none) {
+      folderMap.set(f.id, f.id);
+      continue;
+    }
+    if (byId.has(f.id)) {
       folderMap.set(f.id, f.id);
       if (byId.get(f.id)!.label !== label) mappedFolders.push({ from: f.id, to: f.id, label: byId.get(f.id)!.label });
-    } else if (byLabel.has(label.toLowerCase())) {
-      const to = byLabel.get(label.toLowerCase())!.id;
-      folderMap.set(f.id, to);
-      mappedFolders.push({ from: f.id, to, label: byLabel.get(label.toLowerCase())!.label });
+      continue;
+    }
+    const fp = fileParent(f);
+    const parent = fp ? (folderMap.get(fp) ?? null) : null;
+    const parentId = parent === LOCKED_CATEGORY.none ? null : parent;
+    const sameName = categories.find((k) => k.id !== LOCKED_CATEGORY.none && (k.parentId ?? null) === parentId && labelKey(k.label) === labelKey(label));
+    if (sameName) {
+      folderMap.set(f.id, sameName.id);
+      mappedFolders.push({ from: f.id, to: sameName.id, label: sameName.label });
+    } else if (depthOf(categories, parentId) + 1 > GROUP_LIMITS.depth) {
+      folderMap.set(f.id, parentId ?? LOCKED_CATEGORY.none);
+      foldersOverDepth.push(filePath(f).join(' / '));
     } else if (categories.length >= CONFIG_LIMITS.categories) {
-      folderMap.set(f.id, LOCKED_CATEGORY.none);
+      folderMap.set(f.id, parentId ?? LOCKED_CATEGORY.none);
       foldersOverLimit++;
     } else {
-      let id = Id.test(f.id) ? f.id : `c${createdFolders.length}${Date.now().toString(36)}`;
+      // (The legacy 我的服务 of an old backup, id `hosted`, becomes an ordinary group of that name.)
+      let id = Id.test(f.id) && f.id.length <= 64 ? f.id : `g${createdFolders.length}${Date.now().toString(36)}`;
       for (let i = 2; byId.has(id); i++) id = `${f.id.slice(0, 56)}-${i}`;
-      const k: Category = { id, label, locked: false };
-      const at = categories.findIndex((x) => x.id === LOCKED_CATEGORY.none);
-      categories.splice(at < 0 ? categories.length : at, 0, k);
+      const k: Category = { id, label, locked: false, parentId };
+      categories = placeGroup(categories, k);
       byId.set(id, k);
-      byLabel.set(label.toLowerCase(), k);
       folderMap.set(f.id, id);
       createdFolders.push(k);
     }
@@ -201,11 +246,15 @@ export function planRestore(file: CollectionFile, basis: RestoreBasis, duplicate
   // ── items ──
   const liveByUrl = new Map<string, Item>();
   for (const i of basis.live) if (!liveByUrl.has(itemUrlKey(i.url))) liveByUrl.set(itemUrlKey(i.url), i);
+  // UI v2 (N3): the same catalog entry is the same favorite even when its address was changed (a
+  // starter site of a local collection merged into an account that has it too).
+  const liveByCatalog = new Map<string, Item>();
+  for (const i of basis.live) if (i.catalogId && !liveByCatalog.has(i.catalogId)) liveByCatalog.set(i.catalogId, i);
   const taken = new Set(basis.takenIds);
   const seen = new Set<string>();
   /** Backup id → the item it is now (created or existing), for the pins. */
   const target = new Map<string, string>();
-  const plan: RestorePlan = { categories, createdFolders, mappedFolders, foldersOverLimit, create: [], update: [], duplicates: [], skipped: 0, repeated: 0, unsupported: 0, pins: [], pinsRestored: 0, pinsNotPinned: 0, iconsMissing: 0, kinds: { app: 0, page: 0 } };
+  const plan: RestorePlan = { categories, createdFolders, mappedFolders, foldersOverLimit, foldersOverDepth, create: [], update: [], duplicates: [], skipped: 0, repeated: 0, unsupported: 0, pins: [], pinsRestored: 0, pinsNotPinned: 0, iconsMissing: 0, kinds: { app: 0, page: 0 } };
   const pinnedInFile: string[] = [];
   for (const raw of file.items) {
     const e = readEntry(raw);
@@ -222,7 +271,7 @@ export function planRestore(file: CollectionFile, basis: RestoreBasis, duplicate
     const folderId = folderOf(e.folderId);
     const app = appOf(e, folderId, basis.admin);
     if (e.pinned && e.fileId) pinnedInFile.push(e.fileId);
-    const existing = liveByUrl.get(key);
+    const existing = liveByUrl.get(key) ?? (e.catalogId ? liveByCatalog.get(e.catalogId) : undefined);
     // The same address is already here: listed in the preview; skipped, updated, or kept as both.
     if (existing) plan.duplicates.push({ fileId: e.fileId, title: e.title, url: e.url, existingId: existing.id, existingTitle: existing.title });
     if (existing && duplicates !== 'keep-both') {
@@ -278,8 +327,7 @@ function appOf(e: FileEntry, folderId: string, admin: boolean): { entry: AppEntr
   const parsed = AppSchema.safeParse({ kind: 'site', icon: { source: 'auto', ref: '', letter: '', tone: 0 }, ...e.app, id: e.fileId ?? 'restored', name: clip(e.title, 32) || clip(e.url, 32), url: e.url, categoryId: folderId, ...(e.catalogId ? { catalogId: e.catalogId } : {}), version: undefined });
   if (!parsed.success) return null;
   const entry = parsed.data;
-  // A service lives in 我的服务 only, a site never there.
-  if ((entry.kind === 'service') !== (folderId === LOCKED_CATEGORY.hosted)) entry.kind = folderId === LOCKED_CATEGORY.hosted ? 'service' : 'site';
+  // UI v2 (N2): a service may sit in any group (no longer bound to 我的服务).
   if (!admin && entry.health.enabled) entry.health = { ...entry.health, enabled: false };
   return { entry };
 }
@@ -287,7 +335,7 @@ function appOf(e: FileEntry, folderId: string, admin: boolean): { entry: AppEntr
 /** What a restore reports (the preview shows the same numbers). */
 export function restoreSummary(plan: RestorePlan) {
   return {
-    folders: { create: plan.createdFolders.map((k) => ({ id: k.id, label: k.label })), map: plan.mappedFolders, overLimit: plan.foldersOverLimit },
+    folders: { create: plan.createdFolders.map((k) => ({ id: k.id, label: k.label, parentId: k.parentId ?? null })), map: plan.mappedFolders, overLimit: plan.foldersOverLimit, overDepth: plan.foldersOverDepth },
     items: { create: plan.create.length, update: plan.update.length, skip: plan.skipped, repeated: plan.repeated, unsupported: plan.unsupported, kinds: plan.kinds },
     duplicates: plan.duplicates.slice(0, 50),
     duplicateCount: plan.duplicates.length,
