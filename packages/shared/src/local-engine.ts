@@ -1,6 +1,9 @@
 import type { ConfigResponse, UploadedWallpaper } from './api';
 import { COLLECTION_FORMAT, COLLECTION_VERSION, CollectionFileSchema, extraOf, newItemId, planRestore, restoreSummary, type DuplicatePolicy } from './collection';
 import { newUserConfig } from './defaults';
+import { CreateFavoritesSchema, extraForNew, FavoriteRefused, favoriteAppFields, favoriteConflicts, MoveItemsSchema, placeInGroup, planFavoriteUpdate, planTreeMigration, SaveFavoriteSchema, STARTER_SITES, STARTER_VERSION, starterApp, type CreateFavoritesRequest, type MoveItemsRequest, type SaveFavoriteRequest, type TreeMigration, viewPositions } from './favorites';
+import { BookmarkImportSchema, bookmarkGroup, newGroupId, planBookmarkTree, type BookmarkImportRequest } from './bookmarks';
+import { survivingAncestor, UNFILED } from './groups';
 import { ITEM_LIMITS, ItemInputSchema, ItemPatchSchema, itemUrlKey, OpIdSchema, type ChangesResponse, type Item, type ItemChange, type ItemInput, type ItemKind, type ItemPatch, type ItemSource, type ItemWriteResult, type SnapshotResponse } from './items';
 import { applyOps, normalizeConfig, OpError, type Op, type OpBatch } from './ops';
 import { AppSchema, ConfigSchema, isPinnable, LOCKED_CATEGORY, MAX_PINS, type AppEntry, type Config, type Snapshot } from './schema';
@@ -91,12 +94,54 @@ export interface LocalState {
   batches: string[];
   /** What a restore added, for 撤销本次导入. */
   imports: Record<string, { folders: { id: string; label: string }[]; pins: string[]; at: number }>;
+  /**
+   * UI v2 (N3): the starter set this collection was created with (STARTER_VERSION), or absent for a
+   * collection created before — never inferred from an empty collection.
+   */
+  starterVersion?: number;
+  /** One-time migrations of this collection (N2: the group tree and the services). */
+  migrations?: { tree?: TreeMigration };
 }
 
-/** A fresh collection: the public new-account template (no private services, nothing pinned). */
-export function emptyLocalState(workspace: string, now: number): LocalState {
+/**
+ * A fresh collection: the public new-space template (no private services). UI v2 (N3): with the
+ * eight starter sites as real favorites, pinned, and starterVersion 1 — created here, in the
+ * transaction that creates the collection, and never again (`starter: false`: an empty one, for
+ * tests and tools).
+ */
+export function emptyLocalState(workspace: string, now: number, opts: { starter?: boolean } = {}): LocalState {
   const { apps: _apps, pins: _pins, ...doc } = newUserConfig();
-  return { format: LOCAL_FORMAT, schema: LOCAL_SCHEMA, workspace, revision: 1, updatedAt: new Date(now).toISOString(), doc, rows: {}, pins: [], seq: 0, changes: [], wallpapers: [], ops: {}, batches: [], imports: {} };
+  const at = new Date(now).toISOString();
+  const s: LocalState = { format: LOCAL_FORMAT, schema: LOCAL_SCHEMA, workspace, revision: 1, updatedAt: at, doc, rows: {}, pins: [], seq: 0, changes: [], wallpapers: [], ops: {}, batches: [], imports: {} };
+  if (opts.starter !== false) {
+    STARTER_SITES.forEach((site, i) => {
+      insert(s, { id: site.catalogId, kind: 'app', source: 'catalog', catalogId: site.catalogId, title: site.name, url: site.url, folderId: site.group, extra: extraOf(starterApp(site)), position: i + 1 }, now);
+    });
+    s.pins = STARTER_SITES.map((site) => site.catalogId);
+    change(s, 'pins', 'shared', s.seq, 'pins');
+    s.starterVersion = STARTER_VERSION;
+  }
+  s.migrations = { tree: { version: 1, at, fresh: true, hostedGroup: null, showServices: false, servicesPinned: [], servicesNotPinned: [], pinsBefore: [], pinsAfter: [...s.pins] } };
+  return s;
+}
+
+/**
+ * N2, once per collection created before the tree: 我的服务 becomes an ordinary group and the
+ * services its home page showed are pinned after the sites (planTreeMigration). Deterministic, so a
+ * read that has not been written back yet gives the same result; recorded in migrations.tree.
+ */
+function migrateLocalTree(s: LocalState): void {
+  const view = homeView(s);
+  const plan = planTreeMigration({ ...s.doc, apps: view.apps, pins: view.pins }, s.updatedAt);
+  if (JSON.stringify(plan.categories) !== JSON.stringify(s.doc.categories)) {
+    s.doc = { ...s.doc, categories: plan.categories };
+    change(s, 'folders', 'shared', s.seq, 'folders');
+  }
+  if (plan.record.servicesPinned.length) {
+    s.pins = plan.pins;
+    change(s, 'pins', 'shared', s.seq, 'pins');
+  }
+  s.migrations = { ...s.migrations, tree: plan.record };
 }
 
 /** A stored state that still reads (an older or damaged record reads as null, never as data). */
@@ -106,7 +151,7 @@ export function readLocalState(raw: unknown): LocalState | null {
   const doc = ConfigSchema.safeParse({ ...s.doc, apps: [], pins: [] });
   if (!doc.success) return null;
   const { apps: _a, pins: _p, ...rest } = normalizeConfig(doc.data);
-  return {
+  const state: LocalState = {
     format: LOCAL_FORMAT,
     schema: LOCAL_SCHEMA,
     workspace: s.workspace,
@@ -121,7 +166,11 @@ export function readLocalState(raw: unknown): LocalState | null {
     ops: s.ops && typeof s.ops === 'object' ? s.ops : {},
     batches: Array.isArray(s.batches) ? s.batches : [],
     imports: s.imports && typeof s.imports === 'object' ? s.imports : {},
+    ...(typeof s.starterVersion === 'number' ? { starterVersion: s.starterVersion } : {}),
+    ...(s.migrations && typeof s.migrations === 'object' ? { migrations: s.migrations } : {}),
   };
+  if (!state.migrations?.tree) migrateLocalTree(state);
+  return state;
 }
 
 // ── rows ───────────────────────────────────────────────────────────────────
@@ -136,7 +185,7 @@ const parse = <T>(s: string, fallback: T): T => {
 };
 
 function toItem(r: LocalRow, pinned: ReadonlySet<string>): Item {
-  return { id: r.id, kind: r.kind, source: r.source, catalogId: r.catalogId, title: r.title, url: r.url, folderId: r.folderId, tags: [...r.tags], note: r.note, iconRef: r.iconRef, version: r.version, pinned: pinned.has(r.id), position: r.position, createdAt: r.createdAt, updatedAt: r.updatedAt, deletedAt: r.deletedAt, importId: r.importId };
+  return { id: r.id, kind: r.kind, source: r.source, catalogId: r.catalogId, title: r.title, url: r.url, folderId: r.folderId, tags: [...r.tags], note: r.note, iconRef: r.iconRef, version: r.version, pinned: pinned.has(r.id), position: r.position, createdAt: r.createdAt, updatedAt: r.updatedAt, deletedAt: r.deletedAt, importId: r.importId, app: favoriteAppFields(r.extra) };
 }
 
 /** The home page's view of an item (ItemStore.toApp); null when it cannot be shown there. */
@@ -197,7 +246,7 @@ function writePins(s: LocalState, ids: readonly string[]): string[] {
     if (!r) throw new PinRefused('NOT_FOUND', '收藏不存在', before.length);
     if (r.deletedAt !== null) throw new PinRefused('ITEM_DELETED', `「${r.title}」已被删除，不能固定`, before.length);
     const app = rowToApp(r);
-    if (!app || !isPinnable(app)) throw new PinRefused('NOT_PINNABLE', `「${r.title}」不能固定到首页（自托管服务显示在服务区，隐藏的应用先取消隐藏）`, before.length);
+    if (!app || !isPinnable(app)) throw new PinRefused('NOT_PINNABLE', `「${r.title}」不能固定到首页（隐藏的收藏先取消隐藏）`, before.length);
   }
   const same = list.length === before.length && list.every((id, i) => id === before[i]);
   if (same && s.pins.length === list.length) return before;
@@ -269,11 +318,13 @@ function insert(s: LocalState, d: Draft, now: number): LocalRow {
 
 type RowSet = Partial<{ title: string; url: string; folderId: string; tags: string[]; note: string; iconRef: string; extra: string; position: number; kind: ItemKind; catalogId: string | null }>;
 
-function update(s: LocalState, id: string, set: RowSet, now: number, action: 'upsert' | 'restore' = 'upsert'): LocalRow {
+function update(s: LocalState, id: string, set: RowSet, now: number, action: 'upsert' | 'restore' = 'upsert', extraFields: readonly string[] = []): LocalRow {
   const r = s.rows[id]!;
   const version = r.version + 1;
   const fields = { ...r.fieldVersions };
   if (action === 'restore') fields.restored = version;
+  // UI v2 (N1): the unified editor records which `extra` fields it changed (app.icon, app.aliases…).
+  for (const f of extraFields) fields[f] = version;
   const next: LocalRow = { ...r, version, updatedAt: now, ...(action === 'restore' ? { deletedAt: null } : {}) };
   for (const [k, v] of Object.entries(set)) {
     if (v === undefined) continue;
@@ -315,8 +366,10 @@ function freeItemId(s: LocalState): string {
 export function homeView(s: LocalState): { apps: AppEntry[]; pins: string[] } {
   const pins = pinnedIds(s);
   const pinned = new Set(pins);
+  // In position order, pinned pages among the apps (UI v2 N2: the order of a group is the
+  // position order of all its favorites).
   const rows = liveRows(s);
-  const apps = [...rows.filter((r) => r.kind === 'app'), ...rows.filter((r) => r.kind === 'page' && pinned.has(r.id))].map(rowToApp).filter((a): a is AppEntry => !!a);
+  const apps = rows.filter((r) => r.kind === 'app' || pinned.has(r.id)).map(rowToApp).filter((a): a is AppEntry => !!a);
   return { apps, pins: pins.filter((id) => apps.some((a) => a.id === id)) };
 }
 
@@ -451,19 +504,18 @@ function applyHomeView(s: LocalState, before: Config, after: Config, plan: { res
     const used = liveRows(s).length;
     if (used + fresh.length > LOCAL_LIMITS.items) throw new OpError('quota_exceeded', `收藏最多 ${LOCAL_LIMITS.items} 条，请先删除一些`, { kind: 'items', limit: LOCAL_LIMITS.items, used });
   }
-  let position = 0;
+  const positions = before.apps === after.apps ? new Map<string, number>() : viewPositions(after.apps, plan.extra, (id) => s.rows[id]?.position);
   for (const app of before.apps === after.apps ? [] : after.apps) {
-    const isOrdered = !plan.extra.has(app.id);
-    if (isOrdered) position++;
     const old = prev.get(app.id);
     const row = s.rows[app.id];
+    const position = positions.get(app.id);
     if (!row) {
-      insert(s, { id: app.id, kind: 'app', source: app.catalogId ? 'catalog' : 'manual', catalogId: app.catalogId ?? null, title: app.name, url: app.url, folderId: app.categoryId, note: app.description, extra: extraOf(app), position }, now);
+      insert(s, { id: app.id, kind: 'app', source: app.catalogId ? 'catalog' : 'manual', catalogId: app.catalogId ?? null, title: app.name, url: app.url, folderId: app.categoryId, note: app.description, extra: extraOf(app), position: position ?? maxPosition(s) + 1 }, now);
       continue;
     }
     const was = old ?? rowToApp(row);
     const set: RowSet = was ? changesOf(was, app) : { title: app.name, url: app.url, folderId: app.categoryId, extra: extraOf(app) };
-    if (isOrdered && row.position !== position) set.position = position;
+    if (position !== undefined && row.position !== position) set.position = position;
     if (row.deletedAt !== null) {
       if (!plan.restores.has(app.id)) throw new OpError('deleted', `「${app.name}」已被删除（在回收站中），这次修改没有应用`, undefined, { appId: app.id, name: app.name });
       update(s, app.id, set, now, 'restore');
@@ -481,6 +533,22 @@ function applyHomeView(s: LocalState, before: Config, after: Config, plan: { res
       if (e instanceof PinRefused) throw e.code === 'PINS_FULL' ? new OpError('pins_full', e.message, { kind: 'pins', limit: MAX_PINS, used: e.used }) : new OpError(e.code === 'NOT_PINNABLE' ? 'not_pinnable' : 'not_found', e.message);
       throw e;
     }
+  }
+}
+
+/**
+ * Favorites of groups that no longer exist (deleted, or dropped by an older client's whole-list
+ * replace) go to the nearest surviving ancestor, else 未分组 — the ones outside the home view too.
+ */
+function reassignRemovedGroups(s: LocalState, before: Config['categories'], after: Config['categories'], now: number): void {
+  const kept = new Set(after.map((k) => k.id));
+  const gone = new Set(before.filter((k) => !kept.has(k.id)).map((k) => k.id));
+  if (!gone.size) return;
+  for (const r of Object.values(s.rows)) {
+    if (!gone.has(r.folderId)) continue;
+    const to = survivingAncestor(before, r.folderId, kept);
+    if (r.deletedAt !== null) s.rows[r.id] = { ...r, folderId: to };
+    else update(s, r.id, { folderId: to }, now);
   }
 }
 
@@ -506,6 +574,7 @@ export function localPostOps(s: LocalState, batch: OpBatch, now: number): Config
   }
   const next = sanitize(applied);
   applyHomeView(s, plan.config, next, plan, now);
+  reassignRemovedGroups(s, current.config.categories, next.categories, now);
   if (JSON.stringify(current.config.categories) !== JSON.stringify(next.categories)) change(s, 'folders', 'shared', s.seq, 'folders');
   const { apps: _apps, pins: _pins, ...doc } = next;
   s.doc = doc;
@@ -514,7 +583,7 @@ export function localPostOps(s: LocalState, batch: OpBatch, now: number): Config
 }
 
 // ── 我的收藏 (the v2 item interfaces, answered locally) ─────────────────────
-const folders = (s: LocalState) => s.doc.categories.map((k) => ({ id: k.id, label: k.label, locked: !!k.locked }));
+const folders = (s: LocalState) => s.doc.categories.map((k) => ({ id: k.id, label: k.label, locked: !!k.locked, parentId: k.parentId ?? null }));
 const folderOf = (s: LocalState, folderId: string | undefined) => {
   if (!folderId) return LOCKED_CATEGORY.none;
   if (!s.doc.categories.some((k) => k.id === folderId)) throw new LocalApiError(422, 'VALIDATION', '分组不存在');
@@ -584,6 +653,22 @@ function write<T>(s: LocalState, opId: string, request: unknown, now: number, ru
   return stored;
 }
 
+/** A shared rule's refusal as the local collection's answer. */
+function refused<T>(fn: () => T): T {
+  try {
+    return fn();
+  } catch (e) {
+    if (e instanceof FavoriteRefused) throw new LocalApiError(e.status, e.code, e.message, e.details);
+    throw e;
+  }
+}
+
+/** planFavoriteUpdate over a local row (a local collection never probes services: not admin). */
+function favoritePlan(s: LocalState, id: string, patch: Parameters<typeof planFavoriteUpdate>[1]) {
+  const r = s.rows[id]!;
+  return refused(() => planFavoriteUpdate({ id: r.id, kind: r.kind, title: r.title, url: r.url, folderId: r.folderId, tags: r.tags, note: r.note, iconRef: r.iconRef, catalogId: r.catalogId, extra: r.extra, version: r.version, fieldVersions: r.fieldVersions, deletedAt: r.deletedAt }, patch, { admin: false, groups: s.doc.categories }));
+}
+
 const CURSOR = /^l(\d+)$/;
 const CONTENT_FIELDS = ['title', 'url', 'folderId', 'tags', 'note', 'iconRef', 'extra', 'kind', 'catalogId'];
 
@@ -591,7 +676,7 @@ export const localItems = {
   /** The whole collection at once (it is this browser's own, and small). */
   snapshot(s: LocalState): SnapshotResponse {
     const pinned = new Set(pinnedIds(s));
-    return { items: liveRows(s).map((r) => toItem(r, pinned)), pins: [...pinned], folders: folders(s), watermark: s.seq, cursor: `l${s.seq}`, nextPage: null };
+    return { items: liveRows(s).map((r) => toItem(r, pinned)), pins: [...pinned], folders: folders(s), watermark: s.seq, cursor: `l${s.seq}`, nextPage: null, starterVersion: s.starterVersion ?? 0 };
   },
 
   changes(s: LocalState, cursor: string): ChangesResponse & { pins?: string[]; folders?: SnapshotResponse['folders'] } {
@@ -706,13 +791,14 @@ export const localItems = {
     });
   },
 
-  /** A browser's bookmark file (pages into one folder; addresses already here skipped). */
-  importItems(s: LocalState, raw: { opId: string; folderId?: string; items: ItemInput[]; skipDuplicates?: boolean }, now: number): { importId: string; imported: number; skipped: number } {
-    const items = raw.items.map((i) => validate(ItemInputSchema, i));
-    if (!items.length) throw new LocalApiError(422, 'VALIDATION', '没有可导入的网址');
-    const req = { opId: raw.opId, folderId: raw.folderId, items, skipDuplicates: raw.skipDuplicates ?? true };
-    return write(s, req.opId, ['import', req], now, () => {
-      const folderId = folderOf(s, req.folderId);
+  /**
+   * A browser's bookmark file (BookmarkImportSchema): `single` puts the pages into one group;
+   * `tree` (UI v2 N2) makes the file's folders nested groups under `parentId`. Addresses already
+   * here are skipped. `dryRun`: the preview, nothing written.
+   */
+  importItems(s: LocalState, raw: BookmarkImportRequest | { opId: string; folderId?: string; items: ItemInput[]; skipDuplicates?: boolean }, now: number) {
+    const req = validate(BookmarkImportSchema, raw);
+    const plan = () => {
       const known = new Set(liveRows(s).map((r) => r.urlKey));
       const seen = new Set<string>();
       const fresh = req.items.filter((i) => {
@@ -721,11 +807,142 @@ export const localItems = {
         seen.add(k);
         return true;
       });
+      const tree = req.folderMode === 'tree' ? planBookmarkTree(s.doc.categories, req.items.map((i) => i.path ?? []), req.parentId ?? null, () => newGroupId(new Set(s.doc.categories.map((k) => k.id)))) : null;
+      return { fresh, tree };
+    };
+    if (req.dryRun) throw new LocalApiError(422, 'VALIDATION', '预览请用 previewImportItems');
+    return write(s, req.opId, ['import', req], now, () => {
+      const single = folderOf(s, req.folderId);
+      const { fresh, tree } = plan();
       admitItems(s, fresh.length);
+      if (tree?.created.length) {
+        s.doc = { ...s.doc, categories: tree.categories };
+        change(s, 'folders', 'shared', s.seq, 'folders');
+      }
       const importId = `imp-${req.opId.slice(-16)}`;
       let position = maxPosition(s) + 1;
-      for (const i of fresh) insert(s, { kind: i.kind ?? 'page', source: 'import', title: i.title, url: i.url, folderId: i.folderId && s.doc.categories.some((k) => k.id === i.folderId) ? i.folderId : folderId, tags: i.tags, note: i.note, iconRef: i.iconRef, position: position++, importId }, now);
-      return { importId, imported: fresh.length, skipped: req.items.length - fresh.length, ownerRevision: 0 };
+      for (const i of fresh) {
+        const folderId = tree ? bookmarkGroup(tree, i.path) : i.folderId && s.doc.categories.some((k) => k.id === i.folderId) ? i.folderId : single;
+        insert(s, { kind: i.kind ?? 'page', source: 'import', title: i.title, url: i.url, folderId, tags: tree ? i.tags : i.tags, note: i.note, iconRef: i.iconRef, position: position++, importId }, now);
+      }
+      const created = tree?.created.map((g) => ({ id: g.id, label: g.label })) ?? [];
+      if (created.length) s.imports[importId] = { folders: created, pins: [], at: now };
+      return { importId, imported: fresh.length, skipped: req.items.length - fresh.length, ...(tree ? { folders: { create: tree.created, matched: tree.matched, overDepth: tree.overDepth, overLimit: tree.overLimit } } : {}), ...(created.length ? { undo: { folders: created, pins: [] } } : {}), ownerRevision: 0 };
+    });
+  },
+
+  /** The preview of a bookmark import (`dryRun`): what would be created and where, nothing written. */
+  previewImportItems(s: LocalState, raw: BookmarkImportRequest) {
+    const req = validate(BookmarkImportSchema, { ...raw, dryRun: true });
+    const known = new Set(liveRows(s).map((r) => r.urlKey));
+    const seen = new Set<string>();
+    const fresh = req.items.filter((i) => {
+      const k = itemUrlKey(i.url);
+      if (seen.has(k) || (req.skipDuplicates && known.has(k))) return false;
+      seen.add(k);
+      return true;
+    });
+    const tree = req.folderMode === 'tree' ? planBookmarkTree(s.doc.categories, req.items.map((i) => i.path ?? []), req.parentId ?? null, () => newGroupId(new Set(s.doc.categories.map((k) => k.id)))) : null;
+    return { dryRun: true as const, importId: null, imported: fresh.length, skipped: req.items.length - fresh.length, folders: tree ? { create: tree.created, matched: tree.matched, overDepth: tree.overDepth, overLimit: tree.overLimit } : null, basis: s.revision };
+  },
+
+  /**
+   * 添加收藏 (UI v2 N1/N3): one or many favorites with all their fields, in one transaction
+   * (CreateFavoritesSchema). Pins over the limit are reported per favorite; the favorites are saved.
+   */
+  createFavorites(s: LocalState, raw: CreateFavoritesRequest, now: number) {
+    const req = validate(CreateFavoritesSchema, raw);
+    return write(s, req.opId, ['create-favorites', req], now, () => {
+      const results: { index: number; result: 'created' | 'updated' | 'skipped'; item: Item; duplicateOf?: string }[] = [];
+      const dupes = req.duplicatePolicy === 'create' ? [] : req.items.flatMap((input, index) => {
+        const item = localItems.findByUrl(s, input.url);
+        return item ? [{ index, item }] : [];
+      });
+      if (dupes.length && req.duplicatePolicy === 'prompt') throw new LocalApiError(409, 'DUPLICATE', dupes.length === 1 ? '这个网址已经在收藏里' : `其中 ${dupes.length} 个网址已经在收藏里`, { item: dupes[0]!.item, duplicates: dupes.map((d) => ({ index: d.index, id: d.item.id, title: d.item.title })) });
+      admitItems(s, req.items.length - dupes.length);
+      const toPin: string[] = [];
+      req.items.forEach((input, index) => {
+        const folderId = folderOf(s, input.folderId ?? req.folderId);
+        const existing = req.duplicatePolicy === 'create' ? null : localItems.findByUrl(s, input.url);
+        if (existing && req.duplicatePolicy === 'skip') {
+          results.push({ index, result: 'skipped', item: existing, duplicateOf: existing.id });
+          return;
+        }
+        if (existing) {
+          const planned = favoritePlan(s, existing.id, { title: input.title, folderId, tags: input.tags, ...(input.note ? { note: input.note } : {}), ...(input.app ? { app: input.app } : {}) });
+          update(s, existing.id, planned.set, now, 'upsert', planned.fields.filter((f) => f.startsWith('app.')));
+          results.push({ index, result: 'updated', item: itemOf(s, existing.id)!, duplicateOf: existing.id });
+          if (req.pin) toPin.push(existing.id);
+          return;
+        }
+        const extra = refused(() => extraForNew({ title: input.title, url: input.url, folderId, catalogId: input.catalogId ?? null, app: input.app }, false));
+        const row = insert(s, { kind: input.kind ?? 'page', source: req.source, catalogId: input.catalogId ?? null, title: input.title, url: input.url, folderId, tags: input.tags, note: input.note, iconRef: input.iconRef, extra: extra.extra }, now);
+        results.push({ index, result: 'created', item: itemOf(s, row.id)! });
+        if (req.pin) toPin.push(row.id);
+      });
+      const pinned: string[] = [];
+      const notPinned: { id: string; code: 'PINS_FULL' | 'NOT_PINNABLE' }[] = [];
+      for (const id of toPin) {
+        const p = pinIfRoom(s, id);
+        if (p.pinned) pinned.push(id);
+        else notPinned.push({ id, code: p.code ?? 'NOT_PINNABLE' });
+      }
+      const pinnedNow = new Set(pinnedIds(s));
+      return { results: results.map((r) => ({ ...r, item: toItem(s.rows[r.item.id]!, pinnedNow) })), pin: { pinned, notPinned, limit: MAX_PINS, used: pinnedNow.size }, ownerRevision: 0 };
+    });
+  },
+
+  /**
+   * 保存 of the unified editor (UI v2 N1): every field and the pin in one transaction; fields changed
+   * elsewhere after `baseVersion` are FIELD_CONFLICT (nothing written, the current favorite comes
+   * back); a pin the rule refuses fails the whole save.
+   */
+  saveFavorite(s: LocalState, id: string, raw: SaveFavoriteRequest, now: number) {
+    const req = validate(SaveFavoriteSchema, raw);
+    return write(s, req.opId, ['save-favorite', id, req], now, () => {
+      const item = live(s, id);
+      const planned = favoritePlan(s, id, req.patch);
+      const conflictFields = favoriteConflicts(s.rows[id]!.fieldVersions, planned.fields, req.baseVersion);
+      if (conflictFields.length) throw new LocalApiError(409, 'FIELD_CONFLICT', '这些字段在别处已被修改，请先合并', { currentVersion: item.version, conflictFields, item });
+      if (Object.keys(planned.set).length) update(s, id, planned.set, now, 'upsert', planned.fields.filter((f) => f.startsWith('app.')));
+      if (planned.pin === true) {
+        try {
+          pin(s, id);
+        } catch (e) {
+          pinError(e);
+        }
+      } else if (planned.pin === false) unpin(s, id);
+      return { ...answer(itemOf(s, id)!, Object.keys(planned.set).length || planned.pin !== undefined ? 'updated' : 'unchanged'), ...(planned.healthForcedOff ? { healthForcedOff: true } : {}) };
+    });
+  },
+
+  /** 移动 / 排序 (UI v2 N2): the favorites, in this order, into `folderId` after `afterId`. */
+  moveItems(s: LocalState, raw: MoveItemsRequest, now: number) {
+    const req = validate(MoveItemsSchema, raw);
+    return write(s, req.opId, ['move-items', req], now, () => {
+      const folderId = folderOf(s, req.folderId);
+      const ids = [...new Set(req.ids)];
+      for (const id of ids) {
+        const item = live(s, id);
+        const base = req.baseVersions?.[id];
+        if (base !== undefined) {
+          const f = s.rows[id]!.fieldVersions;
+          const moved = ['position', 'folderId'].filter((k) => (f[k] ?? 0) > base);
+          if (moved.length) throw new LocalApiError(409, 'FIELD_CONFLICT', `「${item.title}」在别处已被移动，请刷新后再移动`, { currentVersion: item.version, conflictFields: moved, item });
+        }
+      }
+      const moving = new Set(ids);
+      const group = liveRows(s).filter((r) => r.folderId === folderId && !moving.has(r.id)).map((r) => ({ id: r.id, position: r.position }));
+      const placed = refused(() => placeInGroup(group, ids.length, req.afterId));
+      if (placed.renumber) for (const p of placed.renumber) if (s.rows[p.id]!.position !== p.position) update(s, p.id, { position: p.position }, now);
+      ids.forEach((id, i) => {
+        const r = s.rows[id]!;
+        const set: RowSet = { position: placed.positions[i]! };
+        if (r.folderId !== folderId) set.folderId = folderId;
+        update(s, id, set, now);
+      });
+      const pinned = new Set(pinnedIds(s));
+      return { items: ids.map((id) => toItem(s.rows[id]!, pinned)), ownerRevision: 0 };
     });
   },
 

@@ -1,5 +1,14 @@
 import {
   applyOps,
+  type BookmarkImportAnswer,
+  type BookmarkImportPreview,
+  type BookmarkImportRequest,
+  type CreateFavoritesAnswer,
+  type CreateFavoritesRequest,
+  type MoveItemsAnswer,
+  type MoveItemsRequest,
+  type SaveFavoriteAnswer,
+  type SaveFavoriteRequest,
   CLIENT_HEADER,
   CONFLICT_CODES,
   CONFLICT_HTTP_CODE,
@@ -143,7 +152,16 @@ export interface ItemsTransport {
   restore(id: string, opId: string, baseVersion?: number): Promise<ItemWriteResult>;
   pin(id: string, opId: string, position?: number): Promise<{ pins: string[] }>;
   unpin(id: string, opId: string): Promise<{ pins: string[] }>;
-  importItems(body: { opId: string; folderId?: string; items: ItemInput[]; skipDuplicates?: boolean }): Promise<{ importId: string; imported: number; skipped: number }>;
+  /** A bookmark file (UI v2 N2: `folderMode: 'tree'` keeps its folders as nested groups). */
+  importItems(body: BookmarkImportRequest | { opId: string; folderId?: string; items: ItemInput[]; skipDuplicates?: boolean }): Promise<BookmarkImportAnswer>;
+  /** The preview of a bookmark import: the groups it would create or use, nothing written. */
+  previewImport(body: BookmarkImportRequest): Promise<BookmarkImportPreview>;
+  /** UI v2 (N1/N3) 添加收藏: one or many favorites with all their fields, in one transaction. */
+  createFavorites(body: CreateFavoritesRequest): Promise<CreateFavoritesAnswer>;
+  /** UI v2 (N1) 保存 of the unified editor: every field and the pin at once (field-level CAS). */
+  saveFavorite(id: string, body: SaveFavoriteRequest): Promise<SaveFavoriteAnswer>;
+  /** UI v2 (N2) 移动 / 排序: favorites, in this order, into a group after `afterId`. */
+  moveItems(body: MoveItemsRequest): Promise<MoveItemsAnswer>;
   undoImport(importId: string, opId: string): Promise<{ removed: number; kept: number; unpinned?: number; removedFolders?: number; keptFolders?: number }>;
   /** NEX-06: 恢复 a Nexus collection backup (dryRun = the preview; basis = the preview's revision). */
   restoreCollection(body: { opId: string; file: unknown; duplicates: RestoreDuplicates; dryRun: boolean; basis?: number }): Promise<RestoreAnswer>;
@@ -243,6 +261,10 @@ export const httpTransport: Transport = {
     pin: (id, opId, position) => request(`/api/v2/pins/${encodeURIComponent(id)}`, { method: 'POST', body: JSON.stringify(position === undefined ? { opId } : { opId, position }) }),
     unpin: (id, opId) => request(`/api/v2/pins/${encodeURIComponent(id)}?opId=${encodeURIComponent(opId)}`, { method: 'DELETE' }),
     importItems: (body) => request('/api/v2/import', { method: 'POST', body: JSON.stringify(body) }, 60_000),
+    previewImport: (body) => request('/api/v2/import', { method: 'POST', body: JSON.stringify({ ...body, dryRun: true }) }, 60_000),
+    createFavorites: (body) => request('/api/v2/favorites', { method: 'POST', body: JSON.stringify(body) }, 20_000),
+    saveFavorite: (id, body) => request(`/api/v2/favorites/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    moveItems: (body) => request('/api/v2/items/move', { method: 'POST', body: JSON.stringify(body) }),
     undoImport: (importId, opId) => request(`/api/v2/import/${encodeURIComponent(importId)}/undo`, { method: 'POST', body: JSON.stringify({ opId }) }),
     restoreCollection: (body) => request('/api/v2/import/collection', { method: 'POST', body: JSON.stringify(body) }, 120_000),
     exportAll: () => request('/api/v2/export', {}, 60_000),

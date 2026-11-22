@@ -15,7 +15,7 @@ const appEntry = (a: Partial<AppEntry> & Pick<AppEntry, 'id' | 'name' | 'url' | 
 const T0 = Date.UTC(2026, 10, 22, 12);
 let clock = T0;
 const now = () => (clock += 1000);
-const fresh = () => emptyLocalState('local:test', T0);
+const fresh = () => emptyLocalState('local:test', T0, { starter: false });
 let n = 0;
 const op = (k = 'op') => `${k}-${(++n).toString().padStart(8, '0')}`;
 const batch = (ops: Parameters<typeof localPostOps>[1]['ops']) => ({ clientId: 'c1', batchId: op('b'), ops });

@@ -99,6 +99,19 @@ class FakeItems implements ItemsTransport {
   async exportAll(): Promise<unknown> {
     throw new HttpError(501, 'not_in_test', '');
   }
+  // UI v2 (N1/N2): not used by these tests.
+  async previewImport(): Promise<never> {
+    throw new Error('not used');
+  }
+  async createFavorites(): Promise<never> {
+    throw new Error('not used');
+  }
+  async saveFavorite(): Promise<never> {
+    throw new Error('not used');
+  }
+  async moveItems(): Promise<never> {
+    throw new Error('not used');
+  }
   async restoreCollection(): Promise<never> {
     throw new HttpError(501, 'not_in_test', '');
   }

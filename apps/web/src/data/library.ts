@@ -1,4 +1,4 @@
-import type { Item, ItemInput, ItemPatch, ItemWriteResult, SnapshotResponse } from '@nexus/shared';
+import type { BookmarkImportRequest, CreateFavoritesAnswer, CreateFavoritesRequest, FavoritePatch, Item, ItemInput, ItemPatch, ItemWriteResult, MoveItemsAnswer, SaveFavoriteAnswer, SnapshotResponse } from '@nexus/shared';
 import { create } from 'zustand';
 import { toast } from '../components/toast-store';
 import { storage } from '../lib/storage';
@@ -19,7 +19,11 @@ export type Folder = SnapshotResponse['folders'][number];
 
 export interface QueuedOp {
   opId: string;
-  kind: 'create' | 'patch' | 'remove' | 'restore' | 'pin' | 'unpin';
+  /**
+   * UI v2: `favorites` = 添加收藏 (one or many, all fields), `save` = 保存 of the unified editor
+   * (all fields + pin, field-level CAS), `move` = 移动 / 排序 within or into a group.
+   */
+  kind: 'create' | 'patch' | 'remove' | 'restore' | 'pin' | 'unpin' | 'favorites' | 'save' | 'move';
   id?: string;
   body?: unknown;
   /** The item as this device last saw it (title for the conflict list, content for 另存一条). */
@@ -140,7 +144,9 @@ export function pullLibrary(): Promise<void> {
 }
 
 /** What a write answered: the item (applied here), or why it could not be done. */
-export type WriteOutcome = { ok: true; item?: Item; queued?: boolean; pin?: ItemWriteResult['pin'] } | { ok: false; code: string; message: string; details?: Record<string, unknown> | null };
+export type WriteOutcome = { ok: true; item?: Item; queued?: boolean; pin?: ItemWriteResult['pin']; answer?: CreateFavoritesAnswer | MoveItemsAnswer | SaveFavoriteAnswer } | { ok: false; code: string; message: string; details?: Record<string, unknown> | null };
+
+type Answer = ItemWriteResult | { pins: string[] } | CreateFavoritesAnswer | MoveItemsAnswer;
 
 /** What to tell the person when a requested pin was refused (NEX-07); null when it was pinned. */
 export function pinNotice(pin: ItemWriteResult['pin'] | undefined): string | null {
@@ -148,7 +154,7 @@ export function pinNotice(pin: ItemWriteResult['pin'] | undefined): string | nul
   return pin.code === 'PINS_FULL' ? `首页已固定满 ${pin.limit ?? 36} 个，这条没有固定（取消固定一个后可再固定）` : '这条不能固定到首页';
 }
 
-async function send(op: QueuedOp): Promise<ItemWriteResult | { pins: string[] }> {
+async function send(op: QueuedOp): Promise<Answer> {
   const t = currentTransport().items;
   const base = (op.body as { baseVersion?: number } | undefined)?.baseVersion;
   switch (op.kind) {
@@ -164,11 +170,25 @@ async function send(op: QueuedOp): Promise<ItemWriteResult | { pins: string[] }>
       return t.pin(op.id!, op.opId, (op.body as { position?: number } | undefined)?.position);
     case 'unpin':
       return t.unpin(op.id!, op.opId);
+    case 'favorites':
+      return t.createFavorites({ opId: op.opId, ...(op.body as Omit<CreateFavoritesRequest, 'opId'>) });
+    case 'save':
+      return t.saveFavorite(op.id!, { opId: op.opId, ...(op.body as { baseVersion: number; patch: FavoritePatch }) });
+    case 'move':
+      return t.moveItems({ opId: op.opId, ...(op.body as { ids: string[]; folderId: string; afterId?: string | null; baseVersions?: Record<string, number> }) });
   }
 }
 
-function applyAnswer(res: ItemWriteResult | { pins: string[] }) {
-  if ('pins' in res) useLibrary.setState({ pins: res.pins });
+function applyAnswer(res: Answer) {
+  if ('results' in res) {
+    // 添加收藏: every favorite as it is now, and the pins they got.
+    const items = res.results.map((r) => r.item);
+    put(items);
+    const pins = useLibrary.getState().pins;
+    const added = items.filter((i) => i.pinned && !pins.includes(i.id)).map((i) => i.id);
+    if (added.length) useLibrary.setState({ pins: [...pins, ...added] });
+  } else if ('items' in res) put(res.items);
+  else if ('pins' in res) useLibrary.setState({ pins: res.pins });
   else {
     put([res.item]);
     const pins = useLibrary.getState().pins;
@@ -191,7 +211,8 @@ async function run(op: QueuedOp): Promise<WriteOutcome> {
   try {
     const res = await send(op);
     if (useLibrary.getState().owner === owner) applyAnswer(res);
-    return { ok: true, item: 'item' in res ? res.item : undefined, ...('pin' in res && res.pin ? { pin: res.pin } : {}) };
+    const pin = 'item' in res && 'pin' in res ? (res as ItemWriteResult).pin : undefined;
+    return { ok: true, item: 'item' in res ? res.item : undefined, ...(pin ? { pin } : {}), ...('results' in res || 'items' in res || op.kind === 'save' ? { answer: res as CreateFavoritesAnswer | MoveItemsAnswer | SaveFavoriteAnswer } : {}) };
   } catch (e) {
     if (retryable(e)) {
       // Kept on this device with the same opId: sent later, applied once.
@@ -246,8 +267,8 @@ export type LibraryChoice = 'mine' | 'copy' | 'discard';
 
 /** What can be done about a kept conflict (the page shows these buttons). */
 export function conflictChoices(c: LibraryConflict): LibraryChoice[] {
-  if (c.op.kind === 'patch' && (c.code === 'ITEM_DELETED' || c.code === 'FIELD_CONFLICT')) return ['mine', 'copy', 'discard'];
-  if (c.op.kind === 'create' && c.code === 'DUPLICATE') return ['mine', 'copy', 'discard'];
+  if ((c.op.kind === 'patch' || c.op.kind === 'save') && (c.code === 'ITEM_DELETED' || c.code === 'FIELD_CONFLICT')) return ['mine', 'copy', 'discard'];
+  if ((c.op.kind === 'create' || c.op.kind === 'favorites') && c.code === 'DUPLICATE') return ['mine', 'copy', 'discard'];
   return ['mine', 'discard'];
 }
 
@@ -271,18 +292,24 @@ export async function resolveConflict(index: number, choice: LibraryChoice): Pro
   const current = (c.details?.item ?? null) as Item | null;
   const version = current?.version;
   let r: WriteOutcome;
-  if (choice === 'copy') {
+  if (choice === 'copy' && c.op.kind === 'favorites') {
+    r = await run({ ...c.op, opId: opId('fav'), body: { ...(c.op.body as object), duplicatePolicy: 'create' } });
+  } else if (choice === 'copy') {
     const body = c.op.body as { patch?: ItemPatch; item?: ItemInput } | undefined;
     const from = c.op.kind === 'create' ? body?.item : current ? { title: current.title, url: current.url, folderId: current.folderId, tags: current.tags, note: current.note, ...body?.patch } : c.op.seen ? { ...c.op.seen, ...body?.patch } : null;
     if (!from) return { ok: false, code: 'NOT_AVAILABLE', message: '没有可另存的内容' };
     r = await run({ opId: opId('create'), kind: 'create', body: { source: 'manual', item: { kind: 'page', title: from.title, url: from.url, folderId: from.folderId, tags: from.tags, note: from.note }, pinToHome: false, duplicatePolicy: 'create' } });
-  } else if (c.op.kind === 'patch' && c.code === 'ITEM_DELETED' && current && version !== undefined) {
+  } else if ((c.op.kind === 'patch' || c.op.kind === 'save') && c.code === 'ITEM_DELETED' && current && version !== undefined) {
     const back = await run({ opId: opId('restore'), kind: 'restore', id: c.op.id, body: { baseVersion: version } });
     // The edit goes after the restore (queued behind it when offline); a restore adds one version.
     if (!back.ok) r = back;
     else r = await run({ ...c.op, opId: opId('patch'), body: { ...(c.op.body as object), baseVersion: back.item?.version ?? version + 1 } });
-  } else if (c.op.kind === 'create') {
-    r = await run({ ...c.op, opId: opId('create'), body: { ...(c.op.body as object), duplicatePolicy: c.code === 'DUPLICATE' ? 'update' : (c.op.body as { duplicatePolicy?: string })?.duplicatePolicy } });
+  } else if (c.op.kind === 'create' || c.op.kind === 'favorites') {
+    r = await run({ ...c.op, opId: opId(c.op.kind), body: { ...(c.op.body as object), duplicatePolicy: c.code === 'DUPLICATE' ? 'update' : (c.op.body as { duplicatePolicy?: string })?.duplicatePolicy } });
+  } else if (c.op.kind === 'move') {
+    // Mine: move them now, from where they are now (the order seen then no longer applies).
+    const { baseVersions: _b, ...body } = c.op.body as { baseVersions?: Record<string, number> };
+    r = await run({ ...c.op, opId: opId('move'), body });
   } else {
     // A newer base: what is there now (the server sent it along with the refusal).
     r = await run({ ...c.op, opId: opId(c.op.kind), body: { ...(c.op.body as object), ...(version !== undefined ? { baseVersion: version } : {}) } });
@@ -319,4 +346,30 @@ export const libraryApi = {
    */
   previewRestore: (file: unknown, duplicates: RestoreDuplicates) => currentTransport().items.restoreCollection({ opId: opId('preview'), file, duplicates, dryRun: true }),
   restoreBackup: (file: unknown, duplicates: RestoreDuplicates, basis: number | undefined) => currentTransport().items.restoreCollection({ opId: opId('restore'), file, duplicates, dryRun: false, basis }),
+
+  // ── UI v2 (v12.0.3 N1/N2/N3): 我的收藏 ───────────────────────────────────
+  /**
+   * 添加收藏 — one or many favorites with all their fields, in one transaction. Offline it waits in
+   * this account's queue (same opId: saved once). `answer.results` / `answer.pin` say what happened.
+   */
+  addFavorites: (req: Omit<CreateFavoritesRequest, 'opId'>) => run({ opId: opId('fav'), kind: 'favorites', body: req }),
+  /**
+   * 保存 of the unified editor: every field and the pin at once, against the version shown (a field
+   * changed elsewhere since is FIELD_CONFLICT and nothing is saved; the form keeps what was typed).
+   */
+  saveFavorite: (item: Item, patch: FavoritePatch) => {
+    const { pin: _pin, app, ...fields } = patch;
+    put([{ ...item, ...fields, ...(app ? { app: { ...(item.app ?? {}), ...app } } : {}), version: item.version }]);
+    return run({ opId: opId('save'), kind: 'save', id: item.id, body: { baseVersion: item.version, patch }, seen: seenOf(item) });
+  },
+  /**
+   * 移动 / 排序: these favorites, in this order, into `folderId` right after `afterId` (null: first;
+   * undefined: last). Moved elsewhere since they were shown: FIELD_CONFLICT, nothing moved.
+   */
+  moveItems: (items: Item[], folderId: string, afterId?: string | null) =>
+    run({ opId: opId('move'), kind: 'move', body: { ids: items.map((i) => i.id), folderId, ...(afterId !== undefined ? { afterId } : {}), baseVersions: Object.fromEntries(items.map((i) => [i.id, i.version])) } }),
+  /** 书签导入的预览（tree: the groups it would create or use; nothing written). */
+  previewBookmarks: (req: Omit<BookmarkImportRequest, 'opId' | 'dryRun'>) => currentTransport().items.previewImport({ opId: opId('preview'), ...req }),
+  /** 书签导入 (tree by default for the new page: the file's folders become nested groups). */
+  importBookmarks: (req: Omit<BookmarkImportRequest, 'opId' | 'dryRun'>) => currentTransport().items.importItems({ opId: opId('import'), ...req }),
 };

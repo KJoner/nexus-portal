@@ -115,6 +115,17 @@ export function localTransport(opts: LocalTransportOptions): LocalTransport {
     pin: (id, opId, position) => run((s) => localItems.pin(s, id, opId, position, now())),
     unpin: (id, opId) => run((s) => localItems.unpin(s, id, opId, now())),
     importItems: (body) => run((s) => localItems.importItems(s, body, now())),
+    previewImport: async (body) => {
+      const s = await read();
+      try {
+        return localItems.previewImportItems(s, body);
+      } catch (e) {
+        return asHttpError(e);
+      }
+    },
+    createFavorites: (body) => run((s) => localItems.createFavorites(s, body, now())),
+    saveFavorite: (id, body) => run((s) => localItems.saveFavorite(s, id, body, now())),
+    moveItems: (body) => run((s) => localItems.moveItems(s, body, now())),
     undoImport: (importId, opId) => run((s) => localItems.undoImport(s, importId, opId, now())),
     restoreCollection: (body) =>
       run((s, a) =>

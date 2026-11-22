@@ -240,7 +240,10 @@ export function idbLocalStore(): LocalStore {
  * Stand-in for tests (jsdom has no IndexedDB): the same contract — transactions run one after
  * another, each on a copy of the committed state; a refusal writes nothing.
  */
-export function memoryLocalStore(workspace = 'local:test'): LocalStore & { state: LocalState | null; assets: Map<string, AssetRecord>; failNext?: unknown } {
+export function memoryLocalStore(workspace = 'local:test', opts: { starter?: boolean } = {}): LocalStore & { state: LocalState | null; assets: Map<string, AssetRecord>; failNext?: unknown } {
+  // A new collection of the browser starts with the starter sites (UI v2 N3, as idbLocalStore does);
+  // most tests want an empty one and say nothing.
+  const starter = opts.starter ?? false;
   let chain: Promise<unknown> = Promise.resolve();
   const listeners = new Set<(r: number) => void>();
   const store = {
@@ -248,7 +251,7 @@ export function memoryLocalStore(workspace = 'local:test'): LocalStore & { state
     assets: new Map<string, AssetRecord>(),
     failNext: undefined as unknown,
     async read() {
-      return structuredClone(store.state ?? (store.state = emptyLocalState(workspace, Date.now())));
+      return structuredClone(store.state ?? (store.state = emptyLocalState(workspace, Date.now(), { starter })));
     },
     transact<T>(fn: (s: LocalState, a: AssetTx) => T): Promise<T> {
       const run = chain.then(async () => {
@@ -258,7 +261,7 @@ export function memoryLocalStore(workspace = 'local:test'): LocalStore & { state
           store.failNext = undefined;
           throw new LocalStorageError(e);
         }
-        const draft = structuredClone(store.state ?? emptyLocalState(workspace, Date.now()));
+        const draft = structuredClone(store.state ?? emptyLocalState(workspace, Date.now(), { starter }));
         const puts: AssetRecord[] = [];
         const removes: string[] = [];
         const result = fn(draft, { put: (a) => puts.push(a), remove: (id) => removes.push(id) });
