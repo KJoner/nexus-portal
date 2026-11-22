@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { defaultConfig } from './defaults';
-import { desktopShortcuts, mobileShortcuts, paginate } from './layout';
+import { desktopShortcuts, mobileShortcuts, paginate, pinnedSites } from './layout';
 import { applyOp, applyOps, invertOp, normalizeConfig, OpError, type Op } from './ops';
 import type { Config } from './schema';
 
@@ -93,10 +93,20 @@ describe('home shortcut layout', () => {
     const d = desktopShortcuts(c);
     expect(d.first.map((a) => a.id)).toEqual(c.pins.slice(0, 5));
     expect(d.extra.map((a) => a.id)).toEqual(c.pins.slice(5));
-    // Mobile: 2 rows × 4 minus the 3 services.
+    // Mobile: 2 rows × 4. UI v2: no separate services strip takes room any more.
     const m = mobileShortcuts(c);
-    expect(m.first).toHaveLength(5);
-    expect(m.extra).toHaveLength(11);
+    expect(m.first).toHaveLength(8);
+    expect(m.extra).toHaveLength(8);
+  });
+
+  it('UI v2: a pinned service shows among the pins, in pin order; hidden entries never show', () => {
+    const c0 = base();
+    const svc = c0.apps.find((a) => a.kind === 'service')!;
+    const site = c0.apps.find((a) => a.kind === 'site')!;
+    let c = { ...c0, pins: [svc.id, site.id] };
+    expect(pinnedSites(c).map((a) => a.id)).toEqual([svc.id, site.id]);
+    c = { ...c, apps: c.apps.map((a) => (a.id === svc.id ? { ...a, hidden: true } : a)) };
+    expect(pinnedSites(c).map((a) => a.id)).toEqual([site.id]);
   });
 
   it('single-row mode has no extension', () => {
