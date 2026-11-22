@@ -1,15 +1,15 @@
 /**
  * 保存到哪里 (v0.5 · U2b): one wording for where a save goes, shared by the popup (both
  * collections), the context menu and its toolbar feedback — 「保存到：此扩展的本地收藏」 or
- * 「保存到：账号「…」的收藏库」, never a vague 「已保存」 that leaves the place to guess.
+ * 「保存到：我的收藏（账号「…」）」 (UI v2: 我的收藏), never a vague 「已保存」 that leaves the place to guess.
  */
 export const WHERE = {
   local: '此扩展的本地收藏',
-  account: '账号的收藏库',
+  account: '账号的我的收藏',
 } as const;
 
 /** The line under the popup's title: the real destination, with the account's name when known. */
-export const saveTarget = (space: 'local' | 'account', accountLabel?: string | null) => (space === 'local' ? `保存到：${WHERE.local}` : accountLabel ? `保存到：账号「${accountLabel}」的收藏库` : `保存到：${WHERE.account}`);
+export const saveTarget = (space: 'local' | 'account', accountLabel?: string | null) => (space === 'local' ? `保存到：${WHERE.local}` : accountLabel ? `保存到：我的收藏（账号「${accountLabel}」）` : `保存到：${WHERE.account}`);
 
 /** What a finished save says (popup status and the toolbar button's title after a menu save). */
 export const SAVED = {

@@ -47,7 +47,7 @@ async function badge(flash?: string, note?: string) {
   const s = await server();
   const waiting = (await readQueue(queue)).filter((e) => unsent(e.state)).length;
   const revoked = !!s?.revoked;
-  await ext.action.setTitle({ title: note ?? (revoked ? `${REVOKED_HINT}（${waiting ? `${waiting} 条收藏仍保存在扩展里` : '收藏到 Nexus'}）` : '收藏到 Nexus') });
+  await ext.action.setTitle({ title: note ?? (revoked ? `${REVOKED_HINT}（${waiting ? `${waiting} 条收藏仍保存在扩展里` : '添加到我的收藏'}）` : '添加到我的收藏') });
   await ext.action.setBadgeBackgroundColor({ color: flash === '✓' ? '#3f8f5f' : revoked ? '#b3412e' : '#b07a2a' });
   await ext.action.setBadgeText({ text: flash ?? (revoked ? '!' : waiting ? String(waiting) : '') });
   if (flash) setTimeout(() => void badge(), 2500);
@@ -72,8 +72,8 @@ const flush = coalesce(async () => {
 
 function menus() {
   void removeAllMenus().then(() => {
-    ext.contextMenus.create({ id: MENU.page, title: '收藏当前页面到 Nexus', contexts: ['page'] });
-    ext.contextMenus.create({ id: MENU.link, title: '收藏此链接到 Nexus', contexts: ['link'] });
+    ext.contextMenus.create({ id: MENU.page, title: '添加当前页面到我的收藏', contexts: ['page'] });
+    ext.contextMenus.create({ id: MENU.link, title: '添加此链接到我的收藏', contexts: ['link'] });
   });
 }
 

@@ -32,6 +32,21 @@ async function saveThroughBackground(body: LocalSaveCommand['body']): Promise<Lo
   return storeLocalSave(body);
 }
 
+
+/** A group's whole path (UI v2: groups nest; the same name can sit under different parents). */
+const folderPath = (folders: readonly { id: string; label: string; parentId?: string | null }[], id: string): string => {
+  const names: string[] = [];
+  const seen = new Set<string>();
+  for (let at: string | null | undefined = id; at && !seen.has(at); ) {
+    seen.add(at);
+    const f = folders.find((x) => x.id === at);
+    if (!f) break;
+    names.unshift(f.label);
+    at = f.parentId ?? null;
+  }
+  return names.join(' / ') || id;
+};
+
 export function LocalPopup() {
   const [tab, setTab] = useState<{ title: string; url: string } | null>(null);
   const [title, setTitle] = useState('');
@@ -115,7 +130,7 @@ export function LocalPopup() {
     setError(moved ? '' : '没有放入本地收藏，请再试一次');
   };
 
-  const openLibrary = () => void ext.tabs.create({ url: ext.runtime.getURL('newtab.html#/library') }).then(() => window.close());
+  const openLibrary = () => void ext.tabs.create({ url: ext.runtime.getURL('newtab.html#/settings/favorites') }).then(() => window.close());
   const pageOk = !!tab && !!canonicalUrl(tab.url);
   const notice = done ? pinNotice(done.result.pin) : null;
 
@@ -123,7 +138,7 @@ export function LocalPopup() {
     <main className="flex w-[360px] flex-col gap-3 bg-base p-4 text-ink">
       <header className="flex items-center gap-2">
         <span className="size-2 rounded-full bg-amber" />
-        <h1 className="m-0 flex-1 text-[15px] font-medium">收藏当前页面</h1>
+        <h1 className="m-0 flex-1 text-[15px] font-medium">添加到我的收藏</h1>
       </header>
       <p className="m-0 -mt-1.5 flex items-center gap-1.5 text-[12px] text-ink/56" title="收藏保存在这个浏览器扩展里，不需要账号，也不会上传">
         <HardDrive className="size-3.5 flex-none" />
@@ -155,9 +170,9 @@ export function LocalPopup() {
             <label className="flex flex-col gap-1 text-[12px] text-ink/56">
               分组
               <select value={folderId} onChange={(e) => setFolderId(e.target.value)} aria-label="分组" className="h-9 rounded-lg border-0 bg-ink/8 px-2 text-[13px] text-ink outline-none">
-                {(folders.length ? folders : [{ id: LOCKED_CATEGORY.none, label: '未分类' }]).map((f) => (
-                  <option key={f.id} value={f.id} className="bg-[#2a2824]">
-                    {f.id === LOCKED_CATEGORY.none ? '未分类' : f.label}
+                {(folders.length ? folders : [{ id: LOCKED_CATEGORY.none, label: '未分组' }]).map((f) => (
+                  <option key={f.id} value={f.id} className="bg-[var(--nx-option-bg)]">
+                    {f.id === LOCKED_CATEGORY.none ? '未分组' : folderPath(folders, f.id)}
                   </option>
                 ))}
               </select>
@@ -191,7 +206,7 @@ export function LocalPopup() {
           <div className="flex gap-2">
             <button type="button" onClick={openLibrary} className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border-0 bg-ink/9 text-[13px] text-ink">
               <LibraryBig className="size-4" />
-              查看收藏
+              打开我的收藏
             </button>
             {done.result.result === 'created' && !done.undone && (
               <button type="button" onClick={() => void undo()} className="flex h-9 items-center justify-center gap-1.5 rounded-lg border-0 bg-ink/9 px-3 text-[13px] text-ink">

@@ -117,7 +117,7 @@ function Connected() {
 
       {!canSave(server) && (
         <Group title="收藏网页">
-          <Row label="需要新的授权" sub="这个扩展目前只能读取导航。要用工具栏按钮和右键菜单把网页存进收藏库，请在 Nexus Portal 里批准「读取与保存收藏」的权限（旧授权不会被自动扩大）。">
+          <Row label="需要新的授权" sub="这个扩展目前只能读取导航。要用工具栏按钮和右键菜单把网页添加到我的收藏，请在 Nexus Portal 里批准「读取与保存收藏」的权限（旧授权不会被自动扩大）。">
             <Button variant="primary" onClick={() => setDialog('authorize')}>
               授权收藏
             </Button>
@@ -126,7 +126,7 @@ function Connected() {
       )}
       {canSave(server) && server.account && (
         <Group title="收藏网页">
-          <Row label={saveTarget('account', server.account.label)} sub="点工具栏的 Nexus 按钮，或在网页、链接上右键选择「收藏到 Nexus」。离线时先保存在本机，联网后自动同步。" />
+          <Row label={saveTarget('account', server.account.label)} sub="点工具栏的 Nexus 按钮，或在网页、链接上右键选择「添加到我的收藏」。离线时先保存在本机，联网后自动同步。" />
         </Group>
       )}
 
@@ -135,7 +135,7 @@ function Connected() {
           initial={server.origin}
           onDone={(r) => {
             setDialog(null);
-            toast(r === 'revoked' ? SYNC_MESSAGE[r] : { msg: '已授权：现在可以把网页收藏到 Nexus 了', tone: 'ok' });
+            toast(r === 'revoked' ? SYNC_MESSAGE[r] : { msg: '已授权：现在可以把网页添加到我的收藏了', tone: 'ok' });
           }}
         />
       </Dialog>
@@ -207,7 +207,7 @@ function LocalCollection({ paired, accountLabel }: { paired: boolean; accountLab
     <Group title="此扩展的本地收藏">
       <Row label={<span className="flex items-center gap-2.5"><HardDrive className="size-[18px] text-ink/60" />保存在此扩展里</span>} sub={`${counts ? `${counts.items} 条收藏${counts.pins ? `、${counts.pins} 个固定到首页` : ''}。` : ''}不需要账号，也不会上传；不使用浏览器的同步存储。卸载扩展或清除扩展数据会删除它们，请定期导出备份。`}>
         <div className="flex flex-none flex-wrap gap-2">
-          <Button onClick={() => void ext.tabs.create({ url: ext.runtime.getURL('newtab.html#/library') })}>
+          <Button onClick={() => void ext.tabs.create({ url: ext.runtime.getURL('newtab.html#/settings/favorites') })}>
             <LibraryBig className="size-[15px]" />
             打开收藏
           </Button>

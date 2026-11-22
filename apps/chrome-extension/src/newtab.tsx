@@ -6,6 +6,7 @@ import '@fontsource/noto-sans-sc/400.css';
 import '@fontsource/noto-sans-sc/500.css';
 import './styles.css';
 import { preloadPinyin } from '@web/lib/pinyin';
+import { applyRememberedTheme } from '@web/lib/theme';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { boot } from './boot';
@@ -15,6 +16,7 @@ import { NewTab } from './ui/NewTab';
 
 // Local first: this extension's collection (or the account's cached navigation) renders before any
 // network request is made.
+applyRememberedTheme();
 const { space } = await boot();
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

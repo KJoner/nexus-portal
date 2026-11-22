@@ -46,6 +46,21 @@ function Status({ entry }: { entry: QueueEntry }) {
 }
 
 /** v0.5: saves go to the collection the new tab shows — this extension's own, or the paired account. */
+
+/** A group's whole path (UI v2: groups nest; the same name can sit under different parents). */
+const folderPath = (folders: readonly { id: string; label: string; parentId?: string | null }[], id: string): string => {
+  const names: string[] = [];
+  const seen = new Set<string>();
+  for (let at: string | null | undefined = id; at && !seen.has(at); ) {
+    seen.add(at);
+    const f = folders.find((x) => x.id === at);
+    if (!f) break;
+    names.unshift(f.label);
+    at = f.parentId ?? null;
+  }
+  return names.join(' / ') || id;
+};
+
 export function Popup() {
   const [space, setSpace] = useState<ExtSpace | null>(null);
   useEffect(() => void readSpace(area).then(setSpace, () => setSpace('local')), []);
@@ -127,10 +142,10 @@ function AccountPopup() {
     <main className="flex w-[380px] flex-col gap-3 bg-base p-4 text-ink">
       <header className="flex items-center gap-2">
         <span className="size-2 rounded-full bg-amber" />
-        <h1 className="m-0 flex-1 text-[15px] font-medium">收藏到 Nexus</h1>
+        <h1 className="m-0 flex-1 text-[15px] font-medium">添加到我的收藏</h1>
         {server && (
-          <a href={`${server.origin}/library`} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-[12.5px] text-ink/60 no-underline hover:text-ink">
-            收藏库 <ExternalLink className="size-3.5" />
+          <a href={`${server.origin}/settings/favorites`} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-[12.5px] text-ink/60 no-underline hover:text-ink">
+            我的收藏 <ExternalLink className="size-3.5" />
           </a>
         )}
       </header>
@@ -148,7 +163,7 @@ function AccountPopup() {
   if (!server)
     return shell(
       <>
-        <p className="m-0 text-[13.5px] leading-[1.6] text-ink/76">还没有连接 Nexus Portal。连接并批准「保存收藏」的权限后，就能把网页收进你的收藏库。</p>
+        <p className="m-0 text-[13.5px] leading-[1.6] text-ink/76">还没有连接 Nexus Portal。连接并批准「保存收藏」的权限后，就能把网页添加到我的收藏库。</p>
         <button type="button" onClick={() => void ext.runtime.openOptionsPage()} className="h-10 rounded-xl border-0 bg-amber text-[14px] font-semibold text-on-amber">
           连接 Nexus Portal
         </button>
@@ -172,7 +187,7 @@ function AccountPopup() {
           </p>
           {existing && (
             <p className="m-0 rounded-lg bg-ink/7 px-3 py-2 text-[12.5px] text-ink/80">
-              已在收藏库：「{existing.title}」{folders.find((f) => f.id === existing.folderId)?.label ? `，在「${folders.find((f) => f.id === existing.folderId)!.label}」` : ''}。保存会新建一条前先提示你。
+              已在我的收藏：「{existing.title}」{folders.find((f) => f.id === existing.folderId)?.label ? `，在「${folders.find((f) => f.id === existing.folderId)!.label}」` : ''}。保存会新建一条前先提示你。
             </p>
           )}
           <label className="flex flex-col gap-1 text-[12px] text-ink/56">
@@ -184,9 +199,9 @@ function AccountPopup() {
               <label className="flex flex-col gap-1 text-[12px] text-ink/56">
                 分组
                 <select value={folderId} onChange={(e) => setFolderId(e.target.value)} aria-label="分组" className="h-9 rounded-lg border-0 bg-ink/8 px-2 text-[13px] text-ink outline-none">
-                  {(folders.length ? folders : [{ id: LOCKED_CATEGORY.none, label: '收件箱' }]).map((f) => (
-                    <option key={f.id} value={f.id} className="bg-[#2a2824]">
-                      {f.id === LOCKED_CATEGORY.none ? '收件箱（未分组）' : f.label}
+                  {(folders.length ? folders : [{ id: LOCKED_CATEGORY.none, label: '未分组' }]).map((f) => (
+                    <option key={f.id} value={f.id} className="bg-[var(--nx-option-bg)]">
+                      {f.id === LOCKED_CATEGORY.none ? '未分组' : folderPath(folders, f.id)}
                     </option>
                   ))}
                 </select>

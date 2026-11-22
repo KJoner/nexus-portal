@@ -196,7 +196,7 @@ export async function flushQueue(store: QueueStore, server: ServerRecord | null,
       sent++;
     } catch (e) {
       if (!(e instanceof ApiError)) throw e;
-      if (e.code === 'DUPLICATE') update = { state: 'duplicate', item: e.details?.item as QueueEntry['item'], message: '已在收藏库中', doneAt: Date.now() };
+      if (e.code === 'DUPLICATE') update = { state: 'duplicate', item: e.details?.item as QueueEntry['item'], message: '已在我的收藏中', doneAt: Date.now() };
       else if (e.code === 'QUOTA_EXCEEDED') update = { state: 'held', message: e.message };
       else if (e.code === 'VALIDATION') update = { state: 'held', message: e.message };
       else {

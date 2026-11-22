@@ -1,5 +1,7 @@
 import { defaultConfig } from '@nexus/shared';
+import { LegacyCatalogRedirect, LegacyLibraryRedirect } from '@web/features/favorites/redirects';
 import { HomePage } from '@web/features/home/HomePage';
+import { ThemeRoot } from '@web/lib/theme';
 import { Wallpaper } from '@web/features/home/Wallpaper';
 import { Button, Spinner } from '@web/features/settings/ui';
 import { useMotionLevel, useViewport } from '@web/lib/hooks';
@@ -13,11 +15,9 @@ import { ConnectForm } from './Connect';
 import { ext } from '../lib/ext';
 
 const SettingsPage = lazy(() => import('@web/features/settings/SettingsPage'));
-const CatalogPage = lazy(() => import('@web/features/catalog/CatalogPage'));
-const LibraryPage = lazy(() => import('@web/features/library/LibraryPage'));
 const page = (el: ReactNode) => <Suspense fallback={<div className="fixed inset-0 bg-base" />}>{el}</Suspense>;
 
-/** `newtab.html#/library` opens that page (the popup's 「查看收藏」). */
+/** `newtab.html#/settings/favorites` opens that page (the popup's 「打开我的收藏」); old `#/library`, `#/catalog` too. */
 const startAt = () => (location.hash.startsWith('#/') ? location.hash.slice(1) : '/');
 
 /** Connecting an account happens in the options (pairing); the portal's sign-in page has no place here. */
@@ -38,8 +38,9 @@ function LocalNewTab() {
         [
           { path: '/', element: <HomePage /> },
           { path: '/settings/:page?', element: page(<SettingsPage />) },
-          { path: '/library', element: page(<LibraryPage />) },
-          { path: '/catalog', element: page(<CatalogPage />) },
+          // UI v2: 收藏库 and 应用目录 are 我的收藏 (and its 添加收藏 › 应用商店), in this extension's own collection.
+          { path: '/library', element: <LegacyLibraryRedirect /> },
+          { path: '/catalog', element: <LegacyCatalogRedirect /> },
           { path: '/account/connect', element: <ToOptions /> },
           { path: '*', element: <HomePage /> },
         ],
@@ -56,6 +57,7 @@ function LocalNewTab() {
   return (
     <>
       <MotionRoot />
+      <ThemeRoot />
       <RouterProvider router={router} />
     </>
   );
@@ -142,7 +144,7 @@ function AccountNewTab() {
       createMemoryRouter([
         { path: '/', element: <HomePage /> },
         { path: '/settings/*', element: <LeaveForSettings /> },
-        // 应用目录 lives in the portal: the new tab hands over to it, like the settings pages.
+        // 我的收藏 of an account lives in the portal: the new tab hands over to it, like the settings pages.
         { path: '/catalog', element: <LeaveForSettings /> },
         { path: '/library', element: <LeaveForSettings /> },
         { path: '*', element: <HomePage /> },
@@ -169,6 +171,7 @@ function AccountNewTab() {
   return (
     <>
       <MotionRoot />
+      <ThemeRoot />
       <RouterProvider router={router} />
     </>
   );
