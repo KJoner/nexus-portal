@@ -44,7 +44,7 @@ test.beforeAll(async () => {
     viewport: { width: 1440, height: 900 },
     args: [`--disable-extensions-except=${BUILD}`, `--load-extension=${BUILD}`, '--enable-unsafe-extension-debugging'],
   });
-  const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));
+  const worker = await extensionWorker();
   extId = new URL(worker.url()).host;
 });
 
@@ -295,9 +295,19 @@ test('a damaged cache is dropped and downloaded again', async () => {
   await page.close();
 });
 
+/**
+ * The extension's own service worker. The portal's PWA registers a service worker in this same context once a
+ * portal page has been opened (pairing approval), so serviceWorkers()[0] is not always the extension's — in CI
+ * that intermittently ran chrome.tabs.query in the portal's worker (ReferenceError: chrome is not defined).
+ */
+async function extensionWorker() {
+  const ours = (w: { url(): string }) => w.url().startsWith('chrome-extension://');
+  return context.serviceWorkers().find(ours) ?? (await context.waitForEvent('serviceworker', { predicate: ours }));
+}
+
 /** The tab id of a page, as the extension sees it. */
 async function tabIdOf(url: string): Promise<number> {
-  const worker = context.serviceWorkers()[0]!;
+  const worker = await extensionWorker();
   return worker.evaluate(async (u) => (await chrome.tabs.query({ url: u }))[0]!.id!, url);
 }
 

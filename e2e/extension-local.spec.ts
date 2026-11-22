@@ -35,7 +35,9 @@ test.beforeAll(async () => {
     viewport: { width: 1440, height: 900 },
     args: [`--disable-extensions-except=${BUILD}`, `--load-extension=${BUILD}`],
   });
-  const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));
+  // The extension's own worker (by URL), never whichever service worker the context lists first.
+  const ours = (w: { url(): string }) => w.url().startsWith('chrome-extension://');
+  const worker = context.serviceWorkers().find(ours) ?? (await context.waitForEvent('serviceworker', { predicate: ours }));
   extId = new URL(worker.url()).host;
 });
 
