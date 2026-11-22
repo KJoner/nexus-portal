@@ -112,7 +112,9 @@ test('L02/L17: the context menu saves into the same collection; simultaneous sav
   });
   expect(ok).toBe(20);
   const items = await localItems();
-  expect(items).toHaveLength(1 + 1 + 20);
+  // The extension's new collection started with the eight 常用网站 (UI v2 N3), then these saves.
+  expect(items.slice(0, 8).map((i) => i.url)).toEqual(['https://www.google.com', 'https://www.youtube.com', 'https://github.com', 'https://mail.google.com', 'https://www.bing.com', 'https://www.bilibili.com', 'https://chatgpt.com', 'https://zh.wikipedia.org']);
+  expect(items).toHaveLength(8 + 1 + 1 + 20);
   // The new tab shows them (收藏 inside the extension, not the website).
   const tab = await context.newPage();
   await tab.goto(`chrome-extension://${extId}/newtab.html#/library`);

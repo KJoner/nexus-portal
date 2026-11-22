@@ -89,7 +89,7 @@ describe.each(DIALECTS)('NEX-06 产品 JSON 恢复 (%s)', (dialect) => {
     const gh = ((await req(src, 'POST', '/api/v2/items', { opId: op('g'), source: 'catalog', item: { kind: 'app', title: 'GitHub', url: 'https://github.com/', catalogId: 'github', folderId: 'common' } })).body as unknown as ItemWriteResult).item;
     for (const id of [page.id, 'my-wiki', gh.id]) expect((await req(src, 'POST', `/api/v2/pins/${id}`, { opId: op('pin') })).status).toBe(200);
     const a = await exportOf(src);
-    expect(a.version).toBe(2);
+    expect(a.version).toBe(3);
     expect(a.icons[ref]).toMatch(/^data:image\/png;base64,/);
 
     const dst = await who('roundtrip-dst');
@@ -185,7 +185,7 @@ describe.each(DIALECTS)('NEX-06 产品 JSON 恢复 (%s)', (dialect) => {
 
   it('格式与版本：更新版本的文件 UNSUPPORTED_VERSION，不是收藏库的文件 VALIDATION', async () => {
     const me = await who('version');
-    expect((await restore(me, { ...REVIEW_FILE, version: 3 }, { dryRun: true })).body).toMatchObject({ code: 'UNSUPPORTED_VERSION', details: { version: 3, supported: 2 } });
+    expect((await restore(me, { ...REVIEW_FILE, version: 4 }, { dryRun: true })).body).toMatchObject({ code: 'UNSUPPORTED_VERSION', details: { version: 4, supported: 3 } });
     expect((await restore(me, { format: 'nexus-config', config: {} }, { dryRun: true })).body.code).toBe('VALIDATION');
   });
 
@@ -205,7 +205,8 @@ describe.each(DIALECTS)('NEX-06 产品 JSON 恢复 (%s)', (dialect) => {
     const me = await who('health');
     const file = { format: 'nexus-collection', version: 2, folders: [], pins: [], items: [{ id: 'svc', kind: 'app', title: '我的 NAS', url: 'https://nas.example.org/', folderId: 'hosted', app: { kind: 'service', health: { enabled: true, target: '/', intervalSec: 60 }, icon: { source: 'letter', ref: '', letter: 'N', tone: 1 } } }] };
     expect((await restore(me, file)).status).toBe(201);
-    expect((await config(me)).apps.find((a) => a.id === 'svc')).toMatchObject({ kind: 'service', categoryId: 'hosted', health: { enabled: false }, icon: { source: 'letter', letter: 'N' } });
+    // (UI v2: a new account has no 我的服务 group; the file names none, so the service is 未分组 — and still a service.)
+    expect((await config(me)).apps.find((a) => a.id === 'svc')).toMatchObject({ kind: 'service', categoryId: 'none', health: { enabled: false }, icon: { source: 'letter', letter: 'N' } });
   });
 
   it('浏览器书签导入仍是「网页导入到你选的分组」，与恢复区分', async () => {

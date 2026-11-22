@@ -8,7 +8,8 @@ test('first visit: this browser’s own collection and nothing of any account; s
   // v0.5 (U1): no login wall — a local collection, nothing private on screen.
   await page.goto('/');
   await expect(page.getByText('仅保存在此浏览器')).toBeVisible();
-  await expect(page.locator('[data-dock]')).toHaveCount(0);
+  // UI v2 (N3): a new local collection starts with the eight 常用网站 — nothing of any account.
+  await expect(page.locator('[data-dock]')).toHaveCount(8);
   await page.goto('/account/connect');
   const pw = page.getByLabel('访问密码');
   await pw.fill('wrong-password');

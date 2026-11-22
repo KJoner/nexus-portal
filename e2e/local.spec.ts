@@ -59,8 +59,9 @@ test('L01/L03/L05/L06: first visit is a usable home; saves stay in this browser,
   await expect(page.getByLabel('搜索', { exact: true })).toBeVisible();
   await expect(page.getByText('仅保存在此浏览器')).toBeVisible();
   await expect(page.getByRole('link', { name: /登录同步/ })).toBeVisible();
-  // The public template: nothing pinned, no private service.
-  await expect(page.locator('[data-dock]')).toHaveCount(0);
+  // The public template (UI v2 N3): the eight 常用网站 pinned, in order; no private service.
+  await expect(page.locator('[data-dock]')).toHaveCount(8);
+  expect(await page.locator('[data-dock]').evaluateAll((els) => els.map((e) => e.getAttribute('data-dock')))).toEqual(['google', 'youtube', 'github', 'gmail', 'bing', 'bilibili', 'chatgpt', 'wikipedia']);
   await shot(page, 'local-1-first-visit');
 
   await addFromCatalog(page, '知乎');
@@ -82,7 +83,9 @@ test('L01/L03/L05/L06: first visit is a usable home; saves stay in this browser,
 test('L08: a saved page that is not on the home page is found by the home search and by 快速打开', async ({ page }) => {
   await addPage(page, '没有固定的参考文档', 'https://docs.example.org/reference/unpinned');
   await page.goto('/');
-  await expect(page.locator('[data-dock]')).toHaveCount(0);
+  // Only the eight starter sites are pinned; the page saved without pinning is not on the home page.
+  await expect(page.locator('[data-dock]')).toHaveCount(8);
+  await expect(page.locator('[data-dock]').filter({ hasText: '没有固定的参考文档' })).toHaveCount(0);
   const search = page.getByRole('combobox', { name: '搜索' });
   await search.fill('参考文档');
   await expect(page.getByRole('listbox', { name: '搜索结果' }).getByRole('option').filter({ hasText: '没有固定的参考文档' })).toBeVisible();
