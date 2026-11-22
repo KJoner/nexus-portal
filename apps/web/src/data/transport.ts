@@ -136,7 +136,7 @@ export interface RestoreAnswer {
 export interface ItemsTransport {
   snapshot(page?: string): Promise<SnapshotResponse>;
   changes(cursor: string): Promise<ChangesResponse & { pins?: string[]; folders?: SnapshotResponse['folders'] }>;
-  create(body: { opId: string; source?: 'manual' | 'catalog' | 'import'; item: ItemInput; pinToHome?: boolean; duplicatePolicy?: 'prompt' | 'update' | 'create' }): Promise<ItemWriteResult>;
+  create(body: { opId: string; source?: 'manual' | 'catalog' | 'import' | 'extension'; item: ItemInput; pinToHome?: boolean; duplicatePolicy?: 'prompt' | 'update' | 'create' }): Promise<ItemWriteResult>;
   patch(id: string, body: { opId: string; baseVersion: number; patch: ItemPatch }): Promise<ItemWriteResult>;
   /** baseVersion (NEX-04): the version the client saw; a delete of what was changed since, or a restore of a deletion undone since, is REVISION_CONFLICT. */
   remove(id: string, opId: string, baseVersion?: number): Promise<ItemWriteResult>;

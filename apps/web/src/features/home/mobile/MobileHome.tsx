@@ -14,6 +14,7 @@ import { useMotionLevel, useNow, useViewport, useVisualViewport } from '../../..
 import { host } from '../../../lib/host';
 import { appLinkProps, openApp, recordAppOpen } from '../../../lib/open';
 import { usePinyin } from '../../../lib/pinyin';
+import { SpaceBadge } from '../../account/SpaceBadge';
 import { storage } from '../../../lib/storage';
 import { formatClock, formatDate } from '../../../lib/time';
 import { homeActions } from '../actions';
@@ -198,6 +199,7 @@ export function MobileHome() {
           )}
         </div>
         <span className="flex-1" />
+        <SpaceBadge variant="mobile" className="pointer-events-auto mt-1 mr-2" />
         {ui.settings === 'show' && (
           <Link to="/settings" aria-label="设置" className="pointer-events-auto grid size-11 flex-none place-items-center rounded-full text-ink/85 backdrop-blur-[24px]" style={{ background: 'rgba(26,25,22,0.36)' }}>
             <Settings className="size-[18px]" />

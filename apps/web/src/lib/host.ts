@@ -15,12 +15,23 @@ export interface Host {
   useWallpaperFile(u: UploadedWallpaper | undefined): string | null | undefined;
   /** Fetches a library wallpaper ahead of time; the portal warms the browser cache instead. */
   prefetchWallpaper?(u: UploadedWallpaper): void;
+  /**
+   * v0.5: where a local collection is kept, in words ('此浏览器' for the portal, '此扩展' for the
+   * browser extension — whose collection is its own, not the website's).
+   */
+  localWhere: string;
+  /**
+   * v0.5: how a local collection connects to an account. The portal signs in on its own page
+   * (/account/connect); the extension pairs on its options page instead.
+   */
+  connectAccount?: () => void;
 }
 
 export const host: Host = {
   readOnly: false,
   useImage: (src) => src,
   useWallpaperFile: () => undefined,
+  localWhere: '此浏览器',
 };
 
 export function configureHost(next: Partial<Host>) {

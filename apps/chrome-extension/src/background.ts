@@ -6,6 +6,7 @@ import { idbQueueStore } from './lib/queue-store';
 import { markRevoked, REVOKED_HINT } from './lib/revoke';
 import { canSave, KEYS, readServer, type Area } from './lib/storage';
 import { ext, removeAllMenus } from './lib/ext';
+import { newLocalOpId, readSpace, storeLocalSave, type LocalSaveCommand } from './lib/local';
 
 /**
  * Background work, all of it event-driven (the service worker may be stopped at any moment):
@@ -94,6 +95,14 @@ async function saveFromMenu(info: { menuItemId: string | number; linkUrl?: strin
     await badge('!');
     return { ok: false, persisted: false, message: c.error };
   }
+  // v0.5: the new tab shows this extension's own collection — the save goes there, nothing opens.
+  if ((await readSpace(area)) === 'local') {
+    const r = await storeLocalSave({ opId: newLocalOpId(), source: 'extension', item: { kind: 'page', title: c.title, url: c.url, tags: [] }, pinToHome: false, duplicatePolicy: 'prompt' });
+    const state = r.ok ? 'saved' : r.code === 'DUPLICATE' ? 'duplicate' : 'failed';
+    await ext.action.setTitle({ title: state === 'saved' ? '已收藏到此扩展' : state === 'duplicate' ? '这个网址已经在收藏里' : `没有保存：${r.ok ? '' : r.message}` });
+    await badge(state === 'saved' ? '✓' : state === 'duplicate' ? '=' : '!');
+    return { ok: r.ok || state === 'duplicate', persisted: r.ok || state === 'duplicate', state, url: c.url, ...(r.ok ? {} : { message: r.message }) };
+  }
   const r = await save(c);
   // Kept as a draft (not connected, read-only, or just revoked): the person connects / authorizes
   // first — the options page says why — then confirms the account.
@@ -140,7 +149,15 @@ ext.runtime.onStartup.addListener(() => {
 });
 ext.contextMenus.onClicked.addListener((info, tab) => void saveFromMenu(info, tab));
 
-ext.runtime.onMessage.addListener((msg: QueueCommand | { type?: string; info?: Parameters<typeof saveFromMenu>[0]; tab?: Parameters<typeof saveFromMenu>[1] }, _sender, reply) => {
+ext.runtime.onMessage.addListener((msg: QueueCommand | LocalSaveCommand | { type?: string; info?: Parameters<typeof saveFromMenu>[0]; tab?: Parameters<typeof saveFromMenu>[1] }, _sender, reply) => {
+  // v0.5: a popup save into this extension's own collection (one transaction; the opId makes a retry the same save).
+  if (msg?.type === 'local:save' && 'body' in msg) {
+    void storeLocalSave(msg.body).then(async (r) => {
+      if (r.ok) await badge('✓');
+      reply(r);
+    });
+    return true;
+  }
   if (msg?.type && (QUEUE_COMMANDS as readonly string[]).includes(msg.type)) {
     void handle(msg as QueueCommand).then(reply, (e: unknown) => reply({ ok: false, persisted: false, message: e instanceof Error ? e.message : '保存失败' }));
     return true;

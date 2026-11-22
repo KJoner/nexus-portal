@@ -1,14 +1,22 @@
 import { applyOps, ConfigSchema, defaultConfig, invertOp, normalizeConfig, OpError, applyOp, type AppEntry, type Config, type ConfigResponse, type LogoutAllResponse, type MeResponse, type Op, type RevokeEverywhereResponse, type Snapshot, type UploadedWallpaper, changedFields, CONFLICT_CODES, CONFLICT_HTTP_CODE, newAppId, withBase } from '@nexus/shared';
 import { create } from 'zustand';
 import { storage } from '../lib/storage';
+import { LOCAL_STORAGE_FAILED, type LocalTransport } from './local/transport';
 import { useStatusStore } from './status-store';
 import { HttpError, httpTransport, NetworkError, type Transport } from './transport';
+import { readWorkspace, switchWorkspace, writeWorkspace } from './workspace';
 
 export type SaveState =
   | { kind: 'saved'; at: number }
   | { kind: 'saving'; pending: number }
   | { kind: 'offline'; pending: number }
   | { kind: 'error'; message: string };
+
+/**
+ * v0.5 (U1): which collection this page edits — 本地收藏 of this browser, or an account's (see
+ * workspace.ts). Decided once per page load; switching loads the page afresh.
+ */
+export type Space = 'local' | 'account';
 
 export type AuthState = 'unknown' | 'authenticated' | 'anonymous';
 export type DispatchResult = { ok: true; changed: boolean; undo: Op[] } | { ok: false; error: OpError };
@@ -43,6 +51,15 @@ interface ConfigStore {
    * sent: an unsent change queued under one account must never reach the server as another.
    */
   verified: boolean;
+  /** v0.5: local collection or account (fixed for this page load). */
+  space: Space;
+  /** The local collection's id (`local:…`), once it has been read. */
+  localId: string | null;
+  /**
+   * The browser refused to store the last change of the local collection (quota, private window):
+   * the change is still on screen and in `pending`, never reported as saved, never dropped.
+   */
+  storageError: string | null;
   dispatch(ops: Op | Op[]): DispatchResult;
 }
 
@@ -57,6 +74,8 @@ const LEGACY_CACHE_KEY = 'nexus.cache.v2';
 const LEGACY_ADMIN = 'legacy-admin';
 const CLIENT_KEY = 'nexus.client';
 const cacheKey = (account: string) => `${CACHE_PREFIX}${account}`;
+/** v0.5: decided before anything renders — an account's cache never shows in a local collection. */
+const bootSpace: Space = readWorkspace().kind;
 let cacheAccount: string | null = storage.get<{ id: string }>(ACCOUNT_KEY)?.id ?? null;
 /** The role last confirmed for that account: operator UI appears without waiting for /me (no flicker). */
 let cachedRole: 'admin' | 'user' | null = storage.get<{ role?: 'admin' | 'user' }>(ACCOUNT_KEY)?.role ?? null;
@@ -134,7 +153,7 @@ function rebase(base: Config, pending: Batch[]): { config: Config; pending: Batc
   return { config, pending: kept, dropped, conflicts };
 }
 
-function initialState(account: string | null = cacheAccount) {
+function initialState(account: string | null = bootSpace === 'local' ? null : cacheAccount) {
   const cache = readCache(account);
   const base = cache.confirmed ?? { revision: 0, updatedAt: new Date(0).toISOString(), config: defaultConfig() };
   const r = rebase(base.config, cache.pending);
@@ -161,6 +180,10 @@ let notifyRejected: (message: string) => void = () => {};
 
 export const useConfigStore = create<ConfigStore>((set, get) => ({
   ...initialState(),
+  // The data space of this page load (initialState keeps whatever it is when an account changes).
+  space: bootSpace,
+  localId: null,
+  storageError: null,
   dispatch(input) {
     const ops = Array.isArray(input) ? input : [input];
     const before = get().snapshot.config;
@@ -190,7 +213,8 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
 }));
 
 function persist() {
-  if (!cacheAccount) return;
+  // The local collection is its own store (IndexedDB): nothing of it goes into an account's cache.
+  if (useConfigStore.getState().space === 'local' || !cacheAccount) return;
   const s = useConfigStore.getState();
   storage.set(cacheKey(cacheAccount), { confirmed: s.confirmed, pending: s.pending, wallpapers: s.wallpapers, held: s.held } satisfies Cache);
 }
@@ -214,6 +238,7 @@ async function verifyAccount(): Promise<void> {
     storage.remove(LEGACY_CACHE_KEY);
   }
   cachedRole = me.role;
+  writeWorkspace({ kind: 'account', id });
   if (cacheAccount !== id) {
     const switched = cacheAccount !== null;
     cacheAccount = id;
@@ -237,7 +262,7 @@ function accept(res: ConfigResponse, pending = useConfigStore.getState().pending
   const r = rebase(snap.config, pending);
   r.dropped.forEach((e) => notifyRejected(`一项更改未能同步：${e.message}`));
   r.conflicts.forEach((h) => notifyRejected(`${h.message}。这项更改已保留在本机，可在「设置 › 数据、同步与安全」处理`));
-  useConfigStore.setState({ confirmed: snap, snapshot: { ...snap, config: r.config }, pending: r.pending, wallpapers, online: true, auth: 'authenticated', ready: true, fallback: false, lastSavedAt: Date.parse(snap.updatedAt), ...(r.conflicts.length ? { held: [...s.held, ...r.conflicts].slice(-40) } : {}) });
+  useConfigStore.setState({ confirmed: snap, snapshot: { ...snap, config: r.config }, pending: r.pending, wallpapers, online: true, ...(s.space === 'account' ? { auth: 'authenticated' as const } : {}), ready: true, fallback: false, lastSavedAt: Date.parse(snap.updatedAt), ...(r.conflicts.length ? { held: [...s.held, ...r.conflicts].slice(-40) } : {}) });
   persist();
 }
 
@@ -263,15 +288,25 @@ export function flush(): Promise<void> {
   return flushing;
 }
 
+/** Whether queued changes may go out now: the local collection always; an account once verified. */
+const maySend = (s: ConfigStore) => s.space === 'local' || (s.auth !== 'anonymous' && s.verified);
+
 async function sendPending() {
   for (;;) {
     const s = useConfigStore.getState();
     const batch = s.pending[0];
-    if (!batch || s.auth === 'anonymous' || !s.verified) return;
+    if (!batch || !maySend(s)) return;
     try {
       const res = await transport.postOps({ clientId, batchId: batch.id, ops: batch.ops });
       accept(res, useConfigStore.getState().pending.filter((b) => b.id !== batch.id));
+      if (useConfigStore.getState().storageError) useConfigStore.setState({ storageError: null });
     } catch (e) {
+      if (e instanceof HttpError && e.code === LOCAL_STORAGE_FAILED) {
+        // Not stored (quota, private window): the change stays on screen and queued, and the person
+        // is told — never 「已保存」, never dropped. 重试 (or the next change) tries again.
+        useConfigStore.setState({ storageError: e.message });
+        return;
+      }
       if (e instanceof HttpError && e.status !== 401 && e.retryable) {
         // Too fast (RATE_LIMITED) or a passing server error: keep everything, try again later.
         scheduleRetry(e.retryAfter ? e.retryAfter * 1000 : undefined);
@@ -300,6 +335,17 @@ async function sendPending() {
 }
 
 export async function refresh(): Promise<void> {
+  if (useConfigStore.getState().space === 'local') {
+    // The local collection: read it again (another tab, the popup or the menu changed it).
+    try {
+      await flush();
+      accept(await transport.getConfig());
+    } catch (e) {
+      if (e instanceof HttpError && e.code === LOCAL_STORAGE_FAILED) useConfigStore.setState({ storageError: e.message, ready: true });
+      else throw e;
+    }
+    return;
+  }
   try {
     await verifyAccount();
     await flush();
@@ -455,6 +501,28 @@ function connectLater() {
 }
 
 let started = false;
+
+/**
+ * v0.5: boots the local collection — nothing is asked of the server (no session check, no live
+ * connection, no status); changes other pages of this browser make arrive through the store.
+ */
+export async function startLocal(t: LocalTransport): Promise<void> {
+  if (started) return;
+  started = true;
+  transport = t;
+  try {
+    const state = await t.state();
+    useConfigStore.setState({ localId: state.workspace });
+    accept(await t.getConfig(), []);
+  } catch (e) {
+    // The browser will not open its storage (some private windows): defaults, clearly marked unsaved.
+    const message = e instanceof HttpError ? e.message : '无法打开此浏览器的本地存储';
+    useConfigStore.setState({ ready: true, fallback: true, storageError: message });
+  }
+  t.subscribe({ onOpen() {}, onRevision: () => void refresh(), onStatus() {}, onClosed() {} });
+  document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && void refresh());
+}
+
 /** Boots sync: first fetch, live revision events, and catch-up on reconnect / tab focus. */
 export function startSync() {
   if (started) return;
@@ -499,6 +567,8 @@ export async function logout(): Promise<void> {
     await transport.logout();
   } finally {
     forgetLocal();
+    // v0.5: the page goes on with this browser's own local collection, which signing out never touches.
+    switchWorkspace({ kind: 'local' });
   }
 }
 
@@ -509,6 +579,7 @@ export async function logout(): Promise<void> {
 export async function logoutEverywhere(): Promise<LogoutAllResponse> {
   const r = await transport.logoutAll();
   forgetLocal();
+  writeWorkspace({ kind: 'local' });
   return r;
 }
 
@@ -522,6 +593,7 @@ const EVERYWHERE_KEY = 'nexus.revocation.v1';
 export async function revokeAllProducts(): Promise<RevokeEverywhereResponse> {
   const r = await transport.revokeEverywhere();
   forgetLocal();
+  writeWorkspace({ kind: 'local' });
   try {
     sessionStorage.setItem(EVERYWHERE_KEY, JSON.stringify({ at: Date.now(), result: r }));
   } catch {
@@ -616,12 +688,23 @@ export function setTransport(next: Transport) {
 /** Tests: swap the transport and reset to a clean, signed-in, verified state of `account`. */
 export function resetSync(next: Transport, account = LEGACY_ADMIN) {
   transport = next;
+  started = false;
   for (const k of [LEGACY_CACHE_KEY, ACCOUNT_KEY, cacheKey(account)]) storage.remove(k);
   cacheAccount = account;
   cachedRole = null;
   unsubscribe?.();
   unsubscribe = null;
-  useConfigStore.setState({ ...initialState(account), auth: 'authenticated', verified: true });
+  useConfigStore.setState({ ...initialState(account), auth: 'authenticated', verified: true, space: 'account', localId: null, storageError: null });
+}
+
+/** Tests: a clean local collection over `t` (as startLocal, without the page listeners). */
+export async function resetLocal(t: LocalTransport) {
+  transport = t;
+  started = false;
+  unsubscribe?.();
+  unsubscribe = null;
+  useConfigStore.setState({ ...initialState(null), space: 'local', auth: 'unknown', verified: false, account: null, localId: (await t.state()).workspace, storageError: null });
+  accept(await t.getConfig(), []);
 }
 export { connectEvents as connectSyncEvents };
 
@@ -629,6 +712,8 @@ export function useSaveState(): SaveState {
   const pending = useConfigStore((s) => s.pending.length);
   const online = useConfigStore((s) => s.online);
   const at = useConfigStore((s) => s.lastSavedAt);
+  const storageError = useConfigStore((s) => s.storageError);
+  if (storageError) return { kind: 'error', message: storageError };
   if (!online) return { kind: 'offline', pending };
   if (pending) return { kind: 'saving', pending };
   return { kind: 'saved', at };
@@ -642,7 +727,17 @@ export const useAccount = () => useConfigStore((s) => s.account);
  * server enforces it regardless. Unknown yet (no answer and nothing cached — e.g. the browser
  * extension, which never asks) keeps the single-user behaviour: shown.
  */
-export const useIsAdmin = () => useConfigStore((s) => (s.account ? s.account.role === 'admin' : cachedRole !== 'user'));
+export const useIsAdmin = () => useConfigStore((s) => (s.space === 'local' ? false : s.account ? s.account.role === 'admin' : cachedRole !== 'user'));
+/** v0.5: the data space of this page (local collection or account). */
+export const useSpace = () => useConfigStore((s) => s.space);
+/**
+ * Whose collection the page shows: the local collection's id, or the verified account's. 收藏库
+ * keys its queue and conflicts by it, so nothing of one space is ever sent as another.
+ */
+export function workspaceOwner(): string | null {
+  const s = useConfigStore.getState();
+  return s.space === 'local' ? s.localId : (s.account?.account.id ?? null);
+}
 export const authOptions = () => transport.authOptions();
 /** ADR-019: cross-product revocation events of this account, and resending one. */
 export const revocationApi = {

@@ -78,8 +78,14 @@ function present(s: ExtState) {
   useStatusStore.getState().replace(fresh ? s.sync.status! : []);
 }
 
-/** Reads everything from storage (one call) and shows it. Damaged entries read as absent. */
-export async function load(): Promise<ExtState> {
+/**
+ * Reads everything from storage (one call) and shows it. Damaged entries read as absent.
+ * `show: false` (v0.5, the new tab showing this extension's local collection): the pairing is read,
+ * but nothing of the account is put on screen.
+ */
+let showAccount = true;
+export async function load(opts: { show?: boolean } = {}): Promise<ExtState> {
+  if (opts.show !== undefined) showAccount = opts.show;
   const raw = await eng().area.get([KEYS.server, KEYS.cache, KEYS.sync]);
   const server = readServer(raw[KEYS.server]);
   const cache = readCache(raw[KEYS.cache], server);
@@ -90,7 +96,7 @@ export async function load(): Promise<ExtState> {
   // browser cached about the account goes here too — images and UI preferences of the pages.
   if (server?.revoked && !useExt.getState().server?.revoked) await eng().wipe();
   useExt.setState(state);
-  present(state);
+  if (showAccount) present(state);
   return state;
 }
 

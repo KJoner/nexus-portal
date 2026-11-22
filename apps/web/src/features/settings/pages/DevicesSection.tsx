@@ -38,7 +38,11 @@ export function describeAgent(ua: string): string {
  * opens /settings/data?pair=XXXX-XXXX; the request is shown with where it came from, and nothing
  * is granted unless the user confirms that the code matches the one in the extension.
  */
-export function DevicesSection() {
+/**
+ * v0.5: approving an extension and revoking one are account actions, not data-space ones — a local
+ * collection whose browser is signed in passes the account's API (identity.ts) instead.
+ */
+export function DevicesSection({ api = devicesApi }: { api?: typeof devicesApi } = {}) {
   const [params, setParams] = useSearchParams();
   const code = (params.get('pair') ?? '').toUpperCase();
   const [devices, setDevices] = useState<DeviceInfo[] | null>(null);
@@ -49,7 +53,7 @@ export function DevicesSection() {
   const [granted, setGranted] = useState<DeviceScope[]>([]);
 
   const load = () =>
-    devicesApi.list().then(setDevices, () => {
+    api.list().then(setDevices, () => {
       setDevices([]);
     });
   useEffect(() => void load(), []);
@@ -58,7 +62,7 @@ export function DevicesSection() {
     if (!code) return setRequest(null);
     if (!PAIR_CODE.test(code)) return setRequest('missing');
     let live = true;
-    devicesApi.pairing(code).then(
+    api.pairing(code).then(
       (r) => {
         if (!live) return;
         setRequest(r);
@@ -80,7 +84,7 @@ export function DevicesSection() {
   const decide = async (approve: boolean) => {
     setBusy(true);
     try {
-      await devicesApi.decide(code, approve, approve ? granted : undefined);
+      await api.decide(code, approve, approve ? granted : undefined);
       toast(approve ? { msg: '已允许连接，扩展会在几秒内完成同步', tone: 'ok' } : { msg: '已拒绝连接请求', tone: 'info' });
       close();
       // The device appears once the extension has picked up its token.
@@ -94,7 +98,7 @@ export function DevicesSection() {
 
   const revoke = async (d: DeviceInfo) => {
     try {
-      setDevices(await devicesApi.revoke(d.id));
+      setDevices(await api.revoke(d.id));
       toast({ msg: `已撤销「${d.name}」的访问`, tone: 'ok' });
     } catch (e) {
       toast({ msg: errorText(e), tone: 'error' });

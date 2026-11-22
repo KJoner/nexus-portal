@@ -2,7 +2,7 @@ import { hostOf, isHttpUrl, LOCKED_CATEGORY, MAX_PINS, newAppId, slug, TONES, va
 import { ChevronDown, Upload, X } from 'lucide-react';
 import { Dialog as RDialog } from 'radix-ui';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { testHealth, useConfig, useIsAdmin, uploadIcon } from '../../../data/config-store';
+import { testHealth, useConfig, useConfigStore, useIsAdmin, uploadIcon } from '../../../data/config-store';
 import { BUILTIN_GLYPHS, libraryIconUrl } from '../../../icons/glyphs';
 import { AppTile } from '../../../icons/AppTile';
 import { cn } from '../../../lib/cn';
@@ -151,7 +151,7 @@ export function AppEditor({ appId, initialName, initialUrl, onClose, onDelete }:
         set((d) => ({ ...d, icon: { ...d.icon, ref } }));
       };
       img.onerror = () => setLibMiss(true);
-      img.src = libraryIconUrl(ref, config.settings.privacy.cacheIcons);
+      img.src = libraryIconUrl(ref, useConfigStore.getState().space === 'account' && config.settings.privacy.cacheIcons);
     }, 300);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps

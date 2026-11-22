@@ -6,7 +6,9 @@ import { adoptable, readQueue, type QueueEntry } from '../lib/collect';
 import { queueCommand, saveThroughBackground } from '../lib/queue-client';
 import { idbQueueStore } from '../lib/queue-store';
 import { canSave, KEYS, readServer, type Area, type ServerRecord } from '../lib/storage';
+import { readSpace, type ExtSpace } from '../lib/local';
 import { ext } from '../lib/ext';
+import { LocalPopup } from './LocalPopup';
 
 /**
  * 工具栏按钮 (需求 §9.1 · EX-01): the current page, prefilled; title, folder, tags and 固定到首页
@@ -42,7 +44,15 @@ function Status({ entry }: { entry: QueueEntry }) {
   );
 }
 
+/** v0.5: saves go to the collection the new tab shows — this extension's own, or the paired account. */
 export function Popup() {
+  const [space, setSpace] = useState<ExtSpace | null>(null);
+  useEffect(() => void readSpace(area).then(setSpace, () => setSpace('local')), []);
+  if (!space) return <main className="w-[360px] bg-base p-4 text-[13px] text-ink/60">正在读取…</main>;
+  return space === 'local' ? <LocalPopup /> : <AccountPopup />;
+}
+
+function AccountPopup() {
   const [server, setServer] = useState<ServerRecord | null>(null);
   const [tab, setTab] = useState<{ title: string; url: string } | null>(null);
   const [title, setTitle] = useState('');

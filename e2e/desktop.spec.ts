@@ -4,19 +4,24 @@ test.skip(({ isMobile }) => isMobile, 'desktop layout');
 
 const dock = (id: string) => `[data-dock="${id}"]`;
 
-test('login gate: nothing private before sign-in, session survives reload', async ({ page }) => {
+test('first visit: this browser’s own collection and nothing of any account; signed in, the account survives reload', async ({ page }) => {
+  // v0.5 (U1): no login wall — a local collection, nothing private on screen.
   await page.goto('/');
-  await expect(page.getByText('输入访问密码以继续')).toBeVisible();
+  await expect(page.getByText('仅保存在此浏览器')).toBeVisible();
   await expect(page.locator('[data-dock]')).toHaveCount(0);
+  await page.goto('/account/connect');
   const pw = page.getByLabel('访问密码');
   await pw.fill('wrong-password');
   await pw.press('Enter');
   await expect(page.getByRole('alert')).toHaveText('密码不正确');
   await pw.fill('e2e-password');
   await pw.press('Enter');
+  await page.getByRole('button', { name: /使用账号里的收藏/ }).click();
   await expect(page.getByRole('combobox', { name: '搜索' })).toBeVisible();
+  await expect(page.getByText('已同步')).toBeVisible();
   await page.reload();
   await expect(page.getByRole('combobox', { name: '搜索' })).toBeVisible();
+  await expect(page.getByText('已同步')).toBeVisible();
 });
 
 test('search keyboard model (R1.5 · 01)', async ({ home: page }) => {

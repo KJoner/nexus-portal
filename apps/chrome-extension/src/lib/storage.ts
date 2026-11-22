@@ -51,7 +51,8 @@ export interface Area {
   remove(keys: string | string[]): Promise<void>;
 }
 
-export const KEYS = { server: 'server', cache: 'cache', sync: 'sync', queue: 'saveQueue' } as const;
+/** `space` (v0.5): which collection the new tab shows — this extension's own, or the paired account's. */
+export const KEYS = { server: 'server', cache: 'cache', sync: 'sync', queue: 'saveQueue', space: 'space' } as const;
 
 /** v0.4 收藏: scopes asked for when connecting (the portal shows them, the person may trim them). */
 export const ITEM_SCOPES = ['config:read', 'items:read', 'items:write', 'pins:write'] as const;

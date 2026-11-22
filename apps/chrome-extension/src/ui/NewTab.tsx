@@ -5,11 +5,61 @@ import { Button, Spinner } from '@web/features/settings/ui';
 import { useMotionLevel, useViewport } from '@web/lib/hooks';
 import { formatAgo } from '@web/lib/time';
 import { RefreshCw, Settings } from 'lucide-react';
-import { useEffect, useMemo, type ReactNode } from 'react';
-import { createMemoryRouter, RouterProvider, useLocation } from 'react-router';
+import { lazy, Suspense, useEffect, useMemo, type ReactNode } from 'react';
+import { createMemoryRouter, Navigate, RouterProvider, useLocation } from 'react-router';
+import { writeSpace, type ExtSpace } from '../lib/local';
 import { phaseOf, sync, useExt } from '../lib/sync';
 import { ConnectForm } from './Connect';
 import { ext } from '../lib/ext';
+
+const SettingsPage = lazy(() => import('@web/features/settings/SettingsPage'));
+const CatalogPage = lazy(() => import('@web/features/catalog/CatalogPage'));
+const LibraryPage = lazy(() => import('@web/features/library/LibraryPage'));
+const page = (el: ReactNode) => <Suspense fallback={<div className="fixed inset-0 bg-base" />}>{el}</Suspense>;
+
+/** `newtab.html#/library` opens that page (the popup's 「查看收藏」). */
+const startAt = () => (location.hash.startsWith('#/') ? location.hash.slice(1) : '/');
+
+/** Connecting an account happens in the options (pairing); the portal's sign-in page has no place here. */
+function ToOptions() {
+  useEffect(() => void ext.runtime.openOptionsPage(), []);
+  return <Navigate to="/settings/account" replace />;
+}
+
+/**
+ * v0.5: this extension's own collection. The home page, 收藏, 应用目录 and 设置 are the portal's
+ * pages, editable here over the extension's IndexedDB — not handed to the website, which cannot
+ * read the extension's data.
+ */
+function LocalNewTab() {
+  const router = useMemo(
+    () =>
+      createMemoryRouter(
+        [
+          { path: '/', element: <HomePage /> },
+          { path: '/settings/:page?', element: page(<SettingsPage />) },
+          { path: '/library', element: page(<LibraryPage />) },
+          { path: '/catalog', element: page(<CatalogPage />) },
+          { path: '/account/connect', element: <ToOptions /> },
+          { path: '*', element: <HomePage /> },
+        ],
+        { initialEntries: [startAt()] },
+      ),
+    [],
+  );
+  // Already open and asked for another page (newtab.html#/catalog): follow it without a reload.
+  useEffect(() => {
+    const follow = () => void router.navigate(startAt());
+    window.addEventListener('hashchange', follow);
+    return () => window.removeEventListener('hashchange', follow);
+  }, [router]);
+  return (
+    <>
+      <MotionRoot />
+      <RouterProvider router={router} />
+    </>
+  );
+}
 
 const optionsUrl = () => ext.runtime.getURL('options.html');
 
@@ -77,7 +127,14 @@ function FirstSync() {
   );
 }
 
-export function NewTab() {
+export function NewTab({ space = 'account' }: { space?: ExtSpace }) {
+  if (space === 'local') return <LocalNewTab />;
+  return <AccountNewTab />;
+}
+
+const switchToLocal = () => void writeSpace(ext.storage.local as never, 'local').then(() => location.reload());
+
+function AccountNewTab() {
   const phase = useExt(phaseOf);
   const server = useExt((s) => s.server);
   const router = useMemo(
@@ -101,8 +158,11 @@ export function NewTab() {
     );
   if (phase === 'revoked')
     return (
-      <Panel title="此设备的授权已失效" sub="授权已被撤销，请重新连接。可能是在 Nexus Portal 或 LiteSync 中退出了全部设备、账号被停用，或访问密码已更改。本地缓存的导航已清除；还没发送的收藏仍保存在扩展里，重新连接并确认账号后再发送。">
+      <Panel title="此设备的授权已失效" sub="授权已被撤销，请重新连接。可能是在 Nexus Portal 或 LiteSync 中退出了全部设备、账号被停用，或访问密码已更改。账号的缓存已清除；还没发送的收藏仍保存在扩展里，重新连接并确认账号后再发送。">
         <ConnectForm initial={server?.origin ?? ''} />
+        <Button className="h-10 self-start" onClick={switchToLocal}>
+          改用此扩展的本地收藏
+        </Button>
       </Panel>
     );
   if (phase === 'empty') return <FirstSync />;

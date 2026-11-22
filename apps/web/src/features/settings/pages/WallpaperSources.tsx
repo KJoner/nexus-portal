@@ -1,7 +1,7 @@
 import { GALLERY_CATEGORIES, wallpaperFile, type GalleryCategory, type Settings, type UnsplashPhoto } from '@nexus/shared';
 import { Check, ImageDown, Search } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
-import { useConfig, wallpaperSources } from '../../../data/config-store';
+import { useConfig, useSpace, wallpaperSources } from '../../../data/config-store';
 import { cn } from '../../../lib/cn';
 import { homeActions } from '../../home/actions';
 import { useDailyEntry, useDailyStore, useSourcesStore } from '../../home/rotation';
@@ -268,19 +268,24 @@ function UrlTab({ onPick, onError }: { onPick(e: WallpaperEntry): void; onError(
 /** 背景来源 tabs above the wallpaper grid. */
 export function SourcePicker({ look, library, onPick, onRotation, onError }: { look: Look; library: ReactNode; onPick(e: WallpaperEntry): void; onRotation(r: Partial<Rotation>): void; onError(m: string): void }) {
   const compact = useCompact();
-  const [tab, setTab] = useState<SourceTab>(look.rotation.mode === 'potd' ? 'daily' : 'library');
+  // v0.5: 精选图库、每日一图、Unsplash and 网址导入 are downloaded by the server for an account; a
+  // local collection has 我的壁纸 (built-in pictures and uploads kept in this browser).
+  const local = useSpace() === 'local';
+  const tabs = local ? TABS.filter((t) => t.id === 'library') : TABS;
+  const [tab, setTab] = useState<SourceTab>(look.rotation.mode === 'potd' && !local ? 'daily' : 'library');
   const unsplash = useSourcesStore((s) => s.data?.unsplash ?? false);
   const load = useSourcesStore((s) => s.load);
-  useEffect(() => void load(), [load]);
+  useEffect(() => void (local ? undefined : load()), [load, local]);
   return (
     <div className={cn('flex flex-col gap-3.5', compact ? 'py-3' : 'p-5')}>
       <div role="tablist" aria-label="背景来源" className={cn('nx-scroll-hidden flex gap-2 overflow-x-auto', compact && 'px-3')}>
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={chip(tab === t.id)}>
             {t.label}
           </button>
         ))}
       </div>
+      {local && <p className={cn('m-0 text-[12.5px] leading-[1.6] text-ink/56', compact && 'px-3')}>精选图库、每日一图、Unsplash 和网址导入由 Nexus 服务端下载，登录并开启同步后可用；现在可以使用内置壁纸，或上传保存在此浏览器的图片。</p>}
       <div role="tabpanel" aria-label={TABS.find((t) => t.id === tab)!.label} className={cn(compact && tab !== 'library' && tab !== 'gallery' && 'px-3')}>
         {tab === 'library' && library}
         {tab === 'gallery' && <GalleryTab onPick={onPick} onError={onError} />}
@@ -315,6 +320,7 @@ const selectClass = 'box-border h-10 cursor-pointer rounded-xl border-0 bg-ink/6
 /** 自动切换: how and from where the home page changes its picture. */
 export function RotationGroup({ look, set }: { look: Look; set(r: Partial<Rotation>, extra?: Partial<Look>): void }) {
   const compact = useCompact();
+  const local = useSpace() === 'local';
   const r = look.rotation;
   const timed = r.mode !== 'off' && r.mode !== 'potd';
   const favorites = look.favorites.length;
@@ -327,7 +333,7 @@ export function RotationGroup({ look, set }: { look: Look; set(r: Partial<Rotati
     <Group title="自动切换">
       <Row label="切换方式" sub={MODE_SUB[r.mode]} stacked={compact}>
         <select aria-label="壁纸切换方式" value={r.mode} onChange={(e) => set({ mode: e.target.value as Rotation['mode'] })} className={selectClass} style={{ fontSize: compact ? 16 : undefined }}>
-          {MODE_OPTIONS.map((o) => (
+          {MODE_OPTIONS.filter((o) => !local || o.value !== 'potd' || r.mode === 'potd').map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
             </option>
@@ -353,7 +359,7 @@ export function RotationGroup({ look, set }: { look: Look; set(r: Partial<Rotati
             options={[
               { value: 'library', label: '我的壁纸' },
               { value: 'favorites', label: `收藏${favorites ? ` ${favorites}` : ''}` },
-              { value: 'gallery', label: '精选图库' },
+              ...(local && r.pool !== 'gallery' ? [] : [{ value: 'gallery' as const, label: '精选图库' }]),
             ]}
             onChange={(pool) => set({ pool })}
           />

@@ -6,11 +6,13 @@ import { PageBackdrop as Backdrop } from '../../components/PageBackdrop';
 import { ToastHost } from '../../components/ToastHost';
 import { useConfig, useConfigStore, useSaveState } from '../../data/config-store';
 import { cn } from '../../lib/cn';
+import { host } from '../../lib/host';
 import { useViewport } from '../../lib/hooks';
 import { formatHm } from '../../lib/time';
 import { useWallpaper } from '../home/Wallpaper';
 import { lookDiff, useLookDraft } from './look-draft';
 import { attention, isPage, PAGES, searchIndex, summaries, type PageId } from './model';
+import { AccountPage } from './pages/AccountPage';
 import { AppearancePage } from './pages/AppearancePage';
 import { AppsPage } from './pages/AppsPage';
 import { DataPage } from './pages/DataPage';
@@ -25,19 +27,24 @@ const PAGE_VIEW: Record<PageId, () => ReactNode> = {
   home: () => <HomeLayoutPage />,
   apps: () => <AppsPage />,
   search: () => <SearchPage />,
+  account: () => <AccountPage />,
   data: () => <DataPage />,
 };
 
 function useSyncSummary(): string {
   const save = useSaveState();
   const revision = useConfigStore((s) => s.confirmed?.revision ?? 0);
+  const space = useConfigStore((s) => s.space);
+  if (save.kind === 'error') return `没有保存 · ${save.message}`;
+  if (space === 'local') return `仅保存在${host.localWhere} · 登录后可同步`;
   if (save.kind === 'offline') return `离线 · ${save.pending ? `${save.pending} 项更改待同步` : '恢复连接后自动同步'}`;
   if (save.kind === 'saving') return '正在同步…';
-  return `已同步到 Nexus 服务端 · 修订 ${revision}`;
+  return `已同步到账号 · 修订 ${revision}`;
 }
 
 function SaveIndicator() {
   const save = useSaveState();
+  const space = useConfigStore((s) => s.space);
   const dirty = useLookDraft((s) => lookDiff(s.draft, useConfigStore.getState().snapshot.config.settings.look));
   const { page } = useParams();
   return (
@@ -47,6 +54,12 @@ function SaveIndicator() {
           <Spinner />
           正在保存…
         </>
+      )}
+      {save.kind === 'error' && (
+        <Link to="/settings/data" className="flex items-center gap-2 text-danger-ink no-underline">
+          <span className="size-[7px] rounded-full bg-danger-ink" />
+          没有保存 · 查看
+        </Link>
       )}
       {save.kind === 'offline' && (
         <>
@@ -60,7 +73,8 @@ function SaveIndicator() {
         ) : (
           <>
             <Check className="size-3.5 text-ok" />
-            所有更改已保存{save.at ? ` · ${formatHm(save.at)}` : ''}
+            {space === 'local' ? `已保存到${host.localWhere}` : '所有更改已保存'}
+            {save.at ? ` · ${formatHm(save.at)}` : ''}
           </>
         ))}
     </span>
@@ -341,7 +355,14 @@ function MobileShell({ page }: { page: PageId | null }) {
 export default function SettingsPage() {
   const { page } = useParams();
   const { w, h } = useViewport();
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
   const current = isPage(page) ? page : null;
+  // v0.5: the account moved from 数据、同步与安全 to 账号与同步; links the server still sends
+  // (identity claim: /settings/data?linked=1 | ?auth_error=…; an extension's pairing: ?pair=…) land there.
+  useEffect(() => {
+    if (page === 'data' && (params.has('linked') || params.has('auth_error') || params.has('pair'))) navigate(`/settings/account?${params}`, { replace: true });
+  }, [page, params, navigate]);
   const compact = !(w >= 900 && h >= 560);
   useEffect(() => {
     document.title = current ? `${PAGES.find((p) => p.id === current)!.label} · Nexus 设置` : 'Nexus 设置';

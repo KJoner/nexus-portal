@@ -503,7 +503,7 @@ export function registerItemsApi(app: Hono<{ Variables: Vars }>, deps: ItemsApiD
         for (const it of plan.create) {
           let app = it.app;
           if (app && it.icon) {
-            const ref = await icons!.add(ownerId, it.icon.data, 'image/png');
+            const ref = await icons!.add(ownerId, Buffer.from(it.icon.data), 'image/png');
             stored.push(ref);
             app = { ...app, icon: { ...app.icon, source: 'upload', ref } };
           }

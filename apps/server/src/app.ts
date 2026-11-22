@@ -365,8 +365,8 @@ export function createApp(deps: Deps) {
     const v = await auth.validate(getCookie(c, COOKIE));
     if (!v.valid || v.session.kind !== 'password') return c.redirect('/?auth_error=link_requires_password', 302);
     const user = await users.get(v.session.userId);
-    if (!user || user.issuer) return c.redirect('/settings/data?auth_error=already_linked', 302);
-    return startOidc(c, 'link', { returnTo: '/settings/data?linked=1', linkUserId: user.id });
+    if (!user || user.issuer) return c.redirect('/settings/account?auth_error=already_linked', 302);
+    return startOidc(c, 'link', { returnTo: '/settings/account?linked=1', linkUserId: user.id });
   });
 
   app.get('/auth/callback', async (c) => {
@@ -389,7 +389,7 @@ export function createApp(deps: Deps) {
     let user: User;
     if (intent.kind === 'link') {
       const r = await users.link(intent.linkUserId!, signed.claims);
-      if (r !== 'linked' && r !== 'already_linked') return c.redirect(`/settings/data?auth_error=${r}`, 302);
+      if (r !== 'linked' && r !== 'already_linked') return c.redirect(`/settings/account?auth_error=${r}`, 302);
       console.log(`[nexus] 账号认领：${intent.linkUserId} 已绑定统一身份`);
       user = (await users.get(intent.linkUserId!))!;
       // The old way in may close now (legacy login `auto`); this browser continues with the new identity.

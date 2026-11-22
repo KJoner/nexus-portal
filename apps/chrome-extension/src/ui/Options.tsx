@@ -1,9 +1,12 @@
 import { ToastHost } from '@web/components/ToastHost';
 import { toast } from '@web/components/toast-store';
-import { Button, Dialog, Group, Row, Spinner } from '@web/features/settings/ui';
+import { Button, Dialog, Group, Row, Segmented, Spinner } from '@web/features/settings/ui';
 import { formatAgo } from '@web/lib/time';
-import { Cloud, CloudOff, ExternalLink, RefreshCw, ShieldAlert, Unplug } from 'lucide-react';
+import { localCounts } from '@nexus/shared';
+import { Cloud, CloudOff, Download, ExternalLink, HardDrive, LibraryBig, RefreshCw, ShieldAlert, Unplug } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { extLocal, readSpace, writeSpace, type ExtSpace } from '../lib/local';
+import type { Area } from '../lib/storage';
 import { releaseOrigin } from '../boot';
 import { assetStats } from '../lib/assets';
 import { clearCache, disconnect, sync, useExt, type SyncOutcome } from '../lib/sync';
@@ -76,7 +79,7 @@ function Connected() {
     <>
       <Group title="连接">
         <Row label={host} sub={`设备「${server.deviceName}」· 授权于 ${server.pairedAt ? formatAgo(Date.parse(server.pairedAt)) : '—'} · 只读`}>
-          <Button onClick={() => window.open(`${server.origin}/settings/data`, '_blank', 'noopener')}>
+          <Button onClick={() => window.open(`${server.origin}/settings/account`, '_blank', 'noopener')}>
             <ExternalLink className="size-[15px]" />
             打开 Nexus 设置
           </Button>
@@ -164,6 +167,73 @@ function Connected() {
   );
 }
 
+/**
+ * 此扩展的本地收藏 (v0.5): what is kept here, a backup of it, and — once an account is connected —
+ * which of the two the new tab shows and the popup saves to.
+ */
+function LocalCollection({ paired, accountLabel }: { paired: boolean; accountLabel: string }) {
+  const area = ext.storage.local as unknown as Area;
+  const [counts, setCounts] = useState<ReturnType<typeof localCounts> | null>(null);
+  const [space, setSpace] = useState<ExtSpace | null>(null);
+  useEffect(() => {
+    void extLocal()
+      .state()
+      .then((s) => setCounts(localCounts(s)), () => setCounts(null));
+    void readSpace(area).then(setSpace);
+  }, [area, paired]);
+  const exportFile = async () => {
+    try {
+      const file = await extLocal().exportFile();
+      const date = new Date().toISOString().slice(0, 10);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' }));
+      a.download = `nexus-collection-${date}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      toast({ msg: `已导出 ${file.items.length} 条收藏`, tone: 'ok' });
+    } catch {
+      toast({ msg: '导出失败：读取不到此扩展的本地收藏', tone: 'error' });
+    }
+  };
+  const choose = async (next: ExtSpace) => {
+    await writeSpace(area, next);
+    setSpace(next);
+    toast({ msg: next === 'local' ? '新标签页和收藏按钮改用此扩展的本地收藏' : `新标签页和收藏按钮改用「${accountLabel}」的收藏`, tone: 'ok' });
+  };
+  return (
+    <Group title="此扩展的本地收藏">
+      <Row label={<span className="flex items-center gap-2.5"><HardDrive className="size-[18px] text-ink/60" />保存在此扩展里</span>} sub={`${counts ? `${counts.items} 条收藏${counts.pins ? `、${counts.pins} 个固定到首页` : ''}。` : ''}不需要账号，也不会上传；不使用浏览器的同步存储。卸载扩展或清除扩展数据会删除它们，请定期导出备份。`}>
+        <div className="flex flex-none flex-wrap gap-2">
+          <Button onClick={() => void ext.tabs.create({ url: ext.runtime.getURL('newtab.html#/library') })}>
+            <LibraryBig className="size-[15px]" />
+            打开收藏
+          </Button>
+          <Button onClick={() => void exportFile()}>
+            <Download className="size-[15px]" />
+            导出备份
+          </Button>
+        </div>
+      </Row>
+      <Row label="与 Nexus 网页互通" sub="网页版和扩展各有自己的本地收藏，不会自动互通：在一处导出备份，在另一处「收藏 › 导入」即可搬过去；或者登录同一账号后使用账号里的收藏。" />
+      {paired && space && (
+        <Row label="新标签页显示" sub="收藏按钮和右键菜单也保存到这里。切换不会删除另一边的收藏。" stacked>
+          <Segmented<ExtSpace>
+            label="新标签页显示"
+            value={space}
+            onChange={(v) => void choose(v)}
+            options={[
+              { value: 'local', label: '此扩展的本地收藏' },
+              { value: 'account', label: `账号「${accountLabel}」` },
+            ]}
+          />
+        </Row>
+      )}
+    </Group>
+  );
+}
+
 export function Options() {
   const server = useExt((s) => s.server);
   const loaded = useExt((s) => s.loaded);
@@ -176,13 +246,17 @@ export function Options() {
       <div className="mx-auto flex max-w-[760px] flex-col gap-7">
         <div className="flex flex-col gap-2">
           <h1 className="m-0 text-[28px] font-medium tracking-[-0.01em]">{welcome && !paired ? '欢迎使用 Nexus 新标签页' : 'Nexus 新标签页'}</h1>
-          <p className="m-0 text-[14px] leading-[1.7] text-ink/56">把新标签页换成你在 Nexus Portal 中的导航。导航保存在本机，打开即显示；有变化时在后台同步。应用、首页和外观请在 Nexus Portal 中编辑。</p>
+          <p className="m-0 text-[14px] leading-[1.7] text-ink/56">
+            {paired ? '新标签页可以显示此扩展的本地收藏，或你在 Nexus 账号里的导航（只读缓存，有变化时在后台同步）。' : '新标签页已经可以使用：打开一个新标签页，就能添加网站、整理收藏、固定到首页和更换壁纸，全部保存在此扩展里，不需要账号。想在多台设备同步时，再连接你的 Nexus 账号。'}
+          </p>
         </div>
+
+        <LocalCollection paired={!!paired} accountLabel={server?.account?.label || (server ? new URL(server.origin).host : '')} />
 
         {paired ? (
           <Connected />
         ) : (
-          <Group title={server?.revoked ? '重新连接' : '连接 Nexus Portal'}>
+          <Group title={server?.revoked ? '重新连接' : '连接 Nexus 账号（可选）'}>
             {server?.revoked && (
               <Row label={<span className="flex items-center gap-2.5"><ShieldAlert className="size-[18px] text-warn" />此设备的授权已失效</span>} sub="授权已被撤销，请重新连接：可能是在 Nexus Portal 或 LiteSync 中退出了全部设备、账号被停用，或访问密码已更改；本地缓存的导航已清除，还没发送的收藏仍保存在扩展里。" />
             )}
@@ -193,7 +267,8 @@ export function Options() {
         )}
 
         <Group title="隐私与权限">
-          <Row label="只读访问" sub="扩展使用专属的只读令牌，只能读取导航配置、服务状态、图标和壁纸；不能修改设置，也不会保存访问密码。可以在 Nexus Portal「数据、同步与安全 › 浏览器扩展」中随时撤销。" />
+          <Row label="本地收藏" sub="只保存在此扩展的存储里，不上传、不使用浏览器的同步存储；扩展只在你点击收藏按钮或右键菜单时读取当前页面的标题和网址。" />
+          <Row label="连接账号后" sub="扩展使用专属令牌：读取导航配置、服务状态、图标和壁纸，按你批准的权限保存收藏；不能修改设置，也不会保存账号密码。可以在 Nexus「设置 › 账号与同步 › 浏览器扩展」中随时撤销。" />
           <Row label="网站权限" sub="只在连接时请求访问你填写的这一个地址；不读取浏览记录、书签或其他网站的内容。" />
         </Group>
         <p className="m-0 text-center text-[12px] text-ink/40">扩展版本 {version}</p>

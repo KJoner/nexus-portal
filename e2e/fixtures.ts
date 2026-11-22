@@ -8,6 +8,15 @@ const H = { 'X-Nexus-Client': '1' };
 export async function signIn(context: BrowserContext) {
   const r = await context.request.post('/api/auth/login', { headers: H, data: { password: PASSWORD } });
   expect(r.ok()).toBeTruthy();
+  // v0.5: a fresh browser starts with its own local collection; these tests are about the account's
+  // (as if the person had chosen 「使用账号里的收藏」 after signing in). Local mode: e2e/local.spec.ts.
+  await context.addInitScript(() => {
+    try {
+      if (!localStorage.getItem('nexus.workspace.v1')) localStorage.setItem('nexus.workspace.v1', JSON.stringify({ kind: 'account', id: 'legacy-admin' }));
+    } catch {
+      /* storage disabled */
+    }
+  });
 }
 
 export async function ops(api: APIRequestContext, list: unknown[]) {

@@ -26,11 +26,11 @@ export default defineConfig({
     env: { E2E_PORT: String(PORT) },
   },
   projects: [
-    { name: 'chrome', testIgnore: /extension(-release)?\.spec/, use: { ...devices['Desktop Chrome'], ...desktop } },
-    { name: 'edge', testIgnore: /extension(-release)?\.spec/, use: { ...devices['Desktop Edge'], channel: 'msedge', ...desktop } },
-    { name: 'iphone', testIgnore: /extension(-release)?\.spec/, use: { ...devices['iPhone 13'] } },
+    { name: 'chrome', testIgnore: /extension(-release|-local)?\.spec/, use: { ...devices['Desktop Chrome'], ...desktop } },
+    { name: 'edge', testIgnore: /extension(-release|-local)?\.spec/, use: { ...devices['Desktop Edge'], channel: 'msedge', ...desktop } },
+    { name: 'iphone', testIgnore: /extension(-release|-local)?\.spec/, use: { ...devices['iPhone 13'] } },
     // The Chrome extension (apps/chrome-extension) in a persistent Chromium profile it launches itself.
     // (The release-package tests have their own configuration: playwright.release.config.ts.)
-    { name: 'extension', testMatch: /extension\.spec/ },
+    { name: 'extension', testMatch: /extension(-local)?\.spec/ },
   ],
 });

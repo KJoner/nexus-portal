@@ -11,3 +11,5 @@ export * from './validate';
 export * from './device';
 export * from './catalog/catalog';
 export * from './items';
+export * from './collection';
+export * from './local-engine';

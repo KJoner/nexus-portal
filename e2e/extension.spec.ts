@@ -78,10 +78,11 @@ test('installs, opens the setup page, and pairs with the portal’s approval', a
   const code = (await options.getByTestId('pair-code').textContent())!.trim();
   expect(code).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
 
-  // The portal page: sign in, compare the code, allow.
+  // The portal page: sign in right there (v0.5: a fresh browser's own collection stays as it is),
+  // compare the code, allow.
   const approval = await approvalOpened;
   await approval.getByLabel('访问密码').fill('e2e-password');
-  await approval.getByRole('button', { name: '进入' }).click();
+  await approval.getByRole('button', { name: '登录', exact: true }).click();
   await expect(approval.getByRole('dialog')).toContainText(code);
   // The device names itself after the browser it runs in (Chrome or Edge).
   await expect(approval.getByRole('dialog')).toContainText(process.env.E2E_EXT_CHANNEL === 'msedge' ? 'Edge' : 'Chrome');

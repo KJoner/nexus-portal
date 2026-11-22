@@ -2,7 +2,7 @@ import type { Item, ItemInput, ItemPatch, ItemWriteResult, SnapshotResponse } fr
 import { create } from 'zustand';
 import { toast } from '../components/toast-store';
 import { storage } from '../lib/storage';
-import { currentTransport, onAccountChange, useConfigStore } from './config-store';
+import { currentTransport, onAccountChange, workspaceOwner } from './config-store';
 import { HttpError, NetworkError, type RestoreDuplicates } from './transport';
 
 /**
@@ -54,7 +54,8 @@ export const useLibrary = create<LibraryState>(() => initial());
 const queueKey = (owner: string) => `nexus.library.queue.v1:${owner}`;
 const conflictsKey = (owner: string) => `nexus.library.conflicts.v1:${owner}`;
 const opId = (kind: string) => `${kind}-${(crypto.randomUUID?.() ?? `${Date.now()}${Math.random()}`).replace(/-/g, '').slice(0, 20)}`;
-const ownerNow = () => useConfigStore.getState().account?.account.id ?? null;
+/** Whose collection this is: the verified account, or (v0.5) this browser's local collection. */
+const ownerNow = () => workspaceOwner();
 /** What the server says is final for this change and the person has to decide about. */
 const KEPT = new Set(['ITEM_DELETED', 'FIELD_CONFLICT', 'REVISION_CONFLICT', 'DUPLICATE', 'QUOTA_EXCEEDED']);
 

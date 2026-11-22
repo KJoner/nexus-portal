@@ -9,7 +9,7 @@ import { peerLine } from '../../auth/RevocationResult';
 import { formatAgo } from '../../../lib/time';
 import { Button, Dialog, Group, Row, Tag } from '../ui';
 
-/** Messages for the claim flow, which returns here (`/settings/data?auth_error=…`). */
+/** Messages for the claim flow, which returns here (`/settings/account?auth_error=…`). */
 const LINK_ERRORS: Record<string, string> = {
   ...AUTH_ERRORS,
   already_linked: '这个账号已经绑定了统一账号。',

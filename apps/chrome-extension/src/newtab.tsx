@@ -13,21 +13,24 @@ import { sync } from './lib/sync';
 import { ErrorBoundary } from './ui/ErrorBoundary';
 import { NewTab } from './ui/NewTab';
 
-// Local first: the cached navigation renders before any network request is made.
-await boot();
+// Local first: this extension's collection (or the account's cached navigation) renders before any
+// network request is made.
+const { space } = await boot();
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
-      <NewTab />
+      <NewTab space={space} />
     </ErrorBoundary>
   </StrictMode>,
 );
-
-// Then revalidate in the background (throttled, one tab at a time), and again whenever this tab
-// comes back into view or the network returns.
-void sync();
 preloadPinyin();
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') void sync();
-});
-window.addEventListener('online', () => void sync({ force: true }));
+
+// The account's navigation: revalidate in the background (throttled, one tab at a time), and again
+// whenever this tab comes back into view or the network returns. A local collection asks no server.
+if (space === 'account') {
+  void sync();
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') void sync();
+  });
+  window.addEventListener('online', () => void sync({ force: true }));
+}

@@ -88,7 +88,8 @@ interface Props {
 }
 
 export const AppTile = memo(function AppTile({ target, size, status, lazy, className, style }: Props) {
-  const cached = useConfigStore((s) => s.snapshot.config.settings.privacy.cacheIcons);
+  // The server's icon cache needs a session: a local collection loads public icons directly (v0.5).
+  const cached = useConfigStore((s) => s.space === 'account' && s.snapshot.config.settings.privacy.cacheIcons);
   const r = resolve(target, cached);
   const [, bump] = useState(0);
   const path = r.src && !failed.has(r.src) ? r.src : null;

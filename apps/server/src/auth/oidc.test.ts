@@ -165,7 +165,7 @@ describe('旧管理员认领 (claiming the legacy administrator)', () => {
     expect(authUrl.searchParams.get('prompt')).toBe('login');
     const code = idp.authorize(authUrl, { sub: 'owner', email: 'owner@example.org' });
     const cb = await t.app.request(`/auth/callback?code=${code}&state=${authUrl.searchParams.get('state')}`, { headers: { cookie: [legacy, cookieOf(start, 'nexus_oidc')].join('; ') } });
-    expect(cb.headers.get('location')).toBe('/settings/data?linked=1');
+    expect(cb.headers.get('location')).toBe('/settings/account?linked=1');
     const cookie = cookieOf(cb, 'nexus_session')!;
     expect(await (await me(t.app, cookie)).json()).toMatchObject({ account: { id: LEGACY_ADMIN_ID }, role: 'admin', session: 'oidc', identityLinked: true });
     // The old password closes once the account is claimed (legacy login `auto`).
@@ -183,7 +183,7 @@ describe('旧管理员认领 (claiming the legacy administrator)', () => {
     const authUrl = new URL(start.headers.get('location')!);
     const code = idp.authorize(authUrl, { sub: 'mallory' });
     const cb = await t.app.request(`/auth/callback?code=${code}&state=${authUrl.searchParams.get('state')}`, { headers: { cookie: [legacy, cookieOf(start, 'nexus_oidc')].join('; ') } });
-    expect(cb.headers.get('location')).toBe('/settings/data?auth_error=identity_taken');
+    expect(cb.headers.get('location')).toBe('/settings/account?auth_error=identity_taken');
     expect(await t.db.get('select issuer from users where id = ?', [LEGACY_ADMIN_ID])).toEqual({ issuer: null });
   });
 });

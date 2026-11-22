@@ -1,10 +1,10 @@
 import { homeCapacity, pinnedSites, shownServices, type Config, type Op, type SettingsSection } from '@nexus/shared';
-import { House, LayoutGrid, LayoutTemplate, Palette, Search, ShieldCheck, type LucideIcon } from 'lucide-react';
+import { DatabaseBackup, House, LayoutGrid, LayoutTemplate, Palette, Search, UserRound, type LucideIcon } from 'lucide-react';
 import { toast } from '../../components/toast-store';
 import { dispatch } from '../../data/config-store';
 import type { WallpaperEntry } from '../home/Wallpaper';
 
-export type PageId = 'appearance' | 'display' | 'home' | 'apps' | 'search' | 'data';
+export type PageId = 'appearance' | 'display' | 'home' | 'apps' | 'search' | 'account' | 'data';
 
 export const PAGES: { id: PageId; label: string; short: string; icon: LucideIcon }[] = [
   { id: 'appearance', label: '外观与个性化', short: '外观与个性化', icon: Palette },
@@ -12,7 +12,9 @@ export const PAGES: { id: PageId; label: string; short: string; icon: LucideIcon
   { id: 'home', label: '首页与快捷方式', short: '首页与快捷方式', icon: House },
   { id: 'apps', label: '应用与服务', short: '应用与服务', icon: LayoutGrid },
   { id: 'search', label: '搜索', short: '搜索', icon: Search },
-  { id: 'data', label: '数据、同步与安全', short: '数据与安全', icon: ShieldCheck },
+  // v0.5: who is signed in and where data goes is one task; backups and privacy another (01-UX-PLAN §7).
+  { id: 'account', label: '账号与同步', short: '账号与同步', icon: UserRound },
+  { id: 'data', label: '数据与备份', short: '数据与备份', icon: DatabaseBackup },
 ];
 
 export const isPage = (p: string | undefined): p is PageId => PAGES.some((x) => x.id === p);
@@ -41,12 +43,15 @@ export const INDEX: { page: PageId; label: string; kw: string }[] = [
   ['search', '自定义引擎', '%s 前缀'],
   ['search', '搜索历史', '历史 清除 最近'],
   ['search', 'Linkwarden 收藏搜索', '书签 收藏'],
-  ['data', '配置同步', '设备 同步 离线'],
-  ['data', '导入与导出', 'json 备份 导入 导出'],
-  ['data', '隐私', '访客 最近使用'],
-  ['data', '账号与登录', '账户 账号 退出 登录 退出全部设备 统一账号 账号中心 绑定 认领 密码'],
-  ['data', '账号与邀请', '管理员 用户 邀请码 注册 停用'],
-  ['data', '浏览器扩展', 'chrome edge 扩展 新标签页 设备 授权 连接 撤销'],
+  ['account', '账号同步', '设备 同步 离线 冲突 数据、同步与安全'],
+  ['account', '本地收藏与登录同步', '本地 仅保存在此浏览器 登录 同步 合并 切换 账号空间'],
+  ['account', '账号与登录', '账户 账号 退出 登录 退出全部设备 统一账号 账号中心 绑定 认领 密码'],
+  ['account', '账号与邀请', '管理员 用户 邀请码 注册 停用'],
+  ['account', '浏览器扩展', 'chrome edge 扩展 新标签页 设备 授权 连接 撤销'],
+  ['data', '收藏备份', '导出 导入 备份 恢复 书签 json nexus-collection'],
+  ['data', '外观与首页配置', 'json 配置 导入 导出 nexus-config'],
+  ['data', '隐私与展示', '投屏隐私 访客模式 访客 最近使用 图标'],
+  ['data', '本地存储', '本地收藏 删除 存储空间 清除'],
   ['data', '重置设置', '恢复默认 重置'],
 ].map(([page, label, kw]) => ({ page: page as PageId, label: label!, kw: kw! }));
 
@@ -59,7 +64,7 @@ const MOTION = { full: '完整', reduced: '减弱', off: '关闭' } as const;
 const ROTATION = { off: '固定壁纸', open: '每次打开换一张', hourly: '每小时换一张', daily: '每天换一张', interval: '定时切换', potd: '每日一图' } as const;
 const PRESET = { daily: '日常模式', minimal: '极简模式', custom: '自定义显示' } as const;
 
-export function summaries(c: Config, wp: WallpaperEntry, sync: string): Record<PageId, string> {
+export function summaries(c: Config, wp: WallpaperEntry, sync: string, data = '导出、导入与重置'): Record<PageId, string> {
   const sites = c.apps.filter((a) => a.kind === 'site');
   const services = c.apps.filter((a) => a.kind === 'service');
   const hidden = c.apps.filter((a) => a.hidden).length;
@@ -72,7 +77,8 @@ export function summaries(c: Config, wp: WallpaperEntry, sync: string): Record<P
     home: `桌面 ${Math.min(pins, cap.desktop)} 个网站 + ${shownServices(c).length} 个服务 · 手机 ${c.settings.home.mobileRows} 行`,
     apps: `${sites.length} 个网站、${services.length} 个自托管服务${hidden ? ` · ${hidden} 个已隐藏` : ''}`,
     search: `默认 ${engine?.name ?? '—'} · ${c.engines.length} 个引擎 · 历史${c.settings.search.history ? '开启' : '关闭'}`,
-    data: sync,
+    account: sync,
+    data,
   };
 }
 

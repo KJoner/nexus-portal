@@ -1,7 +1,8 @@
 import { defaultConfig, type AuthOptions } from '@nexus/shared';
 import { ArrowRight, KeyRound, LogIn } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { authOptions, dismissEverywhere, lastEverywhere, login } from '../../data/config-store';
+import { authOptions, dismissEverywhere, lastEverywhere, login, useConfigStore } from '../../data/config-store';
+import { switchWorkspace } from '../../data/workspace';
 import { HttpError, NetworkError } from '../../data/transport';
 import { cn } from '../../lib/cn';
 import { useNow, useViewport } from '../../lib/hooks';
@@ -41,7 +42,9 @@ const here = () => `${location.pathname}${location.search.replace(/[?&]auth_erro
  * identity service; the old access password stays for the legacy administrator while the server
  * allows it.
  */
-export function LoginPage() {
+export function LoginPage({ reauth = false }: { reauth?: boolean }) {
+  // v0.5: shown only for an account whose sign-in ended; its unsent changes stay kept for it.
+  const pending = useConfigStore((s) => s.pending.length + s.held.length);
   const { w, h } = useViewport();
   const desktop = w >= 900 && h >= 560;
   const now = useNow(false);
@@ -127,8 +130,13 @@ export function LoginPage() {
           <div className="flex items-center gap-2.5 px-1 text-[15px] font-semibold">
             <span className="size-2 rounded-full bg-amber" style={{ boxShadow: '0 0 14px rgba(230,192,138,0.75)' }} />
             Nexus
-            <span className="text-[13px] font-normal text-ink/50">{options?.oidc ? '登录或注册以继续' : '输入访问密码以继续'}</span>
+            <span className="text-[13px] font-normal text-ink/50">{reauth ? '需要重新登录' : options?.oidc ? '登录或注册以继续' : '输入访问密码以继续'}</span>
           </div>
+          {reauth && (
+            <p className="m-0 px-1 text-[12.5px] leading-[1.6] text-ink/62">
+              这个账号在此浏览器的登录已失效，账号里的收藏暂时隐藏。{pending ? `${pending} 项更改尚未同步，仍保留在此浏览器，重新登录同一账号后继续发送。` : ''}
+            </p>
+          )}
 
           {everywhere && (
             <div className="flex flex-col gap-2 rounded-[18px] px-3.5 py-3" style={{ background: 'rgba(239,234,225,0.06)' }}>
@@ -209,6 +217,11 @@ export function LoginPage() {
           <p id="login-error" role="alert" className="m-0 min-h-[18px] px-1 text-[12.5px] text-danger-ink">
             {error}
           </p>
+          {reauth && (
+            <button type="button" onClick={() => switchWorkspace({ kind: 'local' })} className="h-10 rounded-[14px] border-0 bg-ink/9 px-4 text-[13.5px] text-ink hover:bg-ink/14">
+              改用此浏览器的本地收藏
+            </button>
+          )}
         </div>
       </main>
     </div>

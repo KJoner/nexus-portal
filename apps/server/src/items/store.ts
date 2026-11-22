@@ -1,4 +1,4 @@
-import { AppSchema, isPinnable, itemUrlKey, LOCKED_CATEGORY, MAX_PINS, OpError, type AppEntry, type Config, type Item, type ItemField, type ItemKind, type ItemSource, type Op } from '@nexus/shared';
+import { AppSchema, extraOf, isPinnable, itemUrlKey, LOCKED_CATEGORY, MAX_PINS, OpError, type AppEntry, type Config, type Item, type ItemField, type ItemKind, type ItemSource, type Op } from '@nexus/shared';
 import { randomBytes } from 'node:crypto';
 import type { DB } from '../db';
 
@@ -97,11 +97,8 @@ export function toApp(r: Row): AppEntry | null {
   return parsed.success ? parsed.data : null;
 }
 
-/** What an app entry stores besides the item's own columns (service kind, LAN address, health…). */
-export function extraOf(app: AppEntry): string {
-  const { id: _id, name: _name, url: _url, categoryId: _c, catalogId: _k, version: _v, ...rest } = app;
-  return JSON.stringify(rest);
-}
+/** What an app entry stores besides the item's own columns (one definition, shared with the browser's local collection). */
+export { extraOf };
 
 /** What a changed home-view entry changes in its item (the view clips long titles: see below). */
 function changesOf(old: AppEntry, app: AppEntry): Partial<Record<'title' | 'url' | 'folderId' | 'catalogId' | 'extra', string | null>> {

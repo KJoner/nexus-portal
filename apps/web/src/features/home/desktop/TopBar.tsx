@@ -4,6 +4,7 @@ import { forwardRef } from 'react';
 import { Link } from 'react-router';
 import { cn } from '../../../lib/cn';
 import { reveal, type Near } from '../../../lib/proximity';
+import { SpaceBadge } from '../../account/SpaceBadge';
 import { dotStyle, pillStyle } from '../status-style';
 
 interface Props {
@@ -30,6 +31,8 @@ export const TopBar = forwardRef<HTMLButtonElement, Props>(function TopBar({ sum
   const alert = summary.level === 'error';
   const status = reveal(alert || statusOpen ? 'show' : ui.status, near.top);
   const settings = reveal(ui.settings, near.top);
+  // v0.5: where changes go is never hidden for good — a hidden settings button still reveals it on hover.
+  const where = reveal(ui.settings === 'hide' ? 'hover' : ui.settings, near.top);
   const nav = [ui.navHome, ui.navApps, ui.navOverview && showStatus].some(Boolean);
   return (
     <header className="absolute top-0 right-0 left-0 z-[4] flex items-center gap-9 px-9 py-6">
@@ -101,6 +104,7 @@ export const TopBar = forwardRef<HTMLButtonElement, Props>(function TopBar({ sum
           {summary.more && <span className="opacity-66">{summary.more}</span>}
         </button>
       )}
+      {!where.hidden && <SpaceBadge variant="desktop" className={where.className} style={where.style} />}
       {!settings.hidden && (
         <Link
           to="/settings"

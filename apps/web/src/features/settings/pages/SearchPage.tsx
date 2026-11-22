@@ -2,7 +2,7 @@ import { hostOf, validateEngine, type Engine, type LinkwardenStatus } from '@nex
 import { Check, ChevronDown, ChevronUp, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from '../../../components/toast-store';
-import { linkwardenApi, useConfig, useIsAdmin } from '../../../data/config-store';
+import { linkwardenApi, useConfig, useIsAdmin, useSpace } from '../../../data/config-store';
 import { useRecentStore } from '../../../data/recent';
 import { AppTile } from '../../../icons/AppTile';
 import { cn } from '../../../lib/cn';
@@ -180,11 +180,16 @@ export function SearchPage() {
     />
   );
 
+  const local = useSpace() === 'local';
   const toggles = (
     <>
-      <Row label="搜索建议" sub="输入时经 Nexus 服务端向当前引擎（Google、Bing、DuckDuckGo）请求联想词；输入内容会发送给该引擎">
-        <Switch label="搜索建议" checked={s.suggest} onChange={(v) => patch('search', { suggest: v })} />
-      </Row>
+      {local ? (
+        <Row label="搜索建议" sub="联想词由 Nexus 服务端代为请求，登录并开启同步后可用；本地收藏的搜索只在此浏览器里进行" />
+      ) : (
+        <Row label="搜索建议" sub="输入时经 Nexus 服务端向当前引擎（Google、Bing、DuckDuckGo）请求联想词；输入内容会发送给该引擎">
+          <Switch label="搜索建议" checked={s.suggest} onChange={(v) => patch('search', { suggest: v })} />
+        </Row>
+      )}
       <Row label="记录搜索历史" sub="聚焦搜索框时在「最近」中显示；只保存在本浏览器，不会上传">
         <Switch label="记录搜索历史" checked={s.history} onChange={(v) => patch('search', { history: v })} />
       </Row>

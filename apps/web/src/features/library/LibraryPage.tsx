@@ -393,7 +393,8 @@ export default function LibraryPage() {
   const { w } = useViewport();
   const compact = w < 900;
   const config = useConfig();
-  const account = useConfigStore((s) => s.account?.account.id ?? null);
+  // The collection shown: the verified account's, or (v0.5) this browser's local collection.
+  const account = useConfigStore((s) => (s.space === 'local' ? s.localId : (s.account?.account.id ?? null)));
   const { status, error, items, pins, folders, queued, conflicts } = useLibrary();
   const pinyin = usePinyin((s) => s.fn);
   const [view, setView] = useState<View>({ kind: 'all' });

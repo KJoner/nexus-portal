@@ -16,23 +16,29 @@ test.afterAll(async () => {
   await idp?.close();
 });
 
-/** 登录页的「使用统一账号登录」：先确认页面在 Service Worker 控制下，再点；回到原来的页面且已登录。 */
+/**
+ * v0.5 登录同步（/account/connect）：先确认页面在 Service Worker 控制下，再点「登录或创建账号」；
+ * 身份服务回到 /account/connect?return=1（服务端的回调，不是应用壳），选「使用账号里的收藏」（两边
+ * 都空时是「开启同步」），回到原来的页面且已登录。
+ */
 async function signInWithButton(page: Page, name: string) {
   expect(await isControlled(page)).toBe(true);
   const from = new URL(page.url()).pathname;
-  await page.getByRole('button', { name: '使用统一账号登录' }).click();
+  await page.goto(`${NEXUS}/account/connect?from=${encodeURIComponent(from)}`);
+  await page.getByRole('button', { name: '登录或创建账号' }).click();
   await signInAtIdp(page, name);
+  await expect(page).toHaveURL(`${NEXUS}/account/connect?return=1`);
+  await page.getByRole('button', { name: /使用账号里的收藏|开启同步/ }).click();
   await expect(page).toHaveURL(`${NEXUS}${from}`);
-  await expect(page.getByRole('button', { name: '使用统一账号登录' })).toBeHidden();
   await expect.poll(() => me(page)).toMatchObject({ product: 'nexus', session: 'oidc' });
 }
 
-/** 设置 › 数据、同步与安全 › 退出此设备（动作 A）。 */
+/** 设置 › 账号与同步 › 退出此设备（动作 A）：回到此浏览器自己的本地收藏。 */
 async function signOutHere(page: Page) {
-  await page.goto(`${NEXUS}/settings/data`);
+  await page.goto(`${NEXUS}/settings/account`);
   await page.getByRole('button', { name: '退出', exact: true }).first().click();
   await page.getByRole('dialog').getByRole('button', { name: '退出', exact: true }).click();
-  await expect(page.getByRole('button', { name: '使用统一账号登录' })).toBeVisible();
+  await expect(page.getByText('仅保存在此浏览器')).toBeVisible();
 }
 
 test('新版：Service Worker 接管后，旧管理员绑定、退出重登、注册与回调都由服务端处理', async ({ page }) => {
@@ -45,16 +51,18 @@ test('新版：Service Worker 接管后，旧管理员绑定、退出重登、�
     expect(await isControlled(page)).toBe(true);
 
     // 旧管理员绑定：访问密码登录 → /auth/link/start → 身份服务 → /auth/callback
+    await page.goto(`${NEXUS}/account/connect`);
     await page.getByRole('button', { name: '管理员访问密码登录' }).click();
     await page.getByLabel('访问密码').fill(PASSWORD);
-    await page.getByRole('button', { name: '进入' }).click();
+    await page.getByRole('button', { name: '登录', exact: true }).click();
+    await page.getByRole('button', { name: /使用账号里的收藏|开启同步/ }).click();
     await expect(page.getByLabel('搜索', { exact: true })).toBeVisible();
-    await page.goto(`${NEXUS}/settings/data`);
+    await page.goto(`${NEXUS}/settings/account`);
     expect(await isControlled(page)).toBe(true);
     await page.getByRole('button', { name: /绑定/ }).click();
     await page.getByRole('dialog').getByRole('button', { name: '前往账号中心' }).click();
     await signInAtIdp(page, 'owner');
-    await expect(page).toHaveURL(`${NEXUS}/settings/data?linked=1`);
+    await expect(page).toHaveURL(`${NEXUS}/settings/account?linked=1`);
     expect(await me(page)).toMatchObject({ role: 'admin', session: 'oidc', identityLinked: true, account: { id: 'legacy-admin' } });
 
     // 退出此设备 → 用统一账号重新登录：仍是管理员
@@ -102,7 +110,8 @@ test('离线或服务端不可达：认证明确不可用，普通页面的离�
     nexus = await startNexus(NEW_DIST, data);
     await signOutHere(page);
     await context.setOffline(true);
-    await page.getByRole('button', { name: '使用统一账号登录' }).click();
+    await page.goto(`${NEXUS}/account/connect`);
+    await page.getByRole('button', { name: '登录或创建账号' }).click();
     await expect(page.getByRole('alert')).toContainText('当前设备离线');
     expect(new URL(page.url()).host).not.toBe(IDP_HOST);
     await context.setOffline(false);
@@ -121,8 +130,9 @@ test('旧版 Service Worker 已安装后升级：先复现旧行为，部署新�
     await underServiceWorker(page);
 
     // 旧结果（NEX-01）：/auth/login 被 0.4.0 的 Service Worker 用缓存的应用壳回答，没有到达服务端
+    // （v0.5 起应用壳在任何路径都先显示本地首页，所以看到的是首页而不是身份服务）
     await page.goto(`${NEXUS}/auth/login?returnTo=%2F`);
-    await expect(page.getByRole('button', { name: '使用统一账号登录' })).toBeVisible();
+    await expect(page.getByLabel('搜索', { exact: true })).toBeVisible();
     expect(new URL(page.url()).pathname).toBe('/auth/login');
 
     // 同一地址部署新版本（同一数据目录）；不关闭任何标签页
