@@ -54,9 +54,10 @@ describe('pins', () => {
     expect(applyOp(c, { type: 'pin.add', appId: 'github' })).toBe(c);
   });
 
-  it('refuses services, hidden apps and a full list', () => {
+  // UI v2 (v12.0.3 N2): services are pinned like any favorite; hidden ones still are not.
+  it('pins a service like any favorite; refuses hidden apps and a full list', () => {
     const c = base();
-    expect(() => applyOp(c, { type: 'pin.add', appId: 'litebox' })).toThrow(OpError);
+    expect(applyOp(c, { type: 'pin.add', appId: 'litebox' }).pins.at(-1)).toBe('litebox');
     const hidden = applyOp(c, { type: 'app.setHidden', appId: 'vercel', hidden: true });
     expect(() => applyOp(hidden, { type: 'pin.add', appId: 'vercel' })).toThrow(/不能固定/);
     const gh = c.apps.find((a) => a.id === 'github')!;

@@ -34,9 +34,11 @@ describe('manual order of apps and categories', () => {
     expect(normalizeConfig(moved)).toEqual(moved);
   });
 
-  it('keeps services under 我的服务 and sites out of it', () => {
-    expect(() => applyOp(base(), { type: 'app.move', appId: 'litebox', categoryId: 'dev', toIndex: 0 })).toThrow(OpError);
-    expect(() => applyOp(base(), { type: 'app.move', appId: 'github', categoryId: 'hosted', toIndex: 0 })).toThrow(OpError);
+  // UI v2 (v12.0.3 N2): a service is a favorite with service options — it may sit in any group, and
+  // any favorite may go into 我的服务 (an ordinary group since the tree migration).
+  it('moves services and sites between any groups; an unknown group is refused', () => {
+    expect(inCat(applyOp(base(), { type: 'app.move', appId: 'litebox', categoryId: 'dev', toIndex: 0 }), 'dev')[0]).toBe('litebox');
+    expect(inCat(applyOp(base(), { type: 'app.move', appId: 'github', categoryId: 'hosted', toIndex: 0 }), 'hosted')[0]).toBe('github');
     expect(() => applyOp(base(), { type: 'app.move', appId: 'github', categoryId: 'ghost', toIndex: 0 })).toThrow(OpError);
     expect(inCat(roundTrip({ type: 'app.move', appId: 'linkwarden', toIndex: 0 }), 'hosted')).toEqual(['linkwarden', 'litebox', 'obsync']);
   });

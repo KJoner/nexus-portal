@@ -78,13 +78,25 @@ export const AppSchema = z.object({
   version: z.number().int().min(1).optional(),
 });
 
-/** Sites that are shown can be pinned to the home page; services and hidden apps cannot (NEX-07). */
-export const isPinnable = (a: Pick<z.infer<typeof AppSchema>, 'kind' | 'hidden'>) => a.kind === 'site' && !a.hidden;
+/**
+ * What can be pinned to the home page (NEX-07): anything that is shown. UI v2 (v12.0.3 N2): a
+ * self-hosted service is a favorite with service options, pinned like any other — the separate
+ * services strip is gone, so `kind` no longer decides. Hidden entries still cannot be pinned.
+ */
+export const isPinnable = (a: Pick<z.infer<typeof AppSchema>, 'kind' | 'hidden'>) => !a.hidden;
 
+/**
+ * A group of 我的收藏 (stored as a category of the configuration document, the legacy name).
+ * UI v2 (v12.0.3 N2): groups nest. `parentId` null or absent = a root group (documents and clients
+ * from before the tree have no parentId: every group is a root). The order of the array is the
+ * order of siblings (groups with the same parent). Rules: groups.ts (one validator for the server,
+ * the browser's local collection and the importers).
+ */
 export const CategorySchema = z.object({
   id: Id,
   label: z.string().trim().min(1).max(16),
   locked: z.boolean().default(false),
+  parentId: Id.nullable().optional(),
 });
 
 export const EngineSchema = z.object({

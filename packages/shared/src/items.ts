@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { FavoriteApp } from './favorites';
 import { canonicalUrl } from './url';
 
 /**
@@ -32,6 +33,12 @@ export interface Item {
   /** Set when deleted (a tombstone): restore is a separate, explicit operation. */
   deletedAt: number | null;
   importId: string | null;
+  /**
+   * UI v2 (N1): what the favorite stores besides its own columns — icon, search aliases, how it
+   * opens, service options — so the unified editor shows (and saves) everything in one place.
+   * Absent or null when nothing is stored (most saved pages).
+   */
+  app?: FavoriteApp | null;
 }
 
 const Title = z.string().trim().min(1).max(ITEM_LIMITS.title);
@@ -120,12 +127,18 @@ export interface SnapshotResponse {
   items: Item[];
   /** Ordered item ids pinned to the home page (shared layout). */
   pins: string[];
-  folders: { id: string; label: string; locked: boolean }[];
+  /** The groups in sibling order; `parentId` (UI v2 N2) null for a root group. */
+  folders: { id: string; label: string; locked: boolean; parentId?: string | null }[];
   /** The change sequence this snapshot is consistent with; changes continue from `cursor`. */
   watermark: number;
   cursor: string;
   /** More pages of this snapshot (same watermark). */
   nextPage: string | null;
+  /**
+   * UI v2 (N3): the starter set this space was created with (1: the eight 常用网站; 0 or absent:
+   * created before them). For a one-time 「已为你放好常用网站」 hint — never a reason to seed.
+   */
+  starterVersion?: number;
 }
 
 /** Duplicate detection (需求 §8.3): within one account, conservative canonical form. */

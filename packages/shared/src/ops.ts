@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { freeSiblingName, GROUP_LIMITS, groupIndex, heightOf, parentProblem, placeGroup, repairGroupTree, RESERVED_GROUP_IDS, siblingNameTaken, survivingAncestor, UNFILED } from './groups';
 import {
   AppSchema,
   CategorySchema,
@@ -47,8 +48,22 @@ export type Op =
   | { type: 'app.restore'; app: AppEntry; index?: number; baseVersion?: number }
   /** Moves an app to `toIndex` among the apps of `categoryId` (default: its own category). */
   | { type: 'app.move'; appId: string; toIndex: number; categoryId?: string }
+  /**
+   * Older clients rename, add, reorder and delete groups by sending the whole list. They know nothing
+   * of the tree (UI v2): a group they send without `parentId` keeps the parent it has; 我的服务, which
+   * their normalizeConfig puts back, is not recreated once deleted (see the reducer).
+   */
   | { type: 'categories.replace'; categories: Category[] }
   | { type: 'category.move'; categoryId: string; toIndex: number }
+  /**
+   * 分组树 (UI v2 · v12.0.3 N2): one change of one group, checked against the rules in groups.ts.
+   * `index` is the position among the siblings under `parentId` (absent: last).
+   */
+  | { type: 'group.create'; group: { id: string; label: string; parentId: string | null }; index?: number }
+  | { type: 'group.rename'; groupId: string; label: string }
+  | { type: 'group.move'; groupId: string; parentId: string | null; index?: number }
+  /** Deletes a group, keeping its content: subgroups and favorites move to its parent (未分组 at the root). */
+  | { type: 'group.delete'; groupId: string }
   | { type: 'engine.upsert'; engine: Engine; index?: number }
   | { type: 'engine.delete'; engineId: string }
   | { type: 'engine.move'; engineId: string; toIndex: number }
@@ -75,6 +90,10 @@ export const OpSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('app.move'), appId: IdRef, toIndex: Index, categoryId: IdRef.optional() }),
   z.object({ type: z.literal('categories.replace'), categories: z.array(z.unknown()).max(50) }),
   z.object({ type: z.literal('category.move'), categoryId: IdRef, toIndex: Index }),
+  z.object({ type: z.literal('group.create'), group: z.object({ id: IdRef, label: z.string().max(64), parentId: IdRef.nullable() }), index: Index.optional() }),
+  z.object({ type: z.literal('group.rename'), groupId: IdRef, label: z.string().max(64) }),
+  z.object({ type: z.literal('group.move'), groupId: IdRef, parentId: IdRef.nullable(), index: Index.optional() }),
+  z.object({ type: z.literal('group.delete'), groupId: IdRef }),
   z.object({ type: z.literal('engine.upsert'), engine: z.unknown(), index: Index.optional() }),
   z.object({ type: z.literal('engine.delete'), engineId: IdRef }),
   z.object({ type: z.literal('engine.move'), engineId: IdRef, toIndex: Index }),
@@ -186,8 +205,8 @@ export function mergeApp(base: AppEntry, current: AppEntry, mine: AppEntry): { a
 }
 
 const QUOTA_TEXT: Record<ConfigQuotaKind, (limit: number) => string> = {
-  apps: (n) => `收藏库最多 ${n} 个应用，请先删除一些`,
-  categories: (n) => `最多 ${n} 个分类`,
+  apps: (n) => `我的收藏最多 ${n} 个应用，请先删除一些`,
+  categories: (n) => `最多 ${n} 个分组`,
   engines: (n) => `最多 ${n} 个搜索引擎`,
   pins: (n) => `首页最多固定 ${n} 个网站`,
 };
@@ -240,6 +259,25 @@ function placeIn(apps: AppEntry[], app: AppEntry, index: number, categories: rea
   const out = [...apps];
   out.splice(at, 0, app);
   return out;
+}
+
+/** A group name as stored: trimmed, 1–16 characters. */
+function groupLabel(raw: string): string {
+  const label = (raw ?? '').trim();
+  if (!label) throw new OpError('invalid', '请填写分组名称');
+  if ([...label].length > 16) throw new OpError('invalid', '分组名称最多 16 个字符');
+  return label;
+}
+
+/** The parent a group keeps when its parent goes: the nearest surviving ancestor (none: the root). */
+function survivingParent(before: readonly Category[], parentId: string, kept: ReadonlySet<string>): string | null {
+  const to = survivingAncestor(before, parentId, kept);
+  return to === UNFILED ? null : to;
+}
+
+/** Where a favorite goes when its group goes: the nearest surviving ancestor, else 未分组. */
+function survivingAncestorOf(before: readonly Category[], id: string, kept: ReadonlySet<string>): string {
+  return before.some((k) => k.id === id) ? survivingAncestor(before, id, kept) : UNFILED;
 }
 
 function parse<T>(schema: z.ZodType<T>, value: unknown): T {
@@ -340,11 +378,8 @@ export function applyOp(c: Config, op: Op): Config {
     case 'app.move': {
       const app = findApp(c, op.appId);
       const categoryId = op.categoryId ?? app.categoryId;
-      if (categoryId !== app.categoryId) {
-        if (!c.categories.some((k) => k.id === categoryId)) throw new OpError('not_found', '分类不存在');
-        // Services always live under 我的服务, sites never move into it.
-        if ((app.kind === 'service') !== (categoryId === LOCKED_CATEGORY.hosted)) throw new OpError('invalid', app.kind === 'service' ? '自托管服务只能放在「我的服务」' : '网站不能移到「我的服务」');
-      }
+      // UI v2 (N2): a service is a favorite with service options and may sit in any group.
+      if (categoryId !== app.categoryId && !c.categories.some((k) => k.id === categoryId)) throw new OpError('not_found', '分组不存在');
       const moved = categoryId === app.categoryId ? app : { ...app, categoryId };
       const apps = placeIn(
         c.apps.filter((a) => a.id !== app.id),
@@ -366,12 +401,84 @@ export function applyOp(c: Config, op: Op): Config {
     }
     case 'categories.replace': {
       if (op.categories.length > CONFIG_LIMITS.categories) throw quota('categories', c.categories.length);
-      const categories = op.categories.map((k) => parse(CategorySchema, k));
-      for (const locked of Object.values(LOCKED_CATEGORY)) {
-        if (!categories.some((k) => k.id === locked)) throw new OpError('locked', '「我的服务」与「未分类」不能删除');
+      const current = new Map(c.categories.map((k) => [k.id, k]));
+      // Groups that are locked now (未分组) cannot be dropped by a client.
+      for (const k of c.categories) {
+        if (k.locked && !op.categories.some((x) => (x as { id?: unknown } | null)?.id === k.id)) throw new OpError('locked', k.id === UNFILED ? '「未分组」不能删除' : `「${k.label}」不能删除`);
       }
+      const incoming = op.categories
+        .map((raw) => parse(CategorySchema, raw))
+        // An older client's normalizeConfig puts 我的服务 back after it was deleted: not recreated.
+        .filter((k) => !(k.id === LOCKED_CATEGORY.hosted && !current.has(k.id)));
+      // Old clients send no parentId: such a group keeps its place in the tree. The server, not the
+      // client, decides what is locked.
+      let categories = incoming.map((k) => {
+        const was = current.get(k.id);
+        return { ...k, locked: was ? !!was.locked : k.id === UNFILED, ...(k.parentId === undefined && was?.parentId !== undefined ? { parentId: was.parentId } : {}) };
+      });
+      // A parent that is not in the list any more: the nearest one of its ancestors that is.
+      const kept = new Set(categories.map((k) => k.id));
+      categories = categories.map((k) => (k.parentId && !kept.has(k.parentId) ? { ...k, parentId: survivingParent(c.categories, k.parentId, kept) } : k));
+      categories = repairGroupTree(categories);
       const ids = new Set(categories.map((k) => k.id));
-      const apps = c.apps.map((a) => (ids.has(a.categoryId) ? a : { ...a, categoryId: LOCKED_CATEGORY.none }));
+      const apps = c.apps.map((a) => (ids.has(a.categoryId) ? a : { ...a, categoryId: survivingAncestorOf(c.categories, a.categoryId, ids) }));
+      return { ...c, categories, apps: groupByCategory(apps, categories) };
+    }
+    case 'group.create': {
+      const label = groupLabel(op.group.label);
+      const id = op.group.id;
+      if (!/^[a-z0-9][a-z0-9_-]*$/i.test(id) || id.length > 64) throw new OpError('invalid', '分组 id 不正确');
+      if (RESERVED_GROUP_IDS.has(id) || c.categories.some((k) => k.id === id)) throw new OpError('invalid', '分组已存在');
+      if (c.categories.length >= GROUP_LIMITS.total) throw quota('categories', c.categories.length);
+      const parentId = op.group.parentId ?? null;
+      const problem = parentProblem(c.categories, null, parentId);
+      if (problem) throw new OpError(parentId && !c.categories.some((k) => k.id === parentId) ? 'not_found' : 'invalid', problem);
+      if (siblingNameTaken(c.categories, parentId, label)) throw new OpError('invalid', `这一层已经有「${label}」了`);
+      return { ...c, categories: placeGroup(c.categories, { id, label, locked: false, parentId }, op.index) };
+    }
+    case 'group.rename': {
+      const g = c.categories.find((k) => k.id === op.groupId);
+      if (!g) throw new OpError('not_found', '分组不存在');
+      if (g.locked) throw new OpError('locked', `「${g.label}」不能改名`);
+      const label = groupLabel(op.label);
+      if (label === g.label) return c;
+      if (siblingNameTaken(c.categories, g.parentId ?? null, label, g.id)) throw new OpError('invalid', `这一层已经有「${label}」了`);
+      return { ...c, categories: c.categories.map((k) => (k.id === g.id ? { ...k, label } : k)) };
+    }
+    case 'group.move': {
+      const g = c.categories.find((k) => k.id === op.groupId);
+      if (!g) throw new OpError('not_found', '分组不存在');
+      if (g.locked) throw new OpError('locked', `「${g.label}」不能移动`);
+      const parentId = op.parentId ?? null;
+      const problem = parentProblem(c.categories, g.id, parentId, heightOf(c.categories, g.id));
+      if (problem) throw new OpError(parentId && !c.categories.some((k) => k.id === parentId) ? 'not_found' : 'invalid', problem);
+      if (siblingNameTaken(c.categories, parentId, g.label, g.id)) throw new OpError('invalid', `目标位置已经有「${g.label}」了`);
+      const siblings = c.categories.filter((k) => k.id !== UNFILED && (k.parentId ?? null) === parentId && k.id !== g.id);
+      const at = op.index === undefined ? siblings.length : clamp(op.index, 0, siblings.length);
+      const now = c.categories.filter((k) => k.id !== UNFILED && (k.parentId ?? null) === (g.parentId ?? null));
+      if ((g.parentId ?? null) === parentId && now.indexOf(g) === at) return c;
+      const categories = placeGroup(c.categories, { ...g, parentId }, at);
+      return { ...c, categories, apps: groupByCategory(c.apps, categories) };
+    }
+    case 'group.delete': {
+      const g = c.categories.find((k) => k.id === op.groupId);
+      if (!g) return c;
+      if (g.locked) throw new OpError('locked', `「${g.label}」不能删除`);
+      const parentId = g.parentId ?? null;
+      // Subgroups move up one level into its place (keeping their own subgroups and their order);
+      // one whose name the new level already has gets a free one (资料 → 资料 2).
+      const { children } = groupIndex(c.categories);
+      const kids = (children.get(g.id) ?? []).filter((k) => k.id !== UNFILED);
+      const slot = c.categories.filter((k) => k.id !== UNFILED && (k.parentId ?? null) === parentId).indexOf(g);
+      let categories = c.categories.filter((k) => k.id !== g.id);
+      kids.forEach((k, i) => {
+        const label = freeSiblingName(categories, parentId, k.label, k.id);
+        categories = placeGroup(categories, { ...k, label, parentId }, slot + i);
+      });
+      categories = repairGroupTree(categories);
+      // Its favorites go to the parent group, or to 未分组 at the root (the content is kept).
+      const target = parentId ?? UNFILED;
+      const apps = c.apps.map((a) => (a.categoryId === g.id ? { ...a, categoryId: target } : a));
       return { ...c, categories, apps: groupByCategory(apps, categories) };
     }
     case 'engine.upsert': {
@@ -443,9 +550,11 @@ export function withBase(c: Config, op: Op): Op {
 export function normalizeConfig(c: Config): Config {
   const ids = new Set(c.apps.map((a) => a.id));
   const catIds = new Set(c.categories.map((k) => k.id));
-  const categories = [...c.categories];
-  if (!catIds.has(LOCKED_CATEGORY.hosted)) categories.unshift({ id: LOCKED_CATEGORY.hosted, label: '我的服务', locked: true });
-  if (!catIds.has(LOCKED_CATEGORY.none)) categories.push({ id: LOCKED_CATEGORY.none, label: '未分类', locked: true });
+  // UI v2 (N2): 未分组 always exists (it is the view of favorites without a group); 我的服务 is an
+  // ordinary group since the tree migration and is not put back once deleted.
+  let categories = [...c.categories];
+  if (!catIds.has(LOCKED_CATEGORY.none)) categories.push({ id: LOCKED_CATEGORY.none, label: '未分组', locked: true, parentId: null });
+  categories = repairGroupTree(categories);
   const allCats = new Set(categories.map((k) => k.id));
   const apps = groupByCategory(
     c.apps.map((a) => (allCats.has(a.categoryId) ? a : { ...a, categoryId: LOCKED_CATEGORY.none })),
@@ -513,6 +622,23 @@ export function invertOp(before: Config, op: Op): Op[] {
       const i = before.categories.findIndex((k) => k.id === op.categoryId);
       return i < 0 ? [] : [{ type: 'category.move', categoryId: op.categoryId, toIndex: i }];
     }
+    case 'group.create':
+      return before.categories.some((k) => k.id === op.group.id) ? [] : [{ type: 'group.delete', groupId: op.group.id }];
+    case 'group.rename': {
+      const g = before.categories.find((k) => k.id === op.groupId);
+      return g ? [{ type: 'group.rename', groupId: g.id, label: g.label }] : [];
+    }
+    case 'group.move': {
+      const g = before.categories.find((k) => k.id === op.groupId);
+      if (!g) return [];
+      const parentId = g.parentId ?? null;
+      const index = before.categories.filter((k) => k.id !== UNFILED && (k.parentId ?? null) === parentId).indexOf(g);
+      return [{ type: 'group.move', groupId: g.id, parentId, index }];
+    }
+    // Deleting a group is confirmed first (its favorites outside the home view move in the tables):
+    // there is no automatic undo.
+    case 'group.delete':
+      return [];
     case 'app.delete': {
       const i = before.apps.findIndex((a) => a.id === op.appId);
       if (i < 0) return [];
