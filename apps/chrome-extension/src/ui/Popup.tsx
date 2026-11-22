@@ -163,7 +163,7 @@ function AccountPopup() {
   if (!server)
     return shell(
       <>
-        <p className="m-0 text-[13.5px] leading-[1.6] text-ink/76">还没有连接 Nexus Portal。连接并批准「保存收藏」的权限后，就能把网页添加到我的收藏库。</p>
+        <p className="m-0 text-[13.5px] leading-[1.6] text-ink/76">还没有连接 Nexus Portal。连接并批准「保存收藏」的权限后，就能把网页添加到我的收藏。</p>
         <button type="button" onClick={() => void ext.runtime.openOptionsPage()} className="h-10 rounded-xl border-0 bg-amber text-[14px] font-semibold text-on-amber">
           连接 Nexus Portal
         </button>

@@ -5,7 +5,7 @@
  */
 export const WHERE = {
   local: '此扩展的本地收藏',
-  account: '账号的我的收藏',
+  account: '账号里的「我的收藏」',
 } as const;
 
 /** The line under the popup's title: the real destination, with the account's name when known. */
