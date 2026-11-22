@@ -69,7 +69,7 @@ OBSYNC_PEER_REVOCATION_SECRET=<与 Nexus 相同>
 | 两个 client 开启服务账号，服务账号用户只授 realm-management 的 `view-users` | client credentials 换出只读令牌，查询 `GET /admin/realms/accounts/users/{sub}` 的 `enabled`（停用）与 404（删除）（动作 D） | 不能修改用户、不能结束会话（实测都是 403）；不授 `manage-users` |
 | 两个 client 的作用域映射加 realm-management 的 `view-users` | `fullScopeAllowed=false` 时令牌只带映射里的角色，服务账号令牌要靠它带上 `view-users` | 普通用户没有这个角色，映射不会给他们任何权限（用户令牌里没有 view-users） |
 
-账号中心自带的「设备活动」页只列出、只退出**浏览器里的账号中心登录**（结束后两个产品的网页随之退出）；已连接的 Obsidian 与浏览器扩展是产品自己发的设备凭据，不在那里，点它不会断开它们。Keycloak 原文「登出所有设备 / 此操作将登出所有已登入您帐号的设备」会让人误以为连 Obsidian 也断开了（2026-11-22 预发布真机验收：点了之后 Obsidian 照常同步）。模板用 realm 本地化覆盖（`localizationTexts`，内容与 `realm/account-texts.<语言>.json` 相同）把这一页改成「网页登录 / 已登录的浏览器 / 退出所有浏览器」，并在说明与确认框里指向产品里的「退出所有产品与设备」；已部署的 realm 用 `./configure.sh texts` 补上（按键合并，可重复执行）。一次性 Keycloak 26.8.1 实测：导入与补设两条路径，账号控制台的导航、标题、按钮和确认框都显示覆盖后的文字。
+账号中心自带的「设备活动」页只列出、只退出**浏览器里的账号中心登录**（结束后两个产品的网页随之退出）；已连接的 Obsidian 与浏览器扩展是产品自己发的设备凭据，不在那里，点它不会断开它们。Keycloak 原文「登出所有设备 / 此操作将登出所有已登入您帐号的设备」会让人误以为连 Obsidian 也断开了（2026-11-22 预发布真机验收：点了之后 Obsidian 照常同步）。模板用 realm 本地化覆盖（`localizationTexts`，内容与 `texts/account-texts.<语言>.json` 相同；这两个文件不能放在 `realm/`：那是 Keycloak 的导入目录，`--import-realm` 会把其中每个 `.json` 当作 realm 解析，放进去 Keycloak 就无法启动）把这一页改成「网页登录 / 已登录的浏览器 / 退出所有浏览器」，并在说明与确认框里指向产品里的「退出所有产品与设备」；已部署的 realm 用 `./configure.sh texts` 补上（按键合并，可重复执行）。一次性 Keycloak 26.8.1 实测：导入与补设两条路径，账号控制台的导航、标题、按钮和确认框都显示覆盖后的文字。
 
 ## 注册开关与紧急关闭
 
@@ -190,3 +190,16 @@ docker compose exec -T postgres pg_dump -U postgres -Fc nexus    > nexus-$(date 
 6. 禁用用户 → 两个产品的会话与设备最迟 60 秒内失效（中心停用检查已开启；未开启时会话最迟 5 分钟、设备不自动撤销）。
 6a. 在一个产品执行「退出所有产品与设备」→ 账号中心所有浏览器的会话、两个产品的会话、设备与待领取授权全部失效；结果页逐项显示已完成。另一个产品暂停时显示「等待确认」，恢复后在 7 天内自动送达。
 7. 四家邮箱的投递结果与 SPF/DKIM/DMARC 检查。
+
+## 账号中心的样子（主题，UI 焕新 U3）
+
+`themes/` 是账号中心的三个 Keycloak 主题，compose 把它挂到 `/opt/keycloak/themes`：
+
+- `accounts/login`：登录、注册、找回账号密码、验证邮箱等页面。继承 Keycloak 26 自带的 `keycloak.v2`，**不复制任何模板**，只换 PatternFly 变量（中性石灰底、不透明卡片、44 px 控件、深浅色跟随系统）和几句中文：「登录 / 创建账号 / 账号密码 / 邮箱或账号密码不正确」，并说明这里重设的是账号密码、LiteSync 仓库密码无法通过邮件找回。
+- `accounts-nexus/login`、`accounts-litesync/login`：两个产品的子主题，realm 模板在各自的 client 上指定（`login_theme`）。页面写明「登录后回到 Nexus / LiteSync」，主按钮用产品色（Nexus 琥珀、LiteSync 紫，对比度见 ui-refresh 的 design-tokens）。
+- `accounts/account`：账号控制台 v3，加一份样式和「账号中心」标志，把自带翻译里的「帐户安全 / 登陆凭证 / 应用列表」改成「登录与安全 / 登录方式 / 已授权的应用」。两个产品打开账号中心时带 `?referrer=<client>`，页头显示「回到 Nexus Portal / LiteSync」。
+- `accounts/email`：验证邮箱、重设账号密码等邮件的外壳和中文标题。
+
+新部署导入模板即生效；已部署的 realm：`docker compose up -d`（让新挂载生效）后 `./configure.sh theme on`，回退 `./configure.sh theme off`。主题只改展示，不改认证流程、注册开关、会话和退出行为。
+
+**注意**：`realm/` 是导入目录，`--import-realm` 会把其中每个 `.json` 都当作 realm 解析，放进其他文件 Keycloak 就**无法启动**（2026-11-22 本机复现：`account-texts.*.json` 放在那里时报 `Unrecognized field "deviceActivity"`），所以账号中心文字的补设文件放在 `texts/`。

@@ -1,0 +1,112 @@
+/*
+ * 账号中心 · 账号控制台（UI 焕新 U3）：与登录页同一套变量（PatternFly 5），中性主色，
+ * 不透明表面；只换变量与少量间距，不改布局，Keycloak 升级时跟着上游走。
+ */
+:root {
+  --ac-bg: #f7f7f5;
+  --ac-surface: #ffffff;
+  --ac-subtle: #efefec;
+  --ac-text: #232428;
+  --ac-text-2: #62646d;
+  --ac-border: #e3e3df;
+  --ac-accent: #232428;
+  --ac-accent-hover: #3a3b40;
+  --ac-on-accent: #ffffff;
+  --ac-font: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --pf-v5-global--FontFamily--text: var(--ac-font);
+  --pf-v5-global--FontFamily--heading: var(--ac-font);
+  --pf-v5-global--BackgroundColor--100: var(--ac-surface);
+  --pf-v5-global--BackgroundColor--200: var(--ac-bg);
+  --pf-v5-global--Color--100: var(--ac-text);
+  --pf-v5-global--Color--200: var(--ac-text-2);
+  --pf-v5-global--BorderColor--100: var(--ac-border);
+  --pf-v5-global--primary-color--100: var(--ac-accent);
+  --pf-v5-global--primary-color--200: var(--ac-accent-hover);
+  --pf-v5-global--link--Color: var(--ac-text);
+  --pf-v5-global--link--Color--hover: var(--ac-text);
+}
+html.pf-v5-theme-dark {
+  --ac-bg: #17181b;
+  --ac-surface: #202126;
+  --ac-subtle: #28292f;
+  --ac-text: #efeff2;
+  --ac-text-2: #b3b4bd;
+  --ac-border: #35363e;
+  --ac-accent: #efeff2;
+  --ac-accent-hover: #d6d6dc;
+  --ac-on-accent: #17181b;
+  --pf-v5-global--BackgroundColor--100: var(--ac-surface);
+  --pf-v5-global--BackgroundColor--200: var(--ac-bg);
+  --pf-v5-global--Color--100: var(--ac-text);
+  --pf-v5-global--Color--200: var(--ac-text-2);
+  --pf-v5-global--BorderColor--100: var(--ac-border);
+  --pf-v5-global--primary-color--100: var(--ac-accent);
+  --pf-v5-global--primary-color--200: var(--ac-accent-hover);
+  --pf-v5-global--link--Color: var(--ac-text);
+  --pf-v5-global--link--Color--hover: var(--ac-text);
+}
+body {
+  font-family: var(--ac-font);
+}
+/* Header: our mark, quiet. */
+.pf-v5-c-masthead,
+.pf-v5-c-masthead .pf-v5-c-masthead__main,
+.pf-v5-c-masthead .pf-v5-c-masthead__content {
+  --pf-v5-c-masthead--BackgroundColor: var(--ac-surface);
+  background-color: var(--ac-surface) !important;
+  color: var(--ac-text);
+}
+.pf-v5-c-masthead {
+  border-bottom: 1px solid var(--ac-border);
+}
+.pf-v5-c-masthead .pf-v5-c-brand,
+.pf-v5-c-masthead img {
+  max-height: 28px;
+}
+html.pf-v5-theme-dark .pf-v5-c-masthead img {
+  filter: invert(1) hue-rotate(180deg);
+}
+/* Side navigation lighter than the content. */
+.pf-v5-c-page__sidebar {
+  --pf-v5-c-page__sidebar--BackgroundColor: var(--ac-bg);
+  border-right: 1px solid var(--ac-border);
+}
+.pf-v5-c-nav {
+  --pf-v5-c-nav__link--Color: var(--ac-text-2);
+  --pf-v5-c-nav__link--hover--Color: var(--ac-text);
+  --pf-v5-c-nav__link--m-current--Color: var(--ac-text);
+  --pf-v5-c-nav__link--BackgroundColor: transparent;
+  --pf-v5-c-nav__link--m-current--BackgroundColor: var(--ac-subtle);
+}
+.pf-v5-c-page__main-section {
+  --pf-v5-c-page__main-section--BackgroundColor: var(--ac-bg);
+}
+.pf-v5-c-page__main-section .pf-v5-c-card,
+.pf-v5-c-page__main-section .pf-v5-c-data-list {
+  border-radius: 12px;
+}
+.pf-v5-c-button.pf-m-primary {
+  --pf-v5-c-button--m-primary--BackgroundColor: var(--ac-accent);
+  --pf-v5-c-button--m-primary--hover--BackgroundColor: var(--ac-accent-hover);
+  --pf-v5-c-button--m-primary--Color: var(--ac-on-accent);
+  --pf-v5-c-button--m-primary--hover--Color: var(--ac-on-accent);
+  border-radius: 8px;
+}
+.pf-v5-c-button,
+.pf-v5-c-form-control {
+  border-radius: 8px;
+}
+
+/* Secondary and link buttons: ink text, quiet border — one accent per page. */
+.pf-v5-c-button.pf-m-secondary {
+  --pf-v5-c-button--m-secondary--Color: var(--ac-text);
+  --pf-v5-c-button--m-secondary--hover--Color: var(--ac-text);
+  --pf-v5-c-button--m-secondary--BorderColor: var(--ac-border);
+  --pf-v5-c-button--m-secondary--hover--BorderColor: var(--ac-text-2);
+  --pf-v5-c-button--m-secondary--BackgroundColor: transparent;
+  --pf-v5-c-button--after--BorderColor: var(--ac-border);
+}
+.pf-v5-c-button.pf-m-link {
+  --pf-v5-c-button--m-link--Color: var(--ac-text);
+  --pf-v5-c-button--m-link--hover--Color: var(--ac-text);
+}

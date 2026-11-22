@@ -1,0 +1,7 @@
+{
+  "deviceActivity": "Browser sign-ins",
+  "signedInDevices": "Signed-in browsers",
+  "signedInDevicesExplanation": "Only browser sign-ins to this account center are listed here (they let the LiteSync and Nexus web apps open without a password). Connected Obsidian devices and browser extensions are not listed: manage Obsidian in LiteSync (账号与设备) and extensions in Nexus (设置 › 账号与同步). To disconnect everything at once, use 退出所有产品与设备 (sign out of all products and devices) in either product.",
+  "signOutAllDevices": "Sign out all browsers",
+  "signOutAllDevicesWarning": "This ends your account-center sign-ins in every browser, including this one, and signs you out of the LiteSync and Nexus web apps. Connected Obsidian devices and browser extensions are not affected; to disconnect them, use 退出所有产品与设备 in LiteSync or Nexus."
+}

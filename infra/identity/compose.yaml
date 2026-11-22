@@ -70,7 +70,10 @@ services:
       SMTP_FROM_NAME: ${SMTP_FROM_NAME:-账号中心}
       SMTP_REPLY_TO: ${SMTP_REPLY_TO:-}
     volumes:
+      # 只放 realm 模板：--import-realm 会把这里的每个 .json 当作 realm 解析（其他文件放 texts/）
       - ./realm:/opt/keycloak/data/import:ro
+      # 账号中心主题（登录 / 账号 / 邮件）：继承 Keycloak 自带主题，只换样式与文字
+      - ./themes:/opt/keycloak/themes:ro
     ports:
       - "127.0.0.1:${KEYCLOAK_PORT:-8180}:8080"
     healthcheck:

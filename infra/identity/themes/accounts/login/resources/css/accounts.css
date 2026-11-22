@@ -1,0 +1,250 @@
+/*
+ * 账号中心 · 登录页（UI 焕新 U3）。只改 PatternFly 5 的变量和少量布局，不改结构：
+ * 中性石灰背景、不透明的白 / 深色卡片、44 px 的表单控件、清楚的文字层级。颜色取自
+ * docs ui-refresh/design/design-tokens.json；主按钮在共用页面是中性墨色，产品子主题换成产品色。
+ */
+:root {
+  --ac-bg: #f7f7f5;
+  --ac-surface: #ffffff;
+  --ac-subtle: #efefec;
+  --ac-text: #232428;
+  --ac-text-2: #62646d;
+  --ac-border: #e3e3df;
+  --ac-accent: #232428;
+  --ac-on-accent: #ffffff;
+  --ac-accent-hover: #3a3b40;
+  --ac-danger: #b42318;
+  --ac-danger-bg: #feeceb;
+  --ac-success: #286746;
+  --ac-success-bg: #e9f3ed;
+  --ac-warn: #8a5100;
+  --ac-warn-bg: #fff4db;
+  --ac-font: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', 'Segoe UI', system-ui, -apple-system, sans-serif;
+
+  --keycloak-card-top-color: transparent;
+  --pf-v5-global--FontFamily--text: var(--ac-font);
+  --pf-v5-global--FontFamily--heading: var(--ac-font);
+  --pf-v5-global--BackgroundColor--100: var(--ac-surface);
+  --pf-v5-global--BackgroundColor--200: var(--ac-subtle);
+  --pf-v5-global--Color--100: var(--ac-text);
+  --pf-v5-global--Color--200: var(--ac-text-2);
+  --pf-v5-global--BorderColor--100: var(--ac-border);
+  --pf-v5-global--primary-color--100: var(--ac-accent);
+  --pf-v5-global--primary-color--200: var(--ac-accent-hover);
+  --pf-v5-global--link--Color: var(--ac-text);
+  --pf-v5-global--link--Color--hover: var(--ac-text);
+  --pf-v5-global--danger-color--100: var(--ac-danger);
+  --pf-v5-global--success-color--100: var(--ac-success);
+  --pf-v5-global--warning-color--100: var(--ac-warn);
+}
+
+html.pf-v5-theme-dark {
+  --ac-bg: #17181b;
+  --ac-surface: #202126;
+  --ac-subtle: #28292f;
+  --ac-text: #efeff2;
+  --ac-text-2: #b3b4bd;
+  --ac-border: #35363e;
+  --ac-accent: #efeff2;
+  --ac-on-accent: #17181b;
+  --ac-accent-hover: #d6d6dc;
+  --ac-danger: #f4a49d;
+  --ac-danger-bg: #3b2528;
+  --ac-success: #94cfab;
+  --ac-success-bg: #203429;
+  --ac-warn: #e8c17d;
+  --ac-warn-bg: #392f20;
+
+  --pf-v5-global--BackgroundColor--100: var(--ac-surface);
+  --pf-v5-global--BackgroundColor--200: var(--ac-subtle);
+  --pf-v5-global--Color--100: var(--ac-text);
+  --pf-v5-global--Color--200: var(--ac-text-2);
+  --pf-v5-global--BorderColor--100: var(--ac-border);
+  --pf-v5-global--primary-color--100: var(--ac-accent);
+  --pf-v5-global--primary-color--200: var(--ac-accent-hover);
+  --pf-v5-global--link--Color: var(--ac-text);
+  --pf-v5-global--link--Color--hover: var(--ac-text);
+  --pf-v5-global--danger-color--100: var(--ac-danger);
+}
+
+/* The page: a quiet, opaque background (no Keycloak artwork). */
+.login-pf body,
+html.pf-v5-theme-dark.login-pf body {
+  background: var(--ac-bg);
+  color: var(--ac-text);
+  font-family: var(--ac-font);
+}
+
+.pf-v5-c-login__container {
+  grid-template-columns: minmax(0, 26rem);
+  padding-inline: 16px;
+}
+
+/* 账号中心 · <产品>: the header says whose sign-in this is. */
+#kc-header {
+  justify-content: center;
+}
+#kc-header-wrapper,
+.login-pf #kc-header #kc-header-wrapper,
+.pf-v5-c-login__header .pf-v5-c-brand {
+  color: var(--ac-text) !important;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.pf-v5-c-login__main {
+  background: var(--ac-surface);
+  border: 1px solid var(--ac-border);
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(17, 17, 20, 0.04), 0 12px 32px rgba(17, 17, 20, 0.06);
+}
+.pf-v5-c-login__main-header {
+  border-top: 0;
+  padding-top: 32px;
+}
+#kc-page-title {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+/* The language switch keeps its whole name next to the title. */
+.pf-v5-c-login__main-header {
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 12px;
+}
+.pf-v5-c-login__main-header-utilities select,
+.pf-v5-c-login__main-header-utilities .pf-v5-c-menu-toggle,
+#kc-locale-dropdown select,
+#login-select-toggle {
+  min-width: 8.5em;
+  border-radius: 8px;
+}
+
+/* Labels always visible above the fields; 44 px controls; 16 px text on phones (no zoom on focus). */
+.pf-v5-c-form__label-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ac-text);
+}
+.pf-v5-c-form-control {
+  --pf-v5-c-form-control--BorderRadius: 8px;
+  border-radius: 8px;
+  min-height: 44px;
+}
+.pf-v5-c-form-control > input,
+.pf-v5-c-form-control > select {
+  font-size: 15px;
+}
+@media (max-width: 600px) {
+  .pf-v5-c-form-control > input,
+  .pf-v5-c-form-control > select {
+    font-size: 16px;
+  }
+}
+.pf-v5-c-input-group .pf-v5-c-button.pf-m-control {
+  min-height: 44px;
+  border-radius: 0 8px 8px 0;
+}
+
+/* One primary action per page. */
+.pf-v5-c-button.pf-m-primary {
+  --pf-v5-c-button--m-primary--BackgroundColor: var(--ac-accent);
+  --pf-v5-c-button--m-primary--hover--BackgroundColor: var(--ac-accent-hover);
+  --pf-v5-c-button--m-primary--focus--BackgroundColor: var(--ac-accent-hover);
+  --pf-v5-c-button--m-primary--active--BackgroundColor: var(--ac-accent-hover);
+  --pf-v5-c-button--m-primary--Color: var(--ac-on-accent);
+  --pf-v5-c-button--m-primary--hover--Color: var(--ac-on-accent);
+  --pf-v5-c-button--m-primary--focus--Color: var(--ac-on-accent);
+  --pf-v5-c-button--m-primary--active--Color: var(--ac-on-accent);
+  border-radius: 8px;
+  min-height: 44px;
+  font-weight: 600;
+  font-size: 15px;
+}
+.pf-v5-c-button:focus-visible {
+  outline: 2px solid var(--ac-accent);
+  outline-offset: 2px;
+}
+/* One focus ring on fields: PatternFly's bottom border, in the accent colour. */
+.pf-v5-c-form-control {
+  --pf-v5-c-form-control--focus--after--BorderBottomColor: var(--ac-accent);
+  --pf-v5-c-form-control--hover--after--BorderBottomColor: var(--ac-accent);
+}
+.pf-v5-c-form-control > input:focus,
+.pf-v5-c-form-control > input:focus-visible {
+  outline: none;
+}
+
+/* Links: text colour, underlined — readable on both themes, not a second accent. */
+#kc-form a,
+.pf-v5-c-login__main-footer-band a,
+#kc-info a,
+.kc-login-tooltip a,
+#kc-form-options a,
+.pf-v5-c-login__main-body a {
+  color: var(--ac-text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font-weight: 500;
+}
+
+/* Messages keep their words and get the paired colours (not colour alone: the icon stays). */
+.pf-v5-c-alert.pf-m-danger,
+.pf-v5-c-alert.pf-m-error {
+  background: var(--ac-danger-bg);
+  color: var(--ac-danger);
+}
+.pf-v5-c-alert.pf-m-success {
+  background: var(--ac-success-bg);
+  color: var(--ac-success);
+}
+.pf-v5-c-alert.pf-m-warning {
+  background: var(--ac-warn-bg);
+  color: var(--ac-warn);
+}
+.pf-v5-c-helper-text__item.pf-m-error,
+.kc-feedback-text {
+  color: var(--ac-danger);
+}
+
+/* The info band under the form (一个账号可用于… / 创建账号). */
+.pf-v5-c-login__main-footer-band {
+  color: var(--ac-text-2);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* Phones: the card is the page. */
+@media (max-width: 600px) {
+  .pf-v5-c-login__container {
+    padding-inline: 0;
+  }
+  .pf-v5-c-login__main {
+    border-radius: 0;
+    border-inline: 0;
+    box-shadow: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* Secondary and link buttons: ink text, quiet border — one accent per page. */
+.pf-v5-c-button.pf-m-secondary {
+  --pf-v5-c-button--m-secondary--Color: var(--ac-text);
+  --pf-v5-c-button--m-secondary--hover--Color: var(--ac-text);
+  --pf-v5-c-button--m-secondary--BorderColor: var(--ac-border);
+  --pf-v5-c-button--m-secondary--hover--BorderColor: var(--ac-text-2);
+  --pf-v5-c-button--m-secondary--BackgroundColor: transparent;
+  --pf-v5-c-button--after--BorderColor: var(--ac-border);
+}
+.pf-v5-c-button.pf-m-link {
+  --pf-v5-c-button--m-link--Color: var(--ac-text);
+  --pf-v5-c-button--m-link--hover--Color: var(--ac-text);
+}

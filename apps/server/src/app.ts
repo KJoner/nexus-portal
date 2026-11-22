@@ -310,7 +310,8 @@ export function createApp(deps: Deps) {
       oidc: !!oidc,
       legacyPassword: await legacyPasswordAvailable(),
       registration: oidc ? (env.registration ?? 'invite') : 'closed',
-      accountUrl: oidc ? `${oidc.settings.issuer.replace(/\/+$/, '')}/account` : null,
+      // ?referrer: the account center shows 「回到 Nexus Portal」 (Keycloak, back to the client's base URL).
+      accountUrl: oidc ? `${oidc.settings.issuer.replace(/\/+$/, '')}/account?referrer=${encodeURIComponent(oidc.settings.clientId)}` : null,
     }),
   );
 

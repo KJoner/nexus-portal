@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -83,7 +83,7 @@ describe('identity realm template', () => {
     const texts = realm.localizationTexts as Record<string, Record<string, string>>;
     expect(Object.keys(texts).sort()).toEqual(['en', 'zh-CN']);
     for (const locale of ['zh-CN', 'en']) {
-      const file = JSON.parse(readFileSync(join(dir, 'realm', `account-texts.${locale}.json`), 'utf8')) as Record<string, string>;
+      const file = JSON.parse(readFileSync(join(dir, 'texts', `account-texts.${locale}.json`), 'utf8')) as Record<string, string>;
       expect(texts[locale], locale).toEqual(file);
       expect(Object.keys(file).sort(), locale).toEqual(['deviceActivity', 'signOutAllDevices', 'signOutAllDevicesWarning', 'signedInDevices', 'signedInDevicesExplanation']);
       // Both the list explanation and the confirmation name what is not covered and where to go instead.
@@ -96,7 +96,33 @@ describe('identity realm template', () => {
     expect(texts['zh-CN']!.signOutAllDevices).not.toMatch(/设备/);
     expect(configure).toMatch(/texts\)/);
     expect(configure).toContain('realms/accounts/localization/$locale');
-    expect(configure).toContain('realm/account-texts.$locale.json');
+    expect(configure).toContain('texts/account-texts.$locale.json');
+  });
+
+  it('the import directory holds realm files only: Keycloak parses every .json there as a realm and stops on anything else', () => {
+    // Found 2026-11-22: account-texts.*.json in realm/ made `start --import-realm` fail (Unrecognized field "deviceActivity").
+    const files = readdirSync(join(dir, 'realm'));
+    expect(files.filter((f) => f.endsWith('.json'))).toEqual(['accounts-realm.json']);
+  });
+
+  it('U3: the account center look is versioned here — themes inherit Keycloak 26 (no copied templates), each product its own login page', () => {
+    expect(realm.loginTheme).toBe('accounts');
+    expect(realm.accountTheme).toBe('accounts');
+    expect(realm.emailTheme).toBe('accounts');
+    const themes = Object.fromEntries(realm.clients.map((c: { clientId: string; attributes: Record<string, string> }) => [c.clientId, c.attributes.login_theme]));
+    expect(themes).toEqual({ 'nexus-web': 'accounts-nexus', 'litesync-web': 'accounts-litesync' });
+    const parent = (t: string) => /^parent=(.+)$/m.exec(readFileSync(join(dir, 'themes', t, 'theme.properties'), 'utf8'))?.[1];
+    expect(parent('accounts/login')).toBe('keycloak.v2');
+    expect(parent('accounts/account')).toBe('keycloak.v3');
+    expect(parent('accounts/email')).toBe('keycloak');
+    expect(parent('accounts-nexus/login')).toBe('accounts');
+    expect(parent('accounts-litesync/login')).toBe('accounts');
+    // Only styles, messages and the e-mail wrapper: no page template of Keycloak's is copied.
+    const ftl = (d: string): string[] => readdirSync(join(dir, 'themes', d), { recursive: true }).map(String).filter((f) => f.endsWith('.ftl'));
+    expect(ftl('accounts/login')).toEqual([]);
+    expect(ftl('accounts/email')).toEqual([join('html', 'template.ftl')]);
+    expect(compose).toContain('./themes:/opt/keycloak/themes:ro');
+    expect(configure).toContain('theme)');
   });
 
   it('keeps every credential out of the files', () => {

@@ -11,6 +11,9 @@
 #                                                    已部署的 realm 用它补上模板的新内容，可重复执行
 #   ./configure.sh texts                             账号中心「设备活动」页改成如实的说法（只管浏览器登录，
 #                                                    不含 Obsidian 与扩展）；已部署的 realm 用它补上，可重复执行
+#   ./configure.sh theme on|off                      账号中心主题（themes/）：on 让登录、账号、邮件使用 accounts，
+#                                                    两个产品的登录页用各自的子主题；off 回到 Keycloak 自带主题。
+#                                                    需要 compose 已挂载 ./themes（改动 compose 后要重建容器）
 #
 # 不用 compose 时（例如一次性的本机容器），KC_EXEC 指定进入 Keycloak 容器的方式：
 #   KC_EXEC="docker exec -i <容器名>" ./configure.sh revocation
@@ -108,6 +111,21 @@ case "${1:-}" in
     echo "完成。Nexus 设置 NEXUS_IDENTITY_STATUS_CHECK=on，LiteSync 按它的文档开启中心停用检查，重启后在各自的管理员页面确认生效；"
     echo "然后运行 node scripts/smoke/verify-realm.mjs 回读核对（本机一次性实例）。"
     ;;
+  theme)
+    login
+    # off：显式写回 Keycloak 自带主题名（kcadm 的部分更新会忽略空值与 null，清不掉）
+    case "${2:-}" in
+      on) login_theme=accounts account_theme=accounts email_theme=accounts nexus_theme=accounts-nexus litesync_theme=accounts-litesync ;;
+      off) login_theme=keycloak.v2 account_theme=keycloak.v3 email_theme=keycloak nexus_theme='' litesync_theme='' ;;
+      *) echo "用法：$0 theme on|off" >&2; exit 2 ;;
+    esac
+    kc update realms/accounts -s "loginTheme=$login_theme" -s "accountTheme=$account_theme" -s "emailTheme=$email_theme"
+    for pair in "nexus-web:$nexus_theme" "litesync-web:$litesync_theme"; do
+      client=${pair%%:*}
+      kc update "clients/$(client_uuid "$client")" -r accounts -s "attributes.login_theme=${pair#*:}"
+    done
+    echo "账号中心主题：$([ "$login_theme" = accounts ] && echo 已启用 || echo 已恢复 Keycloak 自带主题)"
+    ;;
   texts)
     # 账号中心「设备活动」页的说法（ADR-019「账号中心自带的设备页」）：它只列、只退出浏览器里的账号中心登录，
     # 已连接的 Obsidian 与浏览器扩展是产品发的设备凭据，不在那里。Keycloak 自带的「登出所有设备 /
@@ -116,12 +134,12 @@ case "${1:-}" in
     # 模板首次导入时已带上（localizationTexts）；已部署的 realm 用这里补上，可重复执行（按键合并写入，不动其他覆盖）。
     login
     for locale in zh-CN en; do
-      kc create "realms/accounts/localization/$locale" -f - < "realm/account-texts.$locale.json"
+      kc create "realms/accounts/localization/$locale" -f - < "texts/account-texts.$locale.json"
       echo "已写入账号中心文案覆盖：$locale"
     done
     ;;
   *)
-    sed -n '2,20p' "$0"
+    sed -n '2,23p' "$0"
     exit 2
     ;;
 esac
