@@ -8,7 +8,7 @@ import { ToastHost } from '../../../components/ToastHost';
 import { dispatch, useConfig, useConfigStore, useIsAdmin } from '../../../data/config-store';
 import { useServices, type ServiceView } from '../../../data/status';
 import { AppTile } from '../../../icons/AppTile';
-import { ALL_APPS_GLYPH } from '../../../icons/glyphs';
+import { AllAppsGlyph } from '../../../icons/AllAppsGlyph';
 import { cn } from '../../../lib/cn';
 import { useMotionLevel, useNow, useViewport, useVisualViewport } from '../../../lib/hooks';
 import { host } from '../../../lib/host';
@@ -340,7 +340,7 @@ export function MobileHome() {
             className="grid h-[52px] min-w-[52px] flex-none place-items-center rounded-[18px] border-0 text-[15px] text-ink transition-colors duration-200 active:scale-[.96]"
             style={isHome ? { ...GLASS, padding: 0 } : { background: 'transparent', padding: '0 16px' }}
           >
-            {isHome ? <img src={ALL_APPS_GLYPH} alt="" className="size-[22px]" /> : mode === 'search' ? '取消' : '完成'}
+            {isHome ? <AllAppsGlyph className="size-[22px]" /> : mode === 'search' ? '取消' : '完成'}
           </button>
         </form>
       </div>

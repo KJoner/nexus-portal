@@ -13,10 +13,6 @@ export const BUILTIN_GLYPHS: Record<string, string> = {
   ),
 };
 
-export const ALL_APPS_GLYPH = svg(
-  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' fill='#EFEAE1'><circle cx='9' cy='9' r='2.1'/><circle cx='16' cy='9' r='2.1'/><circle cx='23' cy='9' r='2.1'/><circle cx='9' cy='16' r='2.1'/><circle cx='16' cy='16' r='2.1'/><circle cx='23' cy='16' r='2.1'/><circle cx='9' cy='23' r='2.1'/><circle cx='16' cy='23' r='2.1'/><circle cx='23' cy='23' r='2.1'/></svg>`,
-);
-
 const DASHBOARD_ICONS = 'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/';
 const SIMPLE_ICONS = 'https://cdn.simpleicons.org/';
 

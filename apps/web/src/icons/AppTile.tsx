@@ -4,7 +4,8 @@ import { memo, useState, type CSSProperties } from 'react';
 import { useConfigStore } from '../data/config-store';
 import { cn } from '../lib/cn';
 import { host } from '../lib/host';
-import { ALL_APPS_GLYPH, BUILTIN_GLYPHS, faviconUrl, libraryIconUrl } from './glyphs';
+import { AllAppsGlyph } from './AllAppsGlyph';
+import { BUILTIN_GLYPHS, faviconUrl, libraryIconUrl } from './glyphs';
 
 /** Three materials, one geometry (R1 Spec): porcelain = external site, ember = self-hosted, glass = system. */
 const PORCELAIN: CSSProperties = {
@@ -12,8 +13,9 @@ const PORCELAIN: CSSProperties = {
   boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.75), inset 0 -1px 0 rgba(0,0,0,0.06), 0 1px 1px rgba(0,0,0,0.2), 0 8px 18px -6px rgba(0,0,0,0.45)',
 };
 const EMBER_SHADOW = 'inset 0 1px 0 rgba(255,255,255,0.1), inset 0 0 0 1px rgba(255,255,255,0.045), 0 1px 1px rgba(0,0,0,0.25), 0 8px 18px -6px rgba(0,0,0,0.5)';
-const GLASS: CSSProperties = { background: 'rgba(239,234,225,0.1)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), inset 0 0 0 1px rgba(239,234,225,0.08)' };
-const SYSTEM: CSSProperties = { background: 'rgba(239,234,225,0.08)', boxShadow: 'inset 0 0 0 1px rgba(239,234,225,0.06)' };
+// In the ink colour of the theme (浅色 / 深色), like the glyphs drawn on them.
+const GLASS: CSSProperties = { background: 'rgb(var(--nx-ink-rgb)/0.1)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), inset 0 0 0 1px rgb(var(--nx-ink-rgb)/0.08)' };
+const SYSTEM: CSSProperties = { background: 'rgb(var(--nx-ink-rgb)/0.08)', boxShadow: 'inset 0 0 0 1px rgb(var(--nx-ink-rgb)/0.06)' };
 
 const ember = (tone: number): CSSProperties => {
   const t = TONES[tone % TONES.length]!;
@@ -38,7 +40,7 @@ interface Resolved {
 function resolve(t: TileTarget, cached: boolean): Resolved {
   switch (t.kind) {
     case 'all':
-      return { surface: GLASS, src: ALL_APPS_GLYPH, scale: 0.46, letter: '' };
+      return { surface: GLASS, src: null, scale: 0.46, letter: '' };
     case 'bookmark':
       return { surface: ember(2), src: BUILTIN_GLYPHS.linkwarden!, scale: 0.64, letter: '' };
     case 'system':
@@ -118,6 +120,8 @@ export const AppTile = memo(function AppTile({ target, size, status, lazy, class
             bump((n) => n + 1);
           }}
         />
+      ) : target.kind === 'all' ? (
+        <AllAppsGlyph className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-ink/90" style={{ width: size * r.scale, height: size * r.scale }} />
       ) : Icon ? (
         <Icon className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-ink/82" style={{ width: size * 0.5, height: size * 0.5 }} strokeWidth={2} />
       ) : r.letter ? (
