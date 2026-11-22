@@ -14,6 +14,18 @@ export interface OidcSettings {
   fetch?: typeof fetch;
 }
 
+/**
+ * The display-name snapshot taken at sign-in (v12.0.3 I1): the nickname the user chose, else the
+ * old full name, else the login name. Trimmed; blank values are skipped. Only for display — accounts
+ * are matched by (issuer, subject), never by any of these (two people may share a nickname).
+ */
+export function displayNameFromClaims(c: Readonly<Record<string, unknown>>): string | undefined {
+  for (const v of [c.nickname, c.name, c.preferred_username]) {
+    if (typeof v === 'string' && v.trim()) return v.trim();
+  }
+  return undefined;
+}
+
 export class OidcError extends Error {
   constructor(
     readonly code: 'unavailable' | 'rejected',
@@ -94,7 +106,7 @@ export class Oidc {
     if (!c || !tokens.id_token) throw new OidcError('rejected', 'ID Token 缺失');
     const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
     return {
-      claims: { issuer: c.iss, subject: c.sub, email: str(c.email), emailVerified: c.email_verified === true, name: str(c.name) ?? str(c.preferred_username) },
+      claims: { issuer: c.iss, subject: c.sub, email: str(c.email), emailVerified: c.email_verified === true, name: displayNameFromClaims(c) },
       sid: str(c.sid) ?? null,
       refreshToken: tokens.refresh_token ?? null,
       idToken: tokens.id_token,

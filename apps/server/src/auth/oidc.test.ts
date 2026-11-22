@@ -127,6 +127,26 @@ describe('unified sign-in (OIDC, ADR-011)', () => {
     expect(((await (await me(t.app, again.cookie)).json()) as { account: { id: string; email: string } }).account).toEqual(expect.objectContaining({ id: ida, email: 'new-address@example.org' }));
   });
 
+  it('I1: the display name is the nickname, else the old name, else the login name; a shared nickname never merges accounts', async () => {
+    const { t } = await setup();
+    const account = async (cookie: string) => ((await (await me(t.app, cookie)).json()) as { account: { id: string; displayName: string } }).account;
+    // Nickname wins over the old full name and the username (trimmed).
+    const a = await t.loginOidc({ sub: 'nick-1', email: 'n1@example.org', nickname: '  小雨 ', name: '测试 旧号', preferredUsername: 'xiaoyu' });
+    expect((await account(a.cookie)).displayName).toBe('小雨');
+    // No nickname (an account from before the change): the old name; blank nickname is ignored.
+    const b = await t.loginOidc({ sub: 'nick-2', email: 'n2@example.org', nickname: '   ', name: '测试 旧号', preferredUsername: 'n2@example.org' });
+    expect((await account(b.cookie)).displayName).toBe('测试 旧号');
+    // Neither: the login name.
+    const c = await t.loginOidc({ sub: 'nick-3', email: 'n3@example.org', preferredUsername: 'qa-v2-user' });
+    expect((await account(c.cookie)).displayName).toBe('qa-v2-user');
+    // Same nickname, different subjects: two accounts; and a renamed nickname keeps the same account.
+    const d = await t.loginOidc({ sub: 'nick-4', email: 'n4@example.org', nickname: '小雨', preferredUsername: 'other' });
+    const [ida, idd] = [(await account(a.cookie)).id, (await account(d.cookie)).id];
+    expect(idd).not.toBe(ida);
+    const again = await t.loginOidc({ sub: 'nick-1', email: 'n1@example.org', nickname: '新的昵称', preferredUsername: 'xiaoyu' });
+    expect(await account(again.cookie)).toEqual(expect.objectContaining({ id: ida, displayName: '新的昵称' }));
+  });
+
   it('registration modes are enforced by the server', async () => {
     const closed = await setup({ registration: 'closed' });
     expect((await closed.t.loginOidc({ sub: 'new' })).location).toBe('/?auth_error=registration_closed');

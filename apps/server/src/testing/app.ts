@@ -43,7 +43,7 @@ export interface TestApp {
   /** The legacy administrator's way in (old access password). Returns the cookie header value. */
   loginLegacy(): Promise<string>;
   /** Full OIDC round trip through the fake provider; returns the session cookie. */
-  loginOidc(user: { sub: string; email?: string; name?: string; sid?: string }, opts?: { returnTo?: string; invite?: string }): Promise<{ cookie: string; location: string }>;
+  loginOidc(user: { sub: string; email?: string; name?: string; nickname?: string; preferredUsername?: string; sid?: string }, opts?: { returnTo?: string; invite?: string }): Promise<{ cookie: string; location: string }>;
 }
 
 const cookieOf = (res: Response, name: string) => (res.headers.getSetCookie?.() ?? [res.headers.get('set-cookie') ?? '']).map((c) => c.split(';')[0]!).find((c) => c.startsWith(`${name}=`) && c.length > name.length + 1);

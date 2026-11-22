@@ -12,7 +12,7 @@ export interface FakeIdp {
   clientSecret: string;
   fetch: typeof fetch;
   /** The user signs in at the provider: returns the authorization code for the callback. */
-  authorize(authUrl: URL, user: { sub: string; email?: string; emailVerified?: boolean; name?: string; sid?: string }): string;
+  authorize(authUrl: URL, user: { sub: string; email?: string; emailVerified?: boolean; name?: string; nickname?: string; preferredUsername?: string; sid?: string }): string;
   /** Next ID token: change its claims or header before it is signed (attack simulations). */
   tamper: ((payload: JWTPayload, header: { alg: string; kid?: string }) => void) | null;
   /** Sign with a key the provider never published. */
@@ -202,7 +202,7 @@ export async function fakeIdp(opts: { issuer?: string; clientId?: string; client
         refresh.set(rt, grant.user.sub);
         sessionOf.set(rt, { sub: grant.user.sub, sid });
         const id_token = await sign(
-          { iss: issuer, aud: clientId, azp: clientId, sub: grant.user.sub, iat: now, exp: now + 300, nonce: grant.nonce, sid, email: grant.user.email, email_verified: grant.user.emailVerified ?? true, name: grant.user.name },
+          { iss: issuer, aud: clientId, azp: clientId, sub: grant.user.sub, iat: now, exp: now + 300, nonce: grant.nonce, sid, email: grant.user.email, email_verified: grant.user.emailVerified ?? true, name: grant.user.name, nickname: grant.user.nickname, preferred_username: grant.user.preferredUsername },
           idp,
         );
         return Response.json({ access_token: userAccess(grant.user.sub), token_type: 'Bearer', expires_in: 300, refresh_token: rt, id_token, scope: 'openid email profile' });
