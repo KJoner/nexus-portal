@@ -145,11 +145,11 @@ export const SearchSlab = forwardRef<SearchSlabHandle, Props>(function SearchSla
       onBlur={onSlabBlur}
       className="group/slab relative rounded-3xl backdrop-blur-[32px] backdrop-saturate-[1.15] transition-shadow duration-200 ease-soft"
       style={{
-        background: 'rgba(26,25,22,0.48)',
+        background: 'rgb(var(--nx-s1-rgb)/0.48)',
         boxShadow: open
-          ? '0 34px 90px rgba(0,0,0,0.45), inset 0 0 0 1px rgba(230,192,138,0.34)'
+          ? '0 34px 90px rgba(0,0,0,0.45), inset 0 0 0 1px rgb(var(--nx-amber-rgb)/0.34)'
           : edit
-            ? '0 30px 80px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(230,192,138,0.28)'
+            ? '0 30px 80px rgba(0,0,0,0.35), inset 0 0 0 1px rgb(var(--nx-amber-rgb)/0.28)'
             : '0 30px 80px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.07)',
       }}
     >
@@ -205,7 +205,7 @@ export const SearchSlab = forwardRef<SearchSlabHandle, Props>(function SearchSla
         />
         <span className="flex flex-none items-center gap-2 text-[12px] text-ink/50">
           <span>{!open ? '' : hasQ ? (isUrlFirst ? '前往' : '打开') : '关闭'}</span>
-          <kbd className="grid h-6 min-w-6 place-items-center rounded-[7px] px-1.5 font-sans text-[12px] text-ink/62 shadow-[inset_0_0_0_1px_rgba(239,234,225,0.2)]">{!open ? '/' : hasQ ? '↵' : 'esc'}</kbd>
+          <kbd className="grid h-6 min-w-6 place-items-center rounded-[7px] px-1.5 font-sans text-[12px] text-ink/62 shadow-[inset_0_0_0_1px_rgb(var(--nx-ink-rgb)/0.2)]">{!open ? '/' : hasQ ? '↵' : 'esc'}</kbd>
         </span>
       </div>
       <div className="mx-[22px] h-px bg-ink/8" style={{ opacity: hideInput && !open ? 0 : 1 }} />
@@ -273,7 +273,7 @@ export const SearchSlab = forwardRef<SearchSlabHandle, Props>(function SearchSla
             <span>Alt ↑↓ 切换引擎</span>
             <span>esc 清空 / 关闭</span>
             <span className="flex-1" />
-            <span className="transition-colors duration-200" style={{ color: flash ? '#e6c08a' : undefined }}>
+            <span className="transition-colors duration-200" style={{ color: flash ? 'var(--color-amber)' : undefined }}>
               {engLine}
             </span>
           </div>
@@ -323,7 +323,7 @@ const EngineMenu = forwardRef<HTMLDivElement, EngineMenuProps>(function EngineMe
       onKeyDown={onKeyDown}
       className="absolute top-[62px] left-2.5 z-[5] w-60 origin-top-left rounded-2xl p-1.5 backdrop-blur-[30px] transition-[opacity,transform] duration-200 ease-soft"
       style={{
-        background: 'rgba(34,32,28,0.92)',
+        background: 'rgb(var(--nx-s3-rgb)/0.92)',
         boxShadow: '0 20px 50px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06)',
         opacity: open ? 1 : 0,
         transform: open ? 'none' : 'translateY(-4px) scale(.98)',

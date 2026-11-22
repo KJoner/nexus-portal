@@ -38,7 +38,7 @@ export function ActionSheet({ sheet, onClose }: Props) {
 
   return (
     <div aria-hidden={!open} inert={!open} className="fixed inset-0 z-40" style={{ pointerEvents: open ? 'auto' : 'none' }}>
-      <div className="absolute inset-0 transition-opacity duration-240" style={{ background: 'rgba(10,9,8,0.46)', opacity: open ? 1 : 0 }} onClick={onClose} />
+      <div className="absolute inset-0 transition-opacity duration-240" style={{ background: 'rgb(var(--nx-s0-rgb)/0.46)', opacity: open ? 1 : 0 }} onClick={onClose} />
       <div
         ref={panel}
         role="dialog"
@@ -50,7 +50,7 @@ export function ActionSheet({ sheet, onClose }: Props) {
       >
         {sheet && (
           <>
-            <div className="overflow-hidden rounded-3xl backdrop-blur-[36px]" style={{ background: 'rgba(40,38,34,0.92)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.07)' }}>
+            <div className="overflow-hidden rounded-3xl backdrop-blur-[36px]" style={{ background: 'rgb(var(--nx-s4-rgb)/0.92)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.07)' }}>
               <div className="flex items-center gap-3 border-b border-ink/7 px-[18px] pt-4 pb-3.5">
                 <AppTile target={sheet.header.target} size={44} />
                 <span className="flex min-w-0 flex-col gap-0.5">
@@ -75,7 +75,7 @@ export function ActionSheet({ sheet, onClose }: Props) {
                 </button>
               ))}
             </div>
-            <button type="button" onClick={onClose} className="h-14 rounded-[20px] border-0 text-[16px] font-semibold text-ink backdrop-blur-[36px] active:bg-[rgba(60,56,50,0.95)]" style={{ background: 'rgba(40,38,34,0.92)' }}>
+            <button type="button" onClick={onClose} className="h-14 rounded-[20px] border-0 text-[16px] font-semibold text-ink backdrop-blur-[36px] active:bg-[rgb(var(--nx-s6-rgb)/0.95)]" style={{ background: 'rgb(var(--nx-s4-rgb)/0.92)' }}>
               取消
             </button>
           </>

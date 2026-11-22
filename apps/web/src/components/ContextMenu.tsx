@@ -71,7 +71,7 @@ export function ContextMenu({ menu, onClose }: Props) {
         aria-label={menu.header.name}
         onKeyDown={onKey}
         className="fixed z-[25] origin-top-left animate-[nx-pop_.14s_var(--ease-soft)] rounded-2xl p-1.5 backdrop-blur-[30px]"
-        style={{ left: pos.x, top: pos.y, width: WIDTH, background: 'rgba(36,34,30,0.95)', boxShadow: '0 24px 60px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.07)' }}
+        style={{ left: pos.x, top: pos.y, width: WIDTH, background: 'rgb(var(--nx-s3-rgb)/0.95)', boxShadow: '0 24px 60px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.07)' }}
       >
         <div className="flex items-center gap-2.5 px-2.5 pt-2 pb-2.5">
           <AppTile target={menu.header.target} size={28} />

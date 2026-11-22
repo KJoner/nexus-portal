@@ -40,20 +40,20 @@ function Preview({ look, entry, device, onFocal }: { look: Look; entry: Wallpape
       role="img"
       aria-label="外观预览，点击画面设置焦点"
       className="relative flex-none cursor-crosshair overflow-hidden bg-base transition-[width,height] duration-320 ease-emph"
-      style={{ width: box.w, height: box.h, borderRadius: box.r, boxShadow: '0 20px 50px rgba(0,0,0,0.45), 0 0 0 1px rgba(239,234,225,0.08)' }}
+      style={{ width: box.w, height: box.h, borderRadius: box.r, boxShadow: '0 20px 50px rgba(0,0,0,0.45), 0 0 0 1px rgb(var(--nx-ink-rgb)/0.08)' }}
     >
       <Wallpaper look={scaled} variant={device} receded={false} entry={entry ?? undefined} />
-      <span className="pointer-events-none absolute size-4 -translate-1/2 rounded-full" style={{ left: `${focal[0]}%`, top: `${focal[1]}%`, boxShadow: '0 0 0 1.5px #e6c08a, 0 0 0 4px rgba(0,0,0,0.25)' }} />
+      <span className="pointer-events-none absolute size-4 -translate-1/2 rounded-full" style={{ left: `${focal[0]}%`, top: `${focal[1]}%`, boxShadow: '0 0 0 1.5px var(--color-amber), 0 0 0 4px rgba(0,0,0,0.25)' }} />
       {compact ? (
         <>
           <div className="pointer-events-none absolute top-[18px] left-[18px]">
             <div className="text-[36px] leading-none font-light tracking-[-0.04em] tabular-nums">{time}</div>
             {look.showDate && <div className="mt-[5px] text-[11px] opacity-72">{formatDate(now)}</div>}
           </div>
-          <span className="pointer-events-none absolute top-3.5 right-3 flex h-6 items-center rounded-lg px-[9px] text-[11px] text-ink/80" style={{ background: 'rgba(17,16,14,0.5)' }}>
+          <span className="pointer-events-none absolute top-3.5 right-3 flex h-6 items-center rounded-lg px-[9px] text-[11px] text-ink/80" style={{ background: 'rgb(var(--nx-s0-rgb)/0.5)' }}>
             点按设置焦点
           </span>
-          <div className="pointer-events-none absolute right-2.5 bottom-2.5 left-2.5 rounded-[18px] px-2.5 py-3" style={{ background: 'rgba(26,25,22,0.5)' }}>
+          <div className="pointer-events-none absolute right-2.5 bottom-2.5 left-2.5 rounded-[18px] px-2.5 py-3" style={{ background: 'rgb(var(--nx-s1-rgb)/0.5)' }}>
             <div className="grid grid-cols-8 justify-items-center">
               {tiles.slice(0, 8).map((a) => (
                 <AppTile key={a.id} target={{ kind: 'app', app: a }} size={size[1]} />
@@ -67,7 +67,7 @@ function Preview({ look, entry, device, onFocal }: { look: Look; entry: Wallpape
             <span className="text-[24px] leading-none font-light tracking-[-0.03em] tabular-nums">{time}</span>
             {look.showDate && <span className="text-[8px] opacity-70">{formatDate(now)}</span>}
           </div>
-          <div className="rounded-[10px] backdrop-blur-[10px]" style={{ background: 'rgba(26,25,22,0.5)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.07)' }}>
+          <div className="rounded-[10px] backdrop-blur-[10px]" style={{ background: 'rgb(var(--nx-s1-rgb)/0.5)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.07)' }}>
             <div className="flex h-6 items-center px-[9px] text-[7.5px] opacity-60">搜索、输入网址，或打开应用</div>
             <div className="mx-2 h-px bg-ink/12" />
             <div className="flex justify-center px-2 py-[9px]" style={{ gap: look.iconSize === 'l' ? 4 : 6 }}>
@@ -81,7 +81,7 @@ function Preview({ look, entry, device, onFocal }: { look: Look; entry: Wallpape
             <div className="text-[26px] leading-none font-light tracking-[-0.04em] tabular-nums">{time}</div>
             {look.showDate && <div className="mt-1 text-[7.5px] opacity-70">{formatDate(now)}</div>}
           </div>
-          <div className="pointer-events-none absolute right-1.5 bottom-2.5 left-1.5 rounded-2xl px-2 pt-3 pb-2.5" style={{ background: 'rgba(26,25,22,0.5)' }}>
+          <div className="pointer-events-none absolute right-1.5 bottom-2.5 left-1.5 rounded-2xl px-2 pt-3 pb-2.5" style={{ background: 'rgb(var(--nx-s1-rgb)/0.5)' }}>
             <div className="grid grid-cols-4 justify-items-center gap-y-2">
               {tiles.slice(0, config.settings.home.mobileRows * 4).map((a) => (
                 <AppTile key={a.id} target={{ kind: 'app', app: a }} size={size[1]} />
@@ -105,7 +105,7 @@ function WallCard({ w, selected, favorite, blocked, onPick, onRemove }: { w: Wal
         aria-pressed={selected}
         aria-label={w.name}
         className={cn('relative overflow-hidden border-0 p-0 transition-shadow duration-140', compact ? 'h-[148px] w-[92px] rounded-[14px]' : 'aspect-[16/10] rounded-xl')}
-        style={{ background: w.kind === 'color' ? w.src : '#2a2724', boxShadow: selected ? '0 0 0 2px #1b1a17, 0 0 0 4px #e6c08a' : 'inset 0 0 0 1px rgba(239,234,225,0.08)' }}
+        style={{ background: w.kind === 'color' ? w.src : '#2a2724', boxShadow: selected ? '0 0 0 2px var(--color-base), 0 0 0 4px var(--color-amber)' : 'inset 0 0 0 1px rgb(var(--nx-ink-rgb)/0.08)' }}
       >
         {w.kind === 'photo' && (
           <img
@@ -217,7 +217,7 @@ export function AppearancePage() {
         onDragLeave={() => setHover(false)}
         onDrop={onDrop}
         className={cn('box-border flex cursor-pointer flex-col items-center justify-center gap-1.5 border-[1.5px] border-dashed text-[12px] text-ink/70 transition-colors duration-140', compact ? 'h-[148px] w-[92px] rounded-[14px]' : 'aspect-[16/10] rounded-xl')}
-        style={{ borderColor: hover ? '#e6c08a' : 'rgba(239,234,225,0.26)', background: hover ? 'rgba(230,192,138,0.08)' : 'transparent' }}
+        style={{ borderColor: hover ? 'var(--color-amber)' : 'rgb(var(--nx-ink-rgb)/0.26)', background: hover ? 'rgb(var(--nx-amber-rgb)/0.08)' : 'transparent' }}
       >
         <input type="file" accept="image/jpeg,image/png,image/webp,image/avif" className="sr-only" disabled={busy} onChange={(e) => void upload(e.target.files?.[0]).finally(() => (e.target.value = ''))} />
         {busy ? <Spinner className="size-4" /> : <Upload className="size-[18px]" />}
@@ -228,7 +228,7 @@ export function AppearancePage() {
   );
 
   const message = msg && (
-    <div className={cn('flex items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-[13px]', compact ? 'mx-0' : 'mx-5 mb-4')} style={{ background: msg.tone === 'error' ? 'rgba(233,118,95,0.14)' : 'rgba(227,163,91,0.13)', color: msg.tone === 'error' ? '#f4b2a3' : '#f1c690' }}>
+    <div className={cn('flex items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-[13px]', compact ? 'mx-0' : 'mx-5 mb-4')} style={{ background: msg.tone === 'error' ? 'rgb(var(--nx-error-rgb)/0.14)' : 'rgba(227,163,91,0.13)', color: msg.tone === 'error' ? 'var(--nx-danger-soft)' : 'var(--nx-warn-ink)' }}>
       <CircleAlert className="size-[15px] flex-none" />
       <span className="flex-1">{msg.text}</span>
       <button type="button" aria-label="关闭" onClick={() => setMsg(null)} className="grid size-[26px] place-items-center rounded-[7px] border-0 bg-transparent text-inherit">
@@ -295,14 +295,14 @@ export function AppearancePage() {
       </Group>
 
       <Group title={compact ? '主题、时间与图标' : '主题与时间'}>
-        <Row label="主题" sub="浅色首页尚未实现，暂时只提供深色" stacked>
+        <Row label="主题" sub="跟随系统时，随电脑或手机的深浅色设置切换" stacked>
           <Segmented
             label="主题"
             value={look.theme}
             options={[
               { value: 'dark', label: '深色' },
-              { value: 'light', label: '浅色', disabled: true },
-              { value: 'auto', label: '跟随系统', disabled: true },
+              { value: 'light', label: '浅色' },
+              { value: 'auto', label: '跟随系统' },
             ]}
             onChange={(v) => set('theme', v)}
           />
@@ -346,7 +346,7 @@ export function AppearancePage() {
       role="region"
       aria-label="未应用的外观更改"
       className={cn('z-8 animate-pop backdrop-blur-[30px]', compact ? 'fixed inset-x-0 bottom-0 flex flex-col gap-2.5 px-4 pt-3' : 'fixed bottom-6 left-[312px] flex h-14 w-[min(640px,calc(100vw-360px))] items-center gap-3 rounded-[18px] pr-2.5 pl-5')}
-      style={{ background: compact ? 'rgba(30,28,25,0.9)' : 'rgba(40,38,34,0.94)', boxShadow: compact ? 'inset 0 1px 0 rgba(239,234,225,0.08)' : '0 20px 50px rgba(0,0,0,0.45), inset 0 0 0 1px rgba(230,192,138,0.26)', paddingBottom: compact ? 'max(16px, env(safe-area-inset-bottom))' : undefined }}
+      style={{ background: compact ? 'rgb(var(--nx-s2-rgb)/0.9)' : 'rgb(var(--nx-s4-rgb)/0.94)', boxShadow: compact ? 'inset 0 1px 0 rgb(var(--nx-ink-rgb)/0.08)' : '0 20px 50px rgba(0,0,0,0.45), inset 0 0 0 1px rgb(var(--nx-amber-rgb)/0.26)', paddingBottom: compact ? 'max(16px, env(safe-area-inset-bottom))' : undefined }}
     >
       {!compact && <span className="size-[7px] rounded-full bg-amber" />}
       <span className={cn('text-ink', compact ? 'text-[13px] text-ink/66' : 'flex-1 text-[14px]')}>预览中 · {diff} 项更改尚未应用到首页</span>

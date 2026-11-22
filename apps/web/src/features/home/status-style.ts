@@ -12,13 +12,13 @@ export const LEVEL_COLOR: Record<StatusLevel, string> = {
 export function pillStyle(level: StatusLevel): CSSProperties {
   switch (level) {
     case 'error':
-      return { background: 'rgba(233,118,95,0.2)', color: '#f6b3a4', boxShadow: 'inset 0 0 0 1px rgba(233,118,95,0.36)' };
+      return { background: 'rgb(var(--nx-error-rgb)/0.2)', color: '#f6b3a4', boxShadow: 'inset 0 0 0 1px rgb(var(--nx-error-rgb)/0.36)' };
     case 'warn':
-      return { background: 'rgba(227,163,91,0.17)', color: '#f1c690', boxShadow: 'inset 0 0 0 1px rgba(227,163,91,0.3)' };
+      return { background: 'rgba(227,163,91,0.17)', color: 'var(--nx-warn-ink)', boxShadow: 'inset 0 0 0 1px rgba(227,163,91,0.3)' };
     case 'unknown':
-      return { background: 'rgba(26,25,22,0.4)', color: 'rgba(239,234,225,0.8)', boxShadow: 'inset 0 0 0 1px rgba(239,234,225,0.16)' };
+      return { background: 'rgb(var(--nx-s1-rgb)/0.4)', color: 'rgb(var(--nx-ink-rgb)/0.8)', boxShadow: 'inset 0 0 0 1px rgb(var(--nx-ink-rgb)/0.16)' };
     default:
-      return { background: 'rgba(26,25,22,0.34)', color: 'rgba(239,234,225,0.74)', boxShadow: 'inset 0 0 0 1px rgba(239,234,225,0.06)' };
+      return { background: 'rgb(var(--nx-s1-rgb)/0.34)', color: 'rgb(var(--nx-ink-rgb)/0.74)', boxShadow: 'inset 0 0 0 1px rgb(var(--nx-ink-rgb)/0.06)' };
   }
 }
 
@@ -28,14 +28,14 @@ export function dotStyle(level: StatusLevel, ringAlpha = 0.38): CSSProperties {
 }
 
 export function messageColor(level: StatusLevel): string {
-  return level === 'ok' ? 'rgba(239,234,225,0.58)' : level === 'unknown' ? 'rgba(239,234,225,0.66)' : level === 'off' ? 'rgba(239,234,225,0.44)' : LEVEL_COLOR[level];
+  return level === 'ok' ? 'rgb(var(--nx-ink-rgb)/0.58)' : level === 'unknown' ? 'rgb(var(--nx-ink-rgb)/0.66)' : level === 'off' ? 'rgb(var(--nx-ink-rgb)/0.44)' : LEVEL_COLOR[level];
 }
 
 export function actionStyle(level: StatusLevel): CSSProperties {
   if (level === 'warn') return { background: 'rgba(227,163,91,0.2)', color: LEVEL_COLOR.warn };
-  if (level === 'error') return { background: 'rgba(233,118,95,0.22)', color: LEVEL_COLOR.error };
-  if (level === 'unknown') return { background: 'rgba(239,234,225,0.1)', color: '#efeae1' };
-  return { background: 'rgba(239,234,225,0.06)', color: 'rgba(239,234,225,0.78)' };
+  if (level === 'error') return { background: 'rgb(var(--nx-error-rgb)/0.22)', color: LEVEL_COLOR.error };
+  if (level === 'unknown') return { background: 'rgb(var(--nx-ink-rgb)/0.1)', color: 'var(--color-ink)' };
+  return { background: 'rgb(var(--nx-ink-rgb)/0.06)', color: 'rgb(var(--nx-ink-rgb)/0.78)' };
 }
 
 export const rowHighlighted = (level: StatusLevel) => level !== 'ok' && level !== 'off';

@@ -145,7 +145,7 @@ export default function ConnectPage() {
   };
 
   const host = location.host;
-  const panelBg = 'rgba(26,25,22,0.62)';
+  const panelBg = 'rgb(var(--nx-s1-rgb)/0.62)';
 
   return (
     <div className="fixed inset-0 overflow-y-auto bg-base" style={{ height: '100dvh' }}>

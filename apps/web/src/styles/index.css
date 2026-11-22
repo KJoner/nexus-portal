@@ -54,6 +54,69 @@
   50% { transform: translateY(2.5px); }
 }
 
+/*
+ * UI v2 (v12.0.3): light and dark. Component colours come from these channels (`rgb(var(--nx-…-rgb)/a)`)
+ * and from the Tailwind theme tokens above, which are redefined for light below. The dark values are
+ * exactly the ones the frozen R1.5 look used, so dark pages do not change; light follows
+ * design/tokens.json (nexus light). Which one applies: settings.look.theme (深色 / 浅色 / 跟随系统),
+ * written to <html data-theme> before the first paint (main.tsx) and kept in step (App.tsx).
+ */
+:root {
+  color-scheme: dark;
+  --nx-ink-rgb: 239 234 225;
+  /* Surfaces, darkest to lightest (glass on the wallpaper, panels, menus, dialogs). */
+  --nx-s0-rgb: 17 16 14;
+  --nx-s1-rgb: 26 25 22;
+  --nx-s2-rgb: 30 28 25;
+  --nx-s3-rgb: 36 34 30;
+  --nx-s4-rgb: 40 38 34;
+  --nx-s5-rgb: 46 43 38;
+  --nx-s6-rgb: 60 56 50;
+  --nx-amber-rgb: 230 192 138;
+  --nx-error-rgb: 233 118 95;
+  --nx-option-bg: #2a2824;
+  --nx-warn-ink: #f1c690;
+  --nx-danger-soft: #f4b2a3;
+  /* The home wallpaper's veil and the full pages' backdrop veil. */
+  --nx-wall-rgb: 17 16 14;
+  --nx-wall-wash: 0;
+  --nx-page-rgb: 22 21 18;
+  --nx-page-veil: 0.62;
+  --nx-switch-off: rgb(239 234 225 / 0.16);
+}
+:root[data-theme='light'] {
+  color-scheme: light;
+  --color-base: #f6f6f2;
+  --color-ink: #262922;
+  --color-amber: #986321;
+  --color-amber-hi: #7a4c16;
+  --color-on-amber: #ffffff;
+  --color-ok: #3f7a4b;
+  --color-warn: #9a5b12;
+  --color-error: #b23a2e;
+  --color-unknown: #77756d;
+  --color-danger-ink: #a22f26;
+  --color-menu: rgb(255 255 255 / 0.97);
+  --nx-ink-rgb: 38 41 34;
+  --nx-s0-rgb: 24 26 20;
+  --nx-s1-rgb: 255 255 255;
+  --nx-s2-rgb: 252 252 249;
+  --nx-s3-rgb: 255 255 255;
+  --nx-s4-rgb: 255 255 255;
+  --nx-s5-rgb: 241 242 235;
+  --nx-s6-rgb: 233 236 227;
+  --nx-amber-rgb: 152 99 33;
+  --nx-error-rgb: 178 58 46;
+  --nx-option-bg: #ffffff;
+  --nx-warn-ink: #8a5a12;
+  --nx-danger-soft: #a22f26;
+  --nx-wall-rgb: 246 246 242;
+  --nx-wall-wash: 0.62;
+  --nx-page-rgb: 246 246 242;
+  --nx-page-veil: 0.9;
+  --nx-switch-off: rgb(38 41 34 / 0.18);
+}
+
 :root {
   --nx-duration-quick: 120ms;
   --nx-duration-base: 150ms;
@@ -93,7 +156,7 @@
     outline: none;
   }
   ::placeholder {
-    color: rgb(239 234 225 / 0.46);
+    color: rgb(var(--nx-ink-rgb) / 0.46);
   }
   [inert] {
     pointer-events: none;
@@ -175,7 +238,7 @@
 .nx-range::-webkit-slider-runnable-track {
   height: 4px;
   border-radius: 2px;
-  background: rgb(239 234 225 / 0.16);
+  background: rgb(var(--nx-ink-rgb) / 0.16);
 }
 .nx-range::-webkit-slider-thumb {
   -webkit-appearance: none;
@@ -189,7 +252,7 @@
 .nx-range::-moz-range-track {
   height: 4px;
   border-radius: 2px;
-  background: rgb(239 234 225 / 0.16);
+  background: rgb(var(--nx-ink-rgb) / 0.16);
 }
 .nx-range::-moz-range-thumb {
   width: 18px;
@@ -214,6 +277,6 @@
   outline-offset: 2px;
 }
 select option {
-  background: #2a2824;
-  color: #efeae1;
+  background: var(--nx-option-bg);
+  color: var(--color-ink);
 }

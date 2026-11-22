@@ -61,7 +61,8 @@ interface Props {
   className?: string;
 }
 
-const a = (alpha: number) => `rgba(17,16,14,${Math.min(1, alpha).toFixed(3)})`;
+/** The veil colour: warm black in dark, the page's paper white in light (UI v2: light theme). */
+const a = (alpha: number) => `rgb(var(--nx-wall-rgb)/${Math.min(1, alpha).toFixed(3)})`;
 
 /**
  * Warm monochrome treatment from R1.5: sand base → grayscale photo (multiply) → warm black (lighten),
@@ -88,7 +89,7 @@ export function Wallpaper({ look, variant, receded, entry, className }: Props) {
   const k = look.overlay / 48;
   const vignette =
     variant === 'desktop'
-      ? `radial-gradient(ellipse 52% 50% at 50% 50%, ${a(0.5 * k + lift)}, rgba(17,16,14,${(lift * 0.4).toFixed(3)}) 75%), linear-gradient(180deg, ${a(0.6 * k)} 0%, rgba(17,16,14,0) 20%, rgba(17,16,14,0) 72%, ${a(0.6 * k)} 100%)`
+      ? `radial-gradient(ellipse 52% 50% at 50% 50%, ${a(0.5 * k + lift)}, ${a(lift * 0.4)} 75%), linear-gradient(180deg, ${a(0.6 * k)} 0%, ${a(0)} 20%, ${a(0)} 72%, ${a(0.6 * k)} 100%)`
       : `linear-gradient(180deg, ${a(0.62 * k + lift)} 0%, ${a(0.05 * k + lift * 0.5)} 32%, ${a(0.1 * k + lift * 0.5)} 50%, ${a(0.6 * k + lift)} 100%)`;
   const recede = variant === 'desktop' ? { t: 'scale(1.04)', f: 'blur(14px) brightness(.85)' } : { t: 'scale(1.05)', f: 'blur(10px) brightness(.7)' };
   const photoStyle = { objectPosition: `${focal[0]}% ${focal[1]}%`, filter: warm ? 'grayscale(1) contrast(1.08)' : 'none', mixBlendMode: warm ? 'multiply' : 'normal' } as const;
@@ -115,7 +116,7 @@ export function Wallpaper({ look, variant, receded, entry, className }: Props) {
             {u && (
               <img src={u.placeholder} alt="" className="absolute inset-0 size-full scale-110 object-cover blur-xl" style={{ objectPosition: photoStyle.objectPosition, filter: `blur(24px)${warm ? ' grayscale(1) brightness(.7)' : ''}` }} />
             )}
-            <div key={wp.id} className={cn('absolute inset-0 isolate transition-opacity duration-400', ready ? 'opacity-100' : 'opacity-0')} style={{ background: warm ? '#a69e8e' : '#1b1a17' }}>
+            <div key={wp.id} className={cn('absolute inset-0 isolate transition-opacity duration-400', ready ? 'opacity-100' : 'opacity-0')} style={{ background: warm ? '#a69e8e' : 'var(--color-base)' }}>
               {u && !u.remote && file !== undefined ? (
                 // The extension's cached copy; until it is there, the blurred placeholder shows.
                 file && <img src={file} alt="" decoding="async" fetchPriority="high" onLoad={onLoad} onError={onError} className="absolute inset-0 size-full object-cover" style={photoStyle} />
@@ -135,6 +136,8 @@ export function Wallpaper({ look, variant, receded, entry, className }: Props) {
           </>
         )}
       </div>
+      {/* Light theme: an even wash first, so dark text on the wallpaper stays readable (0 in dark). */}
+      <div className="absolute inset-0" style={{ background: 'rgb(var(--nx-wall-rgb)/var(--nx-wall-wash))' }} />
       <div className="absolute inset-0" style={{ background: vignette }} />
     </div>
   );

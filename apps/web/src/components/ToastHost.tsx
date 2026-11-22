@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { cn } from '../lib/cn';
 import { runUndo, useToastStore, type Toast, type ToastTone } from './toast-store';
 
-const DOT: Record<ToastTone, string> = { ok: '#a7bf9f', warn: '#e3a35b', error: '#e9765f', info: 'rgba(239,234,225,0.5)', undo: '#e6c08a' };
+const DOT: Record<ToastTone, string> = { ok: '#a7bf9f', warn: '#e3a35b', error: '#e9765f', info: 'rgb(var(--nx-ink-rgb)/0.5)', undo: 'var(--color-amber)' };
 
 interface Props {
   variant: 'desktop' | 'mobile';
@@ -53,7 +53,7 @@ export function ToastHost({ variant, bottom, durationMs = 5000 }: Props) {
         shown ? 'opacity-100' : 'pointer-events-none opacity-0',
       )}
       style={{
-        background: desktop ? 'rgba(36,34,30,0.92)' : 'rgba(40,38,34,0.94)',
+        background: desktop ? 'rgb(var(--nx-s3-rgb)/0.92)' : 'rgb(var(--nx-s4-rgb)/0.94)',
         boxShadow: desktop ? '0 20px 50px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.07)' : '0 14px 40px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.07)',
         transform: `${desktop ? 'translateX(-50%) ' : ''}${shown ? '' : `translateY(${desktop ? 10 : 8}px)`}`,
         bottom: desktop ? undefined : bottom,

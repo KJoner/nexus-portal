@@ -99,7 +99,7 @@ export function WallpaperBar({ current, ui, near, hidden }: { current: CurrentWa
             {!host.readOnly && (
               <>
             <button type="button" aria-label={fav ? '取消收藏当前壁纸' : '收藏当前壁纸'} aria-pressed={fav} title={fav ? '取消收藏' : '收藏'} onClick={() => homeActions.toggleFavorite(entry)} className={iconBtn}>
-              <Heart className="size-3.5" fill={fav ? 'currentColor' : 'none'} style={fav ? { color: '#e6c08a' } : undefined} />
+              <Heart className="size-3.5" fill={fav ? 'currentColor' : 'none'} style={fav ? { color: 'var(--color-amber)' } : undefined} />
             </button>
             {current.canStep && (
               <button type="button" aria-label="不喜欢这张" title="不喜欢这张（不再出现）" onClick={() => homeActions.dislike(entry, current.next)} className={iconBtn}>

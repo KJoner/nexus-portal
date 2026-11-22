@@ -7,7 +7,7 @@ export const CompactContext = createContext(false);
 export const useCompact = () => useContext(CompactContext);
 
 export function Tag({ children, tone = 'neutral' }: { children: ReactNode; tone?: 'neutral' | 'amber' | 'warn' }) {
-  const t = { neutral: 'bg-ink/10 text-ink/75', amber: 'bg-amber/14 text-amber-hi', warn: 'bg-warn/13 text-[#f1c690]' }[tone];
+  const t = { neutral: 'bg-ink/10 text-ink/75', amber: 'bg-amber/14 text-amber-hi', warn: 'bg-warn/13 text-[var(--nx-warn-ink)]' }[tone];
   return <span className={cn('inline-flex h-5 flex-none items-center rounded-md px-[7px] text-[11px] font-normal whitespace-nowrap', t)}>{children}</span>;
 }
 
@@ -23,7 +23,7 @@ export function Group({ title, extra, children, className }: { title?: ReactNode
           {extra}
         </div>
       )}
-      <div className={cn('flex flex-col divide-y divide-ink/6 bg-ink/[0.045] shadow-[inset_0_0_0_1px_rgba(239,234,225,0.05)]', compact ? 'rounded-2xl bg-ink/6' : 'rounded-[20px]')}>{children}</div>
+      <div className={cn('flex flex-col divide-y divide-ink/6 bg-ink/[0.045] shadow-[inset_0_0_0_1px_rgb(var(--nx-ink-rgb)/0.05)]', compact ? 'rounded-2xl bg-ink/6' : 'rounded-[20px]')}>{children}</div>
     </section>
   );
 }
@@ -71,7 +71,7 @@ export function Switch({ checked, onChange, label, disabled }: { checked: boolea
       disabled={disabled}
       onClick={() => onChange?.(!checked)}
       className="relative flex-none rounded-full border-0 p-0 transition-colors duration-200 disabled:cursor-default"
-      style={{ width: w, height: h, background: checked ? '#e6c08a' : 'rgba(239,234,225,0.16)' }}
+      style={{ width: w, height: h, background: checked ? 'var(--color-amber)' : 'rgb(var(--nx-ink-rgb)/0.16)' }}
     >
       <span
         className="absolute rounded-full transition-transform duration-200 ease-soft"
@@ -130,7 +130,7 @@ export function Button({ variant = 'secondary', size, className, ...rest }: Butt
     primary: 'bg-amber text-on-amber font-semibold hover:bg-amber-hi',
     secondary: 'bg-ink/9 text-ink hover:bg-ink/15',
     text: 'bg-transparent text-amber-hi hover:bg-amber/10',
-    danger: 'bg-error/14 text-[#f4b2a3] hover:bg-error/22',
+    danger: 'bg-error/14 text-[var(--nx-danger-soft)] hover:bg-error/22',
     'danger-solid': 'bg-error/90 text-[#1f1512] font-semibold hover:bg-error',
     ghost: 'bg-transparent text-ink/75 hover:bg-ink/8',
   };
@@ -159,10 +159,10 @@ export function Field({ label, error, warn, hint, mono, className, ...input }: F
         autoComplete="off"
         {...input}
         className={cn('box-border h-11 rounded-xl border-0 px-3.5 text-ink caret-amber outline-none placeholder:text-ink/38', mono ? 'font-mono text-[13px]' : 'text-[14.5px]')}
-        style={{ background: 'rgba(239,234,225,0.06)', boxShadow: error ? 'inset 0 0 0 1.5px rgba(233,118,95,0.7)' : 'inset 0 0 0 1px rgba(239,234,225,0.08)' }}
+        style={{ background: 'rgb(var(--nx-ink-rgb)/0.06)', boxShadow: error ? 'inset 0 0 0 1.5px rgb(var(--nx-error-rgb)/0.7)' : 'inset 0 0 0 1px rgb(var(--nx-ink-rgb)/0.08)' }}
       />
       {error && <span className="text-[12.5px] text-danger-ink">{error}</span>}
-      {!error && warn && <span className="text-[12.5px] text-[#f1c690]">{warn}</span>}
+      {!error && warn && <span className="text-[12.5px] text-[var(--nx-warn-ink)]">{warn}</span>}
       {hint && !error && !warn && <span className="text-[12.5px] leading-[1.6] text-ink/50">{hint}</span>}
     </label>
   );
@@ -183,10 +183,10 @@ export function Dialog({ open, onOpenChange, title, description, width = 440, ch
   return (
     <RDialog.Root open={open} onOpenChange={onOpenChange}>
       <RDialog.Portal>
-        <RDialog.Overlay className="fixed inset-0 z-30 animate-[nx-fade_.2s_ease]" style={{ background: 'rgba(10,9,8,0.55)' }} />
+        <RDialog.Overlay className="fixed inset-0 z-30 animate-[nx-fade_.2s_ease]" style={{ background: 'rgb(var(--nx-s0-rgb)/0.55)' }} />
         <RDialog.Content
           className="fixed top-1/2 left-1/2 z-31 box-border flex max-h-[calc(100dvh-32px)] max-w-[calc(100vw-32px)] -translate-1/2 animate-pop flex-col gap-4 overflow-y-auto rounded-3xl p-6 text-ink"
-          style={{ width, background: 'rgba(40,38,34,0.98)', boxShadow: '0 40px 100px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.07)' }}
+          style={{ width, background: 'rgb(var(--nx-s4-rgb)/0.98)', boxShadow: '0 40px 100px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.07)' }}
         >
           <RDialog.Title className="m-0 text-[18px] font-medium">{title}</RDialog.Title>
           {description ? (

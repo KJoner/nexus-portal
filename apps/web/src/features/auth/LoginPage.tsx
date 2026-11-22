@@ -115,7 +115,7 @@ export function LoginPage({ reauth = false }: { reauth?: boolean }) {
     location.assign(`/auth/login?${q}`);
   };
 
-  const panel = 'rgba(26,25,22,0.48)';
+  const panel = 'rgb(var(--nx-s1-rgb)/0.48)';
   return (
     <div className="fixed inset-0 overflow-clip bg-base" style={{ height: '100dvh' }}>
       <Wallpaper look={LOOK} variant={desktop ? 'desktop' : 'mobile'} receded={false} />
@@ -136,10 +136,10 @@ export function LoginPage({ reauth = false }: { reauth?: boolean }) {
         )}
         <div
           className={cn('flex flex-col gap-3 p-5 backdrop-blur-[32px] backdrop-saturate-[1.15]', desktop ? 'rounded-3xl' : 'rounded-[34px] px-4 pb-4')}
-          style={{ background: desktop ? panel : 'rgba(26,25,22,0.5)', boxShadow: '0 30px 80px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.07)' }}
+          style={{ background: desktop ? panel : 'rgb(var(--nx-s1-rgb)/0.5)', boxShadow: '0 30px 80px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.07)' }}
         >
           <div className="flex items-center gap-2.5 px-1 text-[15px] font-semibold">
-            <span className="size-2 rounded-full bg-amber" style={{ boxShadow: '0 0 14px rgba(230,192,138,0.75)' }} />
+            <span className="size-2 rounded-full bg-amber" style={{ boxShadow: '0 0 14px rgb(var(--nx-amber-rgb)/0.75)' }} />
             Nexus
             <span className="text-[13px] font-normal text-ink/50">{reauth ? '需要重新登录' : options?.oidc ? '登录以继续' : '输入访问密码以继续'}</span>
           </div>
@@ -150,7 +150,7 @@ export function LoginPage({ reauth = false }: { reauth?: boolean }) {
           )}
 
           {everywhere && (
-            <div className="flex flex-col gap-2 rounded-[18px] px-3.5 py-3" style={{ background: 'rgba(239,234,225,0.06)' }}>
+            <div className="flex flex-col gap-2 rounded-[18px] px-3.5 py-3" style={{ background: 'rgb(var(--nx-ink-rgb)/0.06)' }}>
               <RevocationResult result={everywhere.result} at={everywhere.at} />
               <p className="m-0 text-[12px] text-ink/50">登录后可以在「设置 › 账号与同步」查看最新状态，并重新发送没有送达的通知。</p>
               <button type="button" onClick={() => (dismissEverywhere(), setEverywhere(null))} className="h-8 self-start rounded-[10px] border-0 bg-ink/9 px-3 text-[12.5px] text-ink hover:bg-ink/15">
@@ -172,7 +172,7 @@ export function LoginPage({ reauth = false }: { reauth?: boolean }) {
                   autoComplete="off"
                   spellCheck={false}
                   className="h-11 rounded-[14px] border-0 px-4 text-[14.5px] text-ink caret-amber outline-none"
-                  style={{ background: 'rgba(239,234,225,0.07)', boxShadow: 'inset 0 0 0 1px rgba(239,234,225,0.06)' }}
+                  style={{ background: 'rgb(var(--nx-ink-rgb)/0.07)', boxShadow: 'inset 0 0 0 1px rgb(var(--nx-ink-rgb)/0.06)' }}
                 />
               )}
               <button type="button" onClick={signIn} className="flex h-[52px] items-center justify-center gap-2.5 rounded-[18px] border-0 bg-amber text-[15.5px] font-semibold text-on-amber transition-colors hover:bg-amber-hi">
@@ -209,7 +209,7 @@ export function LoginPage({ reauth = false }: { reauth?: boolean }) {
                   aria-invalid={!!error}
                   aria-describedby={error ? 'login-error' : undefined}
                   className="h-[52px] min-w-0 flex-1 rounded-[18px] border-0 px-4 text-[16px] text-ink caret-amber outline-none"
-                  style={{ background: 'rgba(239,234,225,0.09)', boxShadow: error ? 'inset 0 0 0 1.5px rgba(233,118,95,0.7)' : 'inset 0 0 0 1px rgba(239,234,225,0.06)' }}
+                  style={{ background: 'rgb(var(--nx-ink-rgb)/0.09)', boxShadow: error ? 'inset 0 0 0 1.5px rgb(var(--nx-error-rgb)/0.7)' : 'inset 0 0 0 1px rgb(var(--nx-ink-rgb)/0.06)' }}
                 />
                 <button
                   type="submit"

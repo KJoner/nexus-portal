@@ -59,7 +59,7 @@ function LinkwardenCard({ status, setStatus }: { status: LinkwardenStatus | null
           <span className="size-[7px] flex-none rounded-full" style={{ background: status.lastError ? '#e3a35b' : '#a7bf9f' }} />
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="truncate text-[13.5px]">已连接 {hostOf(status.baseUrl)}</span>
-            <span className={cn('truncate text-[11.5px]', status.lastError ? 'text-[#f1c690]' : 'font-mono text-ink/50')}>{status.lastError ?? `API 令牌 ••••••••${status.tokenLast4}`}</span>
+            <span className={cn('truncate text-[11.5px]', status.lastError ? 'text-[var(--nx-warn-ink)]' : 'font-mono text-ink/50')}>{status.lastError ?? `API 令牌 ••••••••${status.tokenLast4}`}</span>
           </span>
           {!editing && (
             <>
@@ -226,7 +226,7 @@ export function SearchPage() {
             <LinkwardenCard status={lw} setStatus={setLw} />
           </Group>
         )}
-        <Button size="lg" className="w-full rounded-2xl bg-ink/6 text-[#f4b2a3]" disabled={!history} onClick={() => setClearOpen(true)}>
+        <Button size="lg" className="w-full rounded-2xl bg-ink/6 text-[var(--nx-danger-soft)]" disabled={!history} onClick={() => setClearOpen(true)}>
           清除搜索历史{history ? `（${history} 条）` : ''}
         </Button>
         {clearDialog}
@@ -246,7 +246,7 @@ export function SearchPage() {
           return (
             <div key={e.id} className="box-border flex min-h-[62px] items-center gap-3.5 py-2 pr-3.5 pl-4">
               <button type="button" role="radio" aria-checked={isDef} aria-label={`设为默认：${e.name}`} disabled={off} onClick={() => setDefault(e)} className="grid size-8 flex-none place-items-center rounded-full border-0 bg-transparent disabled:opacity-40">
-                <span className="box-border grid size-[18px] place-items-center rounded-full" style={{ border: isDef ? '2px solid #e6c08a' : '2px solid rgba(239,234,225,0.3)' }}>
+                <span className="box-border grid size-[18px] place-items-center rounded-full" style={{ border: isDef ? '2px solid var(--color-amber)' : '2px solid rgb(var(--nx-ink-rgb)/0.3)' }}>
                   {isDef && <span className="size-2 rounded-full bg-amber" />}
                 </span>
               </button>
@@ -259,7 +259,7 @@ export function SearchPage() {
                 </span>
                 <span className="truncate font-mono text-[11.5px] text-ink/50">{e.kind === 'linkwarden' ? '由 Nexus 服务端只读查询 Linkwarden' : e.urlTemplate}</span>
               </span>
-              <span title="输入前缀加空格切换" className="flex h-6 flex-none items-center rounded-[7px] px-2 font-mono text-[11.5px] text-ink/72 shadow-[inset_0_0_0_1px_rgba(239,234,225,0.16)]">
+              <span title="输入前缀加空格切换" className="flex h-6 flex-none items-center rounded-[7px] px-2 font-mono text-[11.5px] text-ink/72 shadow-[inset_0_0_0_1px_rgb(var(--nx-ink-rgb)/0.16)]">
                 {e.prefix ? `${e.prefix} ␣` : '—'}
               </span>
               <button type="button" aria-label={`上移 ${e.name}`} disabled={i === 0} onClick={() => apply({ type: 'engine.move', engineId: e.id, toIndex: i - 1 })} className="grid size-[30px] place-items-center rounded-[9px] border-0 bg-transparent text-ink hover:bg-ink/8 disabled:opacity-30">

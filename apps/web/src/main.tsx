@@ -8,6 +8,10 @@ import './styles/index.css';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './app/App';
+import { applyRememberedTheme } from './lib/theme';
+
+// UI v2: paint the first frame in the theme this browser showed last (the collection decides after).
+applyRememberedTheme();
 
 // Production only: the Service Worker serves the app shell offline (C3-4). Registration waits until
 // after load so precaching (~1.5 MB, dozens of requests) never competes with the first paint, the
