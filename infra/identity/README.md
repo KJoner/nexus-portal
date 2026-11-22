@@ -161,7 +161,7 @@ docker compose exec -T postgres pg_dump -U postgres -Fc nexus    > nexus-$(date 
 ## 升级
 
 - 本仓库的 realm 模板有了新内容时（例如 ADR-019 账号撤销），已部署的 realm 不会自动变化：按说明运行对应的 `./configure.sh` 子命令（ADR-019 是 `./configure.sh revocation`，可重复执行），再用 `verify-realm.mjs` 在一次性实例上演练回读。
-- Keycloak：先备份 `keycloak` 库，再改 compose 中的镜像版本；跨大版本前阅读官方升级说明。
+- Keycloak：先备份 `keycloak` 库，再改 compose 中的镜像版本；跨大版本前阅读官方升级说明。登录主题覆盖了上游的 `keycloak.v2/login/template.ftl`（文件开头记着所依据的版本与 sha256），换版本前先对照新版的同名文件（见「账号中心的样子」），`infra-identity.test.ts` 会在镜像版本与记录不一致时失败。
 - PostgreSQL：同一大版本内直接换镜像；跨大版本需要 `pg_dump` / `pg_restore`。
 
 ## 本机冒烟（合成数据，可重复）
@@ -191,13 +191,18 @@ docker compose exec -T postgres pg_dump -U postgres -Fc nexus    > nexus-$(date 
 6a. 在一个产品执行「退出所有产品与设备」→ 账号中心所有浏览器的会话、两个产品的会话、设备与待领取授权全部失效；结果页逐项显示已完成。另一个产品暂停时显示「等待确认」，恢复后在 7 天内自动送达。
 7. 四家邮箱的投递结果与 SPF/DKIM/DMARC 检查。
 
-## 账号中心的样子（主题，UI 焕新 U3）
+## 账号中心的样子（主题，UI 焕新 U3 → UI v2）
 
 `themes/` 是账号中心的三个 Keycloak 主题，compose 把它挂到 `/opt/keycloak/themes`：
 
-- `accounts/login`：登录、注册、找回账号密码、验证邮箱等页面。继承 Keycloak 26 自带的 `keycloak.v2`，**不复制任何模板**，只换 PatternFly 变量（中性石灰底、不透明卡片、44 px 控件、深浅色跟随系统）和几句中文：「登录 / 创建账号 / 账号密码 / 邮箱或账号密码不正确」，并说明这里重设的是账号密码、LiteSync 仓库密码无法通过邮件找回。
-- `accounts-nexus/login`、`accounts-litesync/login`：两个产品的子主题，realm 模板在各自的 client 上指定（`login_theme`）。页面写明「登录后回到 Nexus / LiteSync」，主按钮用产品色（Nexus 琥珀、LiteSync 紫，对比度见 ui-refresh 的 design-tokens）。
-- `accounts/account`：账号控制台 v3，加一份样式和「账号中心」标志，把自带翻译里的「帐户安全 / 登陆凭证 / 应用列表」改成「登录与安全 / 登录方式 / 已授权的应用」。两个产品打开账号中心时带 `?referrer=<client>`，页头显示「回到 Nexus Portal / LiteSync」。
+- `accounts/login`：登录、注册、找回账号密码、验证邮箱、设置账号密码、补充资料、出错、退出确认等页面。继承 Keycloak 26 自带的 `keycloak.v2`。UI v2（v12.0.3）起**覆盖一个公共外壳** `template.ftl`：左侧品牌与装饰图（文字是 HTML，图是纯装饰），右侧是 Keycloak 自己的表单；`<head>` 原样保留（会话检测、密码显示切换、语言切换等脚本），只多一个 `js/theme-toggle.js`。各页面模板（`login.ftl`、`register.ftl`……）、用户资料的动态字段、表单 action、错误与验证、过期链接仍是 Keycloak 自带的。
+  - 产品名与「返回」只取服务器上的配置：产品名来自 client 指定的子主题的文字（`acProductName`），「返回 …」链接是 client 配置的 `baseUrl`；请求参数不参与。没有子主题的页面（例如账号控制台的登录）不显示产品和返回。
+  - 深浅色默认跟随系统；右上角可手动切换，选择记在账号中心域名的 localStorage（`ac-theme`），没选过就继续跟随系统。
+  - 手机（≤720 px）把装饰图收成一条品牌栏，图片只在宽屏的 CSS 里引用，手机不会下载。
+  - 装饰图 `resources/img/auth-art.webp`：由 v12.0.3 设计包 `prototype/assets/auth-art.png`（1122×1402，sha256 `59020c17542c9e6279d899bd35066b255b05921ebb7af14cc6ae334555b0cd3f`，生成图、无文字）用 Pillow 转成 WebP（quality 85，尺寸不变，sha256 `fe70b55d4deeeec774b0f5eecadd6bbb535fde82c9dd2c10255a14b34da41d2b`，约 46 KB）。
+  - **升级 Keycloak 时**：`template.ftl` 开头记着所依据的上游版本与 sha256。先取出新版的上游文件对照（`docker create --name kc-up quay.io/keycloak/keycloak:<新版本>`，`docker cp kc-up:/opt/keycloak/lib/lib/main/org.keycloak.keycloak-themes-<新版本>.jar .`，`unzip -p org.keycloak.keycloak-themes-<新版本>.jar theme/keycloak.v2/login/template.ftl > upstream-template.ftl`，`docker rm kc-up`），把上游 `<head>` 与各个 `<#nested>` 区块的改动搬过来，再更新开头的版本与 sha256（测试会核对）。与上游的差异只有：`<body>` 的版式（`ac-*` 结构）、`<head>` 多一行 `theme-toggle.js`、去掉了自带的 `kc-header`（realm 名称改在表单上方的小标题里显示）。
+- `accounts-nexus/login`、`accounts-litesync/login`：两个产品的子主题，realm 模板在各自的 client 上指定（`login_theme`）。只设产品名、一句导语和产品色（Nexus 琥珀 `#986321` / 深色 `#E4BF84`，LiteSync 紫 `#6854BC` / 深色 `#B4A1F3`，取自 v12.0.3 `design/tokens.json`）。
+- `accounts/account`：账号控制台 v3，加一份样式和「账号中心」标志，把自带翻译里的「帐户安全 / 登陆凭证 / 应用列表」改成「登录与安全 / 登录方式 / 已授权的应用」。两个产品打开账号中心时带 `?referrer=<client>`，页头显示「回到 Nexus Portal / LiteSync」。账号控制台的版式本轮没有改成两栏外壳。
 - `accounts/email`：验证邮箱、重设账号密码等邮件的外壳和中文标题。
 
 新部署导入模板即生效；已部署的 realm：`docker compose up -d`（让新挂载生效）后 `./configure.sh theme on`，回退 `./configure.sh theme off`。主题只改展示，不改认证流程、注册开关、会话和退出行为。

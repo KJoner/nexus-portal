@@ -105,7 +105,7 @@ describe('identity realm template', () => {
     expect(files.filter((f) => f.endsWith('.json'))).toEqual(['accounts-realm.json']);
   });
 
-  it('U3: the account center look is versioned here — themes inherit Keycloak 26 (no copied templates), each product its own login page', () => {
+  it('U3 / UI v2: the account center look is versioned here — themes inherit Keycloak 26, only the shared frame (template.ftl) is overridden, each product its own login page', () => {
     expect(realm.loginTheme).toBe('accounts');
     expect(realm.accountTheme).toBe('accounts');
     expect(realm.emailTheme).toBe('accounts');
@@ -117,12 +117,46 @@ describe('identity realm template', () => {
     expect(parent('accounts/email')).toBe('keycloak');
     expect(parent('accounts-nexus/login')).toBe('accounts');
     expect(parent('accounts-litesync/login')).toBe('accounts');
-    // Only styles, messages and the e-mail wrapper: no page template of Keycloak's is copied.
+    // Styles, messages, the e-mail wrapper and (UI v2) the login frame: no page template (login.ftl,
+    // register.ftl, …) is copied, so forms, dynamic profile fields, errors and links stay Keycloak's.
     const ftl = (d: string): string[] => readdirSync(join(dir, 'themes', d), { recursive: true }).map(String).filter((f) => f.endsWith('.ftl'));
-    expect(ftl('accounts/login')).toEqual([]);
+    expect(ftl('accounts/login')).toEqual(['template.ftl']);
+    expect(ftl('accounts-nexus/login')).toEqual([]);
+    expect(ftl('accounts-litesync/login')).toEqual([]);
     expect(ftl('accounts/email')).toEqual([join('html', 'template.ftl')]);
     expect(compose).toContain('./themes:/opt/keycloak/themes:ro');
     expect(configure).toContain('theme)');
+  });
+
+  it('UI v2: the overridden frame is pinned to the Keycloak it was copied from and keeps every upstream part', () => {
+    const template = readFileSync(join(dir, 'themes', 'accounts', 'login', 'template.ftl'), 'utf8');
+    // Copied from keycloak.v2/login/template.ftl of 26.8.1 (sha256 below). Upgrading the image without
+    // re-checking the copy fails here: diff the new upstream file first (README「账号中心的样子」).
+    const pinned = /keycloak\.v2\/login\/template\.ftl（sha256 ([0-9a-f]{64})）/.exec(template);
+    expect(pinned?.[1]).toBe('6221a3176c73a3fd67abc97076deb9cef112378ce157735a78bd865800315b37');
+    expect(template).toContain('基于 Keycloak 26.8.1');
+    expect(compose).toContain('image: quay.io/keycloak/keycloak:26.8.1');
+    // Everything the page templates hand to the frame is still rendered, and the head scripts stay.
+    for (const part of ['<#nested "header">', '<#nested "form">', '<#nested "info">', '<#nested "socialProviders">', '<#nested "show-username">', '<@username />', 'message.summary', 'try-another-way', 'kc-switch-organization-form', 'login-select-toggle', 'passwordVisibility.js', 'startSessionPolling', 'checkAuthSession', 'data-once-link', 'displayRequiredFields', 'isAppInitiatedAction']) {
+      expect(template, part).toContain(part);
+    }
+    // The product shown and the way back come from server-side configuration only: the product
+    // sub-theme's text and the client's base URL. The shared theme names no product.
+    expect(template).toContain('msg("acProductName")');
+    expect(template).toContain('(client.baseUrl)!""');
+    const props = (t: string, f = 'messages_zh_CN.properties') => readFileSync(join(dir, 'themes', t, 'login', 'messages', f), 'utf8');
+    expect(props('accounts')).toMatch(/^acProductName=$/m);
+    expect(props('accounts-litesync')).toMatch(/^acProductName=LiteSync$/m);
+    expect(props('accounts-nexus')).toMatch(/^acProductName=Nexus$/m);
+    for (const t of ['accounts', 'accounts-litesync', 'accounts-nexus']) expect(props(t, 'messages_zh_Hans.properties'), t).toBe(props(t));
+    // Local assets only: the artwork ships with the theme (WebP derived from the design package) and is
+    // referenced from CSS for wide screens only, so phones never download it.
+    const css = readFileSync(join(dir, 'themes', 'accounts', 'login', 'resources', 'css', 'accounts.css'), 'utf8');
+    const art = readFileSync(join(dir, 'themes', 'accounts', 'login', 'resources', 'img', 'auth-art.webp'));
+    expect(art.subarray(8, 12).toString('latin1')).toBe('WEBP');
+    expect(css).toMatch(/@media \(min-width: 721px\) \{[^}]*\.ac-visual \{[^}]*url\('\.\.\/img\/auth-art\.webp'\)/);
+    // No remote resource: no external script, stylesheet, font or image (comments may cite URLs).
+    expect(`${template}\n${css}`).not.toMatch(/(src|href)=["']https?:|url\(\s*['"]?https?:|@import/);
   });
 
   it('keeps every credential out of the files', () => {

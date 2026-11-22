@@ -1,25 +1,36 @@
 /*
- * 账号中心 · 登录页（UI 焕新 U3）。只改 PatternFly 5 的变量和少量布局，不改结构：
- * 中性石灰背景、不透明的白 / 深色卡片、44 px 的表单控件、清楚的文字层级。颜色取自
- * docs ui-refresh/design/design-tokens.json；主按钮在共用页面是中性墨色，产品子主题换成产品色。
+ * 账号中心 · 登录、注册、找回、验证等页面（UI v2，v12.0.3 V1）。
+ * 版式在 template.ftl：左侧品牌与装饰图、右侧表单；这里负责尺寸、颜色，以及 Keycloak 页面里
+ * PatternFly 5 组件（表单、按钮、提示）在新版式里的样子。数值取自 docs v12.0.3 litesync-nexus-ui-v2
+ * 的 prototype/identity.css 与 design/tokens.json；产品子主题（accounts-litesync / accounts-nexus）
+ * 只改 --ac-accent 一组变量。深浅色：<html> 上有 pf-v5-theme-dark 即深色（跟随系统，或用户在页面右上角选的）。
  */
 :root {
-  --ac-bg: #f7f7f5;
+  --ac-bg: #f6f6f2;
   --ac-surface: #ffffff;
-  --ac-subtle: #efefec;
-  --ac-text: #232428;
-  --ac-text-2: #62646d;
-  --ac-border: #e3e3df;
-  --ac-accent: #232428;
+  --ac-subtle: #f0f0ec;
+  --ac-field: #fbfbf8;
+  --ac-text: #26282a;
+  --ac-muted: #64675f;
+  --ac-line: #e2e4dc;
+  --ac-line-strong: #c4c7bd;
+  --ac-accent: #6854bc;
   --ac-on-accent: #ffffff;
-  --ac-accent-hover: #3a3b40;
-  --ac-danger: #b42318;
-  --ac-danger-bg: #feeceb;
-  --ac-success: #286746;
-  --ac-success-bg: #e9f3ed;
-  --ac-warn: #8a5100;
+  --ac-accent-hover: #5a47a8;
+  --ac-accent-soft: #efebf9;
+  --ac-focus: rgba(104, 84, 188, 0.24);
+  --ac-success: #2f5e45;
+  --ac-success-bg: #edf4ed;
+  --ac-danger: #a63a32;
+  --ac-danger-bg: #fff0ed;
+  --ac-warn: #7a4a00;
   --ac-warn-bg: #fff4db;
-  --ac-font: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --ac-shadow: 0 18px 70px rgba(41, 45, 33, 0.065), 0 1px 4px rgba(41, 45, 33, 0.025);
+  --ac-font: system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif;
+  /* The decorative panel keeps its paper colours in both themes (the artwork is light). */
+  --ac-visual-bg: #e4e9df;
+  --ac-visual-text: #263931;
+  --ac-visual-muted: #55624f;
 
   --keycloak-card-top-color: transparent;
   --pf-v5-global--FontFamily--text: var(--ac-font);
@@ -27,129 +38,516 @@
   --pf-v5-global--BackgroundColor--100: var(--ac-surface);
   --pf-v5-global--BackgroundColor--200: var(--ac-subtle);
   --pf-v5-global--Color--100: var(--ac-text);
-  --pf-v5-global--Color--200: var(--ac-text-2);
-  --pf-v5-global--BorderColor--100: var(--ac-border);
+  --pf-v5-global--Color--200: var(--ac-muted);
+  --pf-v5-global--BorderColor--100: var(--ac-line);
   --pf-v5-global--primary-color--100: var(--ac-accent);
   --pf-v5-global--primary-color--200: var(--ac-accent-hover);
-  --pf-v5-global--link--Color: var(--ac-text);
-  --pf-v5-global--link--Color--hover: var(--ac-text);
+  --pf-v5-global--link--Color: var(--ac-accent);
+  --pf-v5-global--link--Color--hover: var(--ac-accent-hover);
   --pf-v5-global--danger-color--100: var(--ac-danger);
   --pf-v5-global--success-color--100: var(--ac-success);
   --pf-v5-global--warning-color--100: var(--ac-warn);
+  color-scheme: light;
 }
 
 html.pf-v5-theme-dark {
   --ac-bg: #17181b;
   --ac-surface: #202126;
   --ac-subtle: #28292f;
+  --ac-field: #24252b;
   --ac-text: #efeff2;
-  --ac-text-2: #b3b4bd;
-  --ac-border: #35363e;
-  --ac-accent: #efeff2;
-  --ac-on-accent: #17181b;
-  --ac-accent-hover: #d6d6dc;
-  --ac-danger: #f4a49d;
-  --ac-danger-bg: #3b2528;
-  --ac-success: #94cfab;
-  --ac-success-bg: #203429;
+  --ac-muted: #b2b5ba;
+  --ac-line: #383940;
+  --ac-line-strong: #55565f;
+  --ac-accent: #b4a1f3;
+  --ac-on-accent: #211c32;
+  --ac-accent-hover: #c3b4f6;
+  --ac-accent-soft: #312d41;
+  --ac-focus: rgba(180, 161, 243, 0.3);
+  --ac-success: #a1d2b2;
+  --ac-success-bg: #25382d;
+  --ac-danger: #f2aaa0;
+  --ac-danger-bg: #3a2829;
   --ac-warn: #e8c17d;
   --ac-warn-bg: #392f20;
+  --ac-shadow: 0 18px 70px rgba(0, 0, 0, 0.2);
 
   --pf-v5-global--BackgroundColor--100: var(--ac-surface);
   --pf-v5-global--BackgroundColor--200: var(--ac-subtle);
   --pf-v5-global--Color--100: var(--ac-text);
-  --pf-v5-global--Color--200: var(--ac-text-2);
-  --pf-v5-global--BorderColor--100: var(--ac-border);
+  --pf-v5-global--Color--200: var(--ac-muted);
+  --pf-v5-global--BorderColor--100: var(--ac-line);
   --pf-v5-global--primary-color--100: var(--ac-accent);
   --pf-v5-global--primary-color--200: var(--ac-accent-hover);
-  --pf-v5-global--link--Color: var(--ac-text);
-  --pf-v5-global--link--Color--hover: var(--ac-text);
+  --pf-v5-global--link--Color: var(--ac-accent);
+  --pf-v5-global--link--Color--hover: var(--ac-accent-hover);
   --pf-v5-global--danger-color--100: var(--ac-danger);
+  color-scheme: dark;
 }
 
-/* The page: a quiet, opaque background (no Keycloak artwork). */
+/* ---------- Page and card ---------- */
 .login-pf body,
-html.pf-v5-theme-dark.login-pf body {
+.login-pf body.ac-body {
+  margin: 0;
   background: var(--ac-bg);
+  background-image: none;
   color: var(--ac-text);
-  font-family: var(--ac-font);
+  font: 14px/1.6 var(--ac-font);
+  -webkit-font-smoothing: antialiased;
 }
-
-.pf-v5-c-login__container {
-  grid-template-columns: minmax(0, 26rem);
-  padding-inline: 16px;
+:where(.ac-body) h1,
+:where(.ac-body) p {
+  margin: 0;
 }
-
-/* 账号中心 · <产品>: the header says whose sign-in this is. */
-#kc-header {
+.ac-icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.65;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ac-stage {
+  min-height: 100vh;
+  min-height: 100dvh;
+  box-sizing: border-box;
+  padding: 48px 28px 26px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
 }
-#kc-header-wrapper,
-.login-pf #kc-header #kc-header-wrapper,
-.pf-v5-c-login__header .pf-v5-c-brand {
-  color: var(--ac-text) !important;
-  font-size: 17px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: none;
-}
-
-.pf-v5-c-login__main {
+.ac-card {
+  width: min(1180px, 100%);
+  min-height: 680px;
+  display: grid;
+  grid-template-columns: 52% 48%;
+  border: 1px solid var(--ac-line);
+  border-radius: 20px;
+  overflow: hidden;
   background: var(--ac-surface);
-  border: 1px solid var(--ac-border);
-  border-radius: 16px;
-  box-shadow: 0 1px 2px rgba(17, 17, 20, 0.04), 0 12px 32px rgba(17, 17, 20, 0.06);
+  box-shadow: var(--ac-shadow);
 }
-.pf-v5-c-login__main-header {
-  border-top: 0;
-  padding-top: 32px;
-}
-#kc-page-title {
-  font-size: 22px;
-  font-weight: 600;
-  line-height: 1.4;
-}
-/* The language switch keeps its whole name next to the title. */
-.pf-v5-c-login__main-header {
-  grid-template-columns: minmax(0, 1fr) auto;
-  column-gap: 12px;
-}
-.pf-v5-c-login__main-header-utilities select,
-.pf-v5-c-login__main-header-utilities .pf-v5-c-menu-toggle,
-#kc-locale-dropdown select,
-#login-select-toggle {
-  min-width: 8.5em;
-  border-radius: 8px;
+.ac-body[data-page-id='login-register'] .ac-card {
+  min-height: 760px;
 }
 
-/* Labels always visible above the fields; 44 px controls; 16 px text on phones (no zoom on focus). */
-.pf-v5-c-form__label-text {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--ac-text);
+/* ---------- Left: brand and artwork (decorative; the text is real HTML) ---------- */
+.ac-visual {
+  position: relative;
+  isolation: isolate;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 42px 46px 36px;
+  background-color: var(--ac-visual-bg);
+  color: var(--ac-visual-text);
 }
-.pf-v5-c-form-control {
-  --pf-v5-c-form-control--BorderRadius: 8px;
-  border-radius: 8px;
-  min-height: 44px;
-}
-.pf-v5-c-form-control > input,
-.pf-v5-c-form-control > select {
-  font-size: 15px;
-}
-@media (max-width: 600px) {
-  .pf-v5-c-form-control > input,
-  .pf-v5-c-form-control > select {
-    font-size: 16px;
+@media (min-width: 721px) {
+  /* Phones never download the artwork: the image is only referenced at this width. */
+  .ac-visual {
+    background-image: linear-gradient(180deg, rgba(232, 236, 225, 0.94) 0%, rgba(232, 236, 225, 0.78) 22%, rgba(232, 236, 225, 0.1) 58%, rgba(222, 229, 212, 0.42) 100%),
+      url('../img/auth-art.webp');
+    background-size: cover, cover;
+    background-position: center, center 62%;
+    background-repeat: no-repeat;
   }
 }
-.pf-v5-c-input-group .pf-v5-c-button.pf-m-control {
-  min-height: 44px;
-  border-radius: 0 8px 8px 0;
+.ac-brand-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.2px;
+  color: #35453c;
+}
+.ac-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.ac-brand-mark {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.65;
+  stroke-linejoin: round;
+}
+.ac-brand-separator {
+  width: 1px;
+  height: 17px;
+  background: rgba(45, 61, 48, 0.22);
+}
+.ac-nexus-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #9f783c;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.5);
+}
+.ac-visual-copy {
+  padding-top: 52px;
+}
+.ac-visual-eyebrow {
+  font-size: 11px;
+  letter-spacing: 2.3px;
+  color: var(--ac-visual-muted);
+  margin-bottom: 18px;
+}
+.ac-visual-title {
+  font-size: 40px;
+  line-height: 1.4;
+  letter-spacing: -1.4px;
+  font-weight: 600;
+}
+.ac-visual-text {
+  max-width: 330px;
+  margin-top: 20px;
+  font-size: 14px;
+  line-height: 1.9;
+  color: var(--ac-visual-muted);
+}
+.ac-visual-foot {
+  margin-top: auto;
+  padding-top: 48px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  letter-spacing: 0.3px;
+  color: #45523f;
 }
 
-/* One primary action per page. */
-.pf-v5-c-button.pf-m-primary {
+/* ---------- Right: the real form ---------- */
+.ac-form-side {
+  position: relative;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 36px 48px 28px;
+  background: var(--ac-surface);
+}
+.ac-utility-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  min-height: 32px;
+  color: var(--ac-muted);
+  font-size: 12px;
+}
+/* The language list: Keycloak's own select, made quiet. */
+.ac-locale.pf-v5-c-login__main-header-utilities {
+  margin: 0;
+}
+.ac-locale .pf-v5-c-form-control {
+  --pf-v5-c-form-control--BackgroundColor: transparent;
+  --pf-v5-c-form-control--before--BorderTopColor: transparent;
+  --pf-v5-c-form-control--before--BorderRightColor: transparent;
+  --pf-v5-c-form-control--before--BorderLeftColor: transparent;
+  --pf-v5-c-form-control--after--BorderBottomColor: transparent;
+  --pf-v5-c-form-control--hover--after--BorderBottomColor: transparent;
+  --pf-v5-c-form-control--focus--after--BorderBottomColor: transparent;
+  --pf-v5-c-form-control--Color: var(--ac-muted);
+  --pf-v5-c-form-control__toggle-icon--Color: var(--ac-muted);
+  --pf-v5-c-form-control__select--PaddingLeft: 6px;
+  min-height: 32px;
+  font-size: 12px;
+}
+.ac-locale select {
+  font-size: 12px;
+  color: var(--ac-muted);
+  cursor: pointer;
+  border-radius: 6px;
+}
+.ac-locale select:focus-visible {
+  outline: 2px solid var(--ac-accent);
+  outline-offset: 2px;
+}
+.ac-theme-toggle {
+  width: 32px;
+  height: 32px;
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ac-muted);
+  cursor: pointer;
+}
+.ac-theme-toggle:hover {
+  background: var(--ac-subtle);
+  color: var(--ac-text);
+}
+.ac-theme-toggle:focus-visible {
+  outline: 2px solid var(--ac-accent);
+  outline-offset: 2px;
+}
+.ac-theme-toggle .ac-icon-sun,
+html.pf-v5-theme-dark .ac-theme-toggle .ac-icon-moon {
+  display: none;
+}
+html.pf-v5-theme-dark .ac-theme-toggle .ac-icon-sun {
+  display: block;
+}
+
+.ac-form-wrap {
+  width: min(360px, 100%);
+  margin: auto;
+  padding: 36px 0 24px;
+}
+.ac-orb {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 24px;
+  border-radius: 17px;
+  border: 1px solid color-mix(in srgb, var(--ac-accent) 18%, var(--ac-line));
+  background: var(--ac-accent-soft);
+  color: var(--ac-accent);
+}
+.ac-orb .ac-icon {
+  width: 25px;
+  height: 25px;
+}
+.ac-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  color: var(--ac-muted);
+}
+.ac-title,
+.login-pf .ac-title {
+  margin-top: 10px;
+  font-size: 32px;
+  line-height: 1.35;
+  letter-spacing: -1px;
+  font-weight: 650;
+  color: var(--ac-text);
+  overflow-wrap: anywhere;
+}
+.ac-lead {
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--ac-muted);
+}
+.ac-return-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 16px 0 0;
+  padding: 5px 10px;
+  border-radius: 6px;
+  background: var(--ac-subtle);
+  color: var(--ac-muted);
+  font-size: 12px;
+}
+.ac-chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ac-accent);
+}
+.ac-return-chip .ac-icon {
+  width: 12px;
+  height: 12px;
+}
+.ac-form-body {
+  margin-top: 28px;
+}
+
+/* Required-field note (register / update profile): small and quiet. */
+.ac-form-body > .subtitle,
+.ac-form-body .subtitle {
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: var(--ac-muted);
+}
+.ac-form-body .pf-v5-c-form__label-required {
+  color: var(--ac-danger);
+}
+
+/* ---------- PatternFly 5 form inside the new layout ---------- */
+.ac-form-wrap .pf-v5-c-form {
+  --pf-v5-c-form--GridGap: 18px;
+  gap: 18px;
+}
+.ac-form-wrap .pf-v5-c-form__group-label {
+  padding-bottom: 8px;
+}
+.ac-form-wrap .pf-v5-c-form__label-text,
+.ac-form-wrap .pf-v5-c-form__label {
+  font-size: 14px;
+  font-weight: 550;
+  color: var(--ac-text);
+}
+/* One field look: a 46 px box with a 1 px line, the accent ring on focus, the danger line on error. */
+.ac-form-wrap .pf-v5-c-form-control {
+  --pf-v5-c-form-control--BackgroundColor: var(--ac-field);
+  --pf-v5-c-form-control--Color: var(--ac-text);
+  --pf-v5-c-form-control--FontSize: 14px;
+  --pf-v5-c-form-control--inset--base: 13px;
+  --pf-v5-c-form-control--PaddingTop: 11px;
+  --pf-v5-c-form-control--PaddingBottom: 11px;
+  --pf-v5-c-form-control--m-readonly--BackgroundColor: var(--ac-subtle);
+  min-height: 46px;
+  border: 1px solid var(--ac-line);
+  border-radius: 8px;
+  box-sizing: border-box;
+}
+.ac-form-wrap .pf-v5-c-form-control::before,
+.ac-form-wrap .pf-v5-c-form-control::after {
+  border: 0 !important;
+}
+.ac-form-wrap .pf-v5-c-form-control:hover {
+  border-color: var(--ac-line-strong);
+}
+.ac-form-wrap .pf-v5-c-form-control:focus-within {
+  border-color: var(--ac-accent);
+  box-shadow: 0 0 0 3px var(--ac-focus);
+}
+.ac-form-wrap .pf-v5-c-form-control > input,
+.ac-form-wrap .pf-v5-c-form-control > select,
+.ac-form-wrap .pf-v5-c-form-control > textarea {
+  font-size: 14px;
+  outline: none;
+}
+.ac-form-wrap .pf-v5-c-form-control > input::placeholder {
+  color: color-mix(in srgb, var(--ac-muted) 80%, transparent);
+}
+.ac-form-wrap .pf-v5-c-form-control.pf-m-error,
+.ac-form-wrap .pf-v5-c-form-control:has(> input[aria-invalid='true']) {
+  border-color: var(--ac-danger);
+}
+.ac-form-wrap .pf-v5-c-form-control.pf-m-readonly {
+  background: var(--ac-subtle);
+}
+/* Password and attempted-username rows: the field and its button form one box (DOM order kept). */
+.ac-form-wrap .pf-v5-c-input-group {
+  position: relative;
+  border: 1px solid var(--ac-line);
+  border-radius: 8px;
+  background: var(--ac-field);
+}
+.ac-form-wrap .pf-v5-c-input-group:hover {
+  border-color: var(--ac-line-strong);
+}
+.ac-form-wrap .pf-v5-c-input-group:focus-within {
+  border-color: var(--ac-accent);
+  box-shadow: 0 0 0 3px var(--ac-focus);
+}
+.ac-form-wrap .pf-v5-c-input-group:has(.pf-m-error),
+.ac-form-wrap .pf-v5-c-input-group:has(input[aria-invalid='true']) {
+  border-color: var(--ac-danger);
+}
+.ac-form-wrap .pf-v5-c-input-group__item {
+  border: 0;
+}
+.ac-form-wrap .pf-v5-c-input-group .pf-v5-c-form-control,
+.ac-form-wrap .pf-v5-c-input-group .pf-v5-c-form-control:focus-within {
+  border: 0;
+  box-shadow: none;
+  min-height: 44px;
+  background: transparent;
+}
+.ac-form-wrap .pf-v5-c-input-group .pf-v5-c-button.pf-m-control {
+  --pf-v5-c-button--m-control--BackgroundColor: transparent;
+  --pf-v5-c-button--m-control--hover--BackgroundColor: var(--ac-subtle);
+  --pf-v5-c-button--m-control--focus--BackgroundColor: var(--ac-subtle);
+  --pf-v5-c-button--m-control--Color: var(--ac-muted);
+  --pf-v5-c-button--m-control--hover--Color: var(--ac-text);
+  --pf-v5-c-button--m-control--after--BorderColor: transparent;
+  --pf-v5-c-button--m-control--hover--after--BorderBottomColor: transparent;
+  --pf-v5-c-button--m-control--focus--after--BorderBottomColor: transparent;
+  --pf-v5-c-button--m-control--active--after--BorderBottomColor: transparent;
+  width: 44px;
+  min-height: 44px;
+  margin: 0;
+  border-radius: 0 7px 7px 0;
+}
+.ac-form-wrap .pf-v5-c-input-group .pf-v5-c-button.pf-m-control::after {
+  border: 0;
+}
+.ac-form-wrap .pf-v5-c-input-group .pf-v5-c-button.pf-m-control:focus-visible {
+  outline: 2px solid var(--ac-accent);
+  outline-offset: -3px;
+}
+
+/* Helper and error text under a field; the forgot-password link sits right under the password. */
+.ac-form-wrap .pf-v5-c-form__helper-text {
+  margin-top: 6px;
+}
+.ac-form-wrap .pf-v5-c-helper-text {
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--ac-muted);
+}
+/* 「忘记密码？」单独一项时靠右，紧贴密码框（有「记住我」时保持两端对齐）；错误文字仍靠左。 */
+.ac-form-wrap .pf-v5-c-helper-text.pf-v5-u-justify-content-space-between:has(a):not(:has(.pf-v5-c-check)) {
+  justify-content: flex-end !important;
+}
+.ac-form-wrap .pf-v5-c-helper-text__item.pf-m-error,
+.ac-form-wrap .kc-feedback-text,
+.ac-form-wrap .pf-v5-c-helper-text__item-text.pf-m-error {
+  color: var(--ac-danger);
+}
+.ac-form-wrap [id^='form-help-text-'] {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--ac-muted);
+}
+
+/* Links: accent and underlined (not colour alone), comfortable to tap. */
+.ac-form-wrap a,
+.ac-form-wrap a:visited {
+  color: var(--ac-accent);
+  font-weight: 550;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in srgb, var(--ac-accent) 45%, transparent);
+  text-underline-offset: 3px;
+}
+.ac-form-wrap a:hover {
+  color: var(--ac-accent-hover);
+  text-decoration-color: currentColor;
+}
+.ac-form-wrap a:focus-visible,
+.ac-form-bottom a:focus-visible {
+  outline: 2px solid var(--ac-accent);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+.ac-form-wrap .pf-v5-c-helper-text a {
+  font-size: 12px;
+}
+
+/* Buttons: one primary action per page. */
+.ac-form-wrap .pf-v5-c-form__actions {
+  margin-top: 4px;
+  gap: 10px;
+}
+.ac-form-wrap .pf-v5-c-button {
+  --pf-v5-c-button--BorderRadius: 8px;
+  min-height: 46px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 8px;
+}
+/* Link-buttons (「返回登录」 on the reset page): centre the text like a real button. */
+.ac-form-wrap a.pf-v5-c-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.ac-form-wrap .pf-v5-c-button.pf-m-primary,
+.ac-form-wrap input.pf-v5-c-button.pf-m-primary {
   --pf-v5-c-button--m-primary--BackgroundColor: var(--ac-accent);
   --pf-v5-c-button--m-primary--hover--BackgroundColor: var(--ac-accent-hover);
   --pf-v5-c-button--m-primary--focus--BackgroundColor: var(--ac-accent-hover);
@@ -158,73 +556,337 @@ html.pf-v5-theme-dark.login-pf body {
   --pf-v5-c-button--m-primary--hover--Color: var(--ac-on-accent);
   --pf-v5-c-button--m-primary--focus--Color: var(--ac-on-accent);
   --pf-v5-c-button--m-primary--active--Color: var(--ac-on-accent);
-  border-radius: 8px;
-  min-height: 44px;
-  font-weight: 600;
-  font-size: 15px;
+  background-color: var(--ac-accent);
+  color: var(--ac-on-accent);
+  border: 1px solid var(--ac-accent);
 }
-.pf-v5-c-button:focus-visible {
+.ac-form-wrap .pf-v5-c-button.pf-m-primary:hover {
+  background-color: var(--ac-accent-hover);
+}
+.ac-form-wrap .pf-v5-c-button.pf-m-primary:disabled,
+.ac-form-wrap .pf-v5-c-button.pf-m-primary[disabled] {
+  opacity: 0.7;
+  cursor: wait;
+}
+.ac-form-wrap .pf-v5-c-button.pf-m-secondary,
+.ac-form-wrap a.pf-v5-c-button.pf-m-secondary {
+  --pf-v5-c-button--m-secondary--Color: var(--ac-text);
+  --pf-v5-c-button--m-secondary--hover--Color: var(--ac-text);
+  --pf-v5-c-button--m-secondary--BackgroundColor: var(--ac-surface);
+  --pf-v5-c-button--m-secondary--hover--BackgroundColor: var(--ac-subtle);
+  --pf-v5-c-button--m-secondary--after--BorderColor: var(--ac-line);
+  --pf-v5-c-button--m-secondary--hover--after--BorderColor: var(--ac-line-strong);
+  color: var(--ac-text);
+  font-weight: 550;
+  text-decoration: none;
+}
+.ac-form-wrap .pf-v5-c-button.pf-m-link {
+  --pf-v5-c-button--m-link--Color: var(--ac-accent);
+  --pf-v5-c-button--m-link--hover--Color: var(--ac-accent-hover);
+}
+.ac-form-wrap .pf-v5-c-button:focus-visible {
   outline: 2px solid var(--ac-accent);
-  outline-offset: 2px;
+  outline-offset: 3px;
 }
-/* One focus ring on fields: PatternFly's bottom border, in the accent colour. */
-.pf-v5-c-form-control {
-  --pf-v5-c-form-control--focus--after--BorderBottomColor: var(--ac-accent);
-  --pf-v5-c-form-control--hover--after--BorderBottomColor: var(--ac-accent);
+.ac-form-wrap .pf-v5-c-check__input {
+  accent-color: var(--ac-accent);
 }
-.pf-v5-c-form-control > input:focus,
-.pf-v5-c-form-control > input:focus-visible {
-  outline: none;
+.ac-form-wrap .pf-v5-c-check__label {
+  font-size: 13px;
+  color: var(--ac-muted);
 }
 
-/* Links: text colour, underlined — readable on both themes, not a second accent. */
-#kc-form a,
-.pf-v5-c-login__main-footer-band a,
-#kc-info a,
-.kc-login-tooltip a,
-#kc-form-options a,
-.pf-v5-c-login__main-body a {
+/* Messages keep their words and get paired colours (the icon stays: not colour alone). */
+.ac-form-wrap .pf-v5-c-alert {
+  --pf-v5-c-alert--BoxShadow: none;
+  --pf-v5-c-alert--PaddingTop: 11px;
+  --pf-v5-c-alert--PaddingRight: 12px;
+  --pf-v5-c-alert--PaddingBottom: 11px;
+  --pf-v5-c-alert--PaddingLeft: 12px;
+  margin-bottom: 18px;
+  border-radius: 8px;
+  border: 1px solid var(--ac-line);
+  background: var(--ac-subtle);
+  color: var(--ac-text);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.ac-form-wrap .pf-v5-c-alert::before {
+  display: none;
+}
+.ac-form-wrap .pf-v5-c-alert .pf-v5-c-alert__title {
+  font-size: 13px;
+  font-weight: 500;
+  color: inherit;
+}
+.ac-form-wrap .pf-v5-c-alert.pf-m-danger,
+.ac-form-wrap .pf-v5-c-alert.pf-m-error {
+  background: var(--ac-danger-bg);
+  border-color: color-mix(in srgb, var(--ac-danger) 22%, transparent);
+  color: var(--ac-danger);
+}
+.ac-form-wrap .pf-v5-c-alert.pf-m-success {
+  background: var(--ac-success-bg);
+  border-color: color-mix(in srgb, var(--ac-success) 22%, transparent);
+  color: var(--ac-success);
+}
+.ac-form-wrap .pf-v5-c-alert.pf-m-warning {
+  background: var(--ac-warn-bg);
+  border-color: color-mix(in srgb, var(--ac-warn) 22%, transparent);
+  color: var(--ac-warn);
+}
+.ac-form-wrap .pf-v5-c-alert .pf-v5-c-alert__icon {
+  color: inherit;
+}
+
+/* Register: 用户名与昵称同一行（桌面），其余整行；视觉顺序与 DOM / Tab 顺序一致。 */
+@media (min-width: 721px) {
+  .ac-form-wrap #kc-register-form {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: 14px;
+  }
+  .ac-form-wrap #kc-register-form > * {
+    grid-column: 1 / -1;
+  }
+  .ac-form-wrap #kc-register-form > .pf-v5-c-form__group:has(#username),
+  .ac-form-wrap #kc-register-form > .pf-v5-c-form__group:has(#nickname) {
+    grid-column: auto;
+  }
+}
+/* Forgot password: Keycloak's instruction is shown as the lead under the title (template.ftl). */
+.ac-body[data-page-id='login-login-reset-password'] #kc-info {
+  display: none;
+}
+
+/* Text pages (verify e-mail, info, error, expired, sign out). */
+.ac-form-wrap .instruction,
+.ac-form-wrap #kc-info-message p,
+.ac-form-wrap #kc-error-message p {
+  margin: 0 0 12px;
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--ac-text);
+  overflow-wrap: anywhere;
+}
+
+/* What comes after the form: "还没有账号？创建账号", the reset instructions, social providers. */
+.ac-after-form {
+  margin-top: 20px;
+}
+.ac-info {
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--ac-muted);
+}
+.ac-body[data-page-id='login-login'] .ac-info {
+  text-align: center;
+}
+.ac-form-wrap .pf-v5-c-login__main-footer-band,
+.ac-form-wrap #kc-form-options {
+  border: 0;
+  padding: 0;
+  margin: 4px 0 0;
+  background: transparent;
+  font-size: 13px;
+  color: var(--ac-muted);
+  text-align: center;
+}
+.ac-form-wrap .pf-v5-c-login__main-footer-band-item {
+  padding: 0;
+}
+
+/* The account password is not the vault password: one quiet sentence. */
+.ac-privacy-note {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--ac-line);
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--ac-muted);
+}
+.ac-privacy-note .ac-icon {
+  width: 14px;
+  height: 14px;
+  margin-top: 3px;
+}
+.ac-footer-slot:empty {
+  display: none;
+}
+
+.ac-form-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding-top: 16px;
+  font-size: 12px;
+  color: var(--ac-muted);
+}
+.ac-back-product,
+.ac-back-product:visited {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  color: var(--ac-muted);
+  text-decoration: none;
+}
+.ac-back-product:hover {
   color: var(--ac-text);
   text-decoration: underline;
   text-underline-offset: 3px;
-  font-weight: 500;
+}
+.ac-stage-footer {
+  margin-top: 22px;
+  font-size: 11px;
+  letter-spacing: 0.2px;
+  color: var(--ac-muted);
+  text-align: center;
 }
 
-/* Messages keep their words and get the paired colours (not colour alone: the icon stays). */
-.pf-v5-c-alert.pf-m-danger,
-.pf-v5-c-alert.pf-m-error {
-  background: var(--ac-danger-bg);
-  color: var(--ac-danger);
-}
-.pf-v5-c-alert.pf-m-success {
-  background: var(--ac-success-bg);
-  color: var(--ac-success);
-}
-.pf-v5-c-alert.pf-m-warning {
-  background: var(--ac-warn-bg);
-  color: var(--ac-warn);
-}
-.pf-v5-c-helper-text__item.pf-m-error,
-.kc-feedback-text {
-  color: var(--ac-danger);
+/* Keycloak's own login layout classes are not used for the frame any more. */
+.ac-body .pf-v5-c-login__main-footer {
+  margin: 0;
+  padding: 0;
 }
 
-/* The info band under the form (一个账号可用于… / 创建账号). */
-.pf-v5-c-login__main-footer-band {
-  color: var(--ac-text-2);
-  font-size: 14px;
-  line-height: 1.6;
-}
-
-/* Phones: the card is the page. */
-@media (max-width: 600px) {
-  .pf-v5-c-login__container {
-    padding-inline: 0;
+/* ---------- Sizes ---------- */
+@media (min-width: 1450px) {
+  .ac-stage {
+    padding-top: 62px;
+    padding-bottom: 36px;
   }
-  .pf-v5-c-login__main {
-    border-radius: 0;
-    border-inline: 0;
-    box-shadow: none;
+  .ac-card {
+    min-height: 720px;
+  }
+}
+@media (max-width: 1000px) {
+  .ac-stage {
+    padding: 28px 20px 22px;
+  }
+  .ac-card {
+    grid-template-columns: 44% 56%;
+    min-height: 660px;
+  }
+  .ac-visual {
+    padding: 32px;
+  }
+  .ac-visual-copy {
+    padding-top: 44px;
+  }
+  .ac-visual-title {
+    font-size: 32px;
+  }
+  .ac-visual-text {
+    font-size: 13px;
+  }
+  .ac-form-side {
+    padding: 28px 32px 24px;
+  }
+  .ac-brand-row {
+    gap: 14px;
+    font-size: 14px;
+  }
+}
+/* Phones: the artwork folds into a short brand bar; the form comes first and stays readable. */
+@media (max-width: 720px) {
+  .ac-stage {
+    padding: 16px 16px 20px;
+    justify-content: flex-start;
+  }
+  .ac-card {
+    display: block;
+    min-height: 0;
+    max-width: 480px;
+    border-radius: 16px;
+  }
+  .ac-body[data-page-id='login-register'] .ac-card {
+    min-height: 0;
+  }
+  .ac-visual {
+    padding: 20px 22px;
+    background-color: var(--ac-visual-bg);
+  }
+  .ac-brand-row {
+    gap: 16px;
+    font-size: 14px;
+  }
+  .ac-visual-copy {
+    padding-top: 10px;
+  }
+  .ac-visual-eyebrow,
+  .ac-visual-text,
+  .ac-visual-foot {
+    display: none;
+  }
+  .ac-visual-title {
+    font-size: 15px;
+    line-height: 1.5;
+    letter-spacing: 0;
+    font-weight: 500;
+  }
+  .ac-visual-title br {
+    display: none;
+  }
+  .ac-form-side {
+    padding: 14px 20px 20px;
+  }
+  .ac-utility-row {
+    min-height: 44px;
+  }
+  .ac-theme-toggle {
+    width: 44px;
+    height: 44px;
+  }
+  .ac-locale .pf-v5-c-form-control {
+    min-height: 44px;
+  }
+  .ac-form-wrap {
+    width: 100%;
+    padding: 12px 0 10px;
+  }
+  .ac-title,
+  .login-pf .ac-title {
+    font-size: 28px;
+  }
+  .ac-form-body {
+    margin-top: 24px;
+  }
+  /* 16 px text in fields: no zoom on focus (iOS). */
+  .ac-form-wrap .pf-v5-c-form-control > input,
+  .ac-form-wrap .pf-v5-c-form-control > select,
+  .ac-form-wrap .pf-v5-c-form-control > textarea {
+    font-size: 16px;
+  }
+  .ac-form-wrap .pf-v5-c-form-control {
+    min-height: 48px;
+  }
+  .ac-form-wrap .pf-v5-c-input-group .pf-v5-c-form-control,
+  .ac-form-wrap .pf-v5-c-input-group .pf-v5-c-button.pf-m-control {
+    min-height: 46px;
+  }
+  .ac-form-wrap .pf-v5-c-button {
+    min-height: 48px;
+  }
+  .ac-form-wrap .pf-v5-c-helper-text a,
+  .ac-info a,
+  .ac-form-wrap #kc-form-options a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+  }
+  .ac-form-bottom {
+    flex-wrap: wrap;
+    gap: 8px 16px;
+  }
+  .ac-back-product {
+    min-height: 44px;
+  }
+  .ac-stage-footer {
+    margin-top: 16px;
   }
 }
 
@@ -233,18 +895,4 @@ html.pf-v5-theme-dark.login-pf body {
     transition: none !important;
     animation: none !important;
   }
-}
-
-/* Secondary and link buttons: ink text, quiet border — one accent per page. */
-.pf-v5-c-button.pf-m-secondary {
-  --pf-v5-c-button--m-secondary--Color: var(--ac-text);
-  --pf-v5-c-button--m-secondary--hover--Color: var(--ac-text);
-  --pf-v5-c-button--m-secondary--BorderColor: var(--ac-border);
-  --pf-v5-c-button--m-secondary--hover--BorderColor: var(--ac-text-2);
-  --pf-v5-c-button--m-secondary--BackgroundColor: transparent;
-  --pf-v5-c-button--after--BorderColor: var(--ac-border);
-}
-.pf-v5-c-button.pf-m-link {
-  --pf-v5-c-button--m-link--Color: var(--ac-text);
-  --pf-v5-c-button--m-link--hover--Color: var(--ac-text);
 }

@@ -1,11 +1,15 @@
-/* LiteSync：紫（design-tokens.json litesyncAccent，浅色对比 5.86:1，深色 7.31:1）。 */
+/* LiteSync：紫（v12.0.3 design/tokens.json litesync accent；白底对比 5.9:1，深色卡片底 7.1:1）。 */
 :root {
   --ac-accent: #6854bc;
   --ac-on-accent: #ffffff;
   --ac-accent-hover: #5a47a8;
+  --ac-accent-soft: #efebf9;
+  --ac-focus: rgba(104, 84, 188, 0.24);
 }
 html.pf-v5-theme-dark {
   --ac-accent: #b4a1f3;
   --ac-on-accent: #211c32;
   --ac-accent-hover: #c3b4f6;
+  --ac-accent-soft: #312d41;
+  --ac-focus: rgba(180, 161, 243, 0.3);
 }

@@ -1,11 +1,15 @@
-/* Nexus：琥珀（design-tokens.json nexusAccent，浅色对比 5.89:1，深色 9.05:1）。 */
+/* Nexus：琥珀（v12.0.3 design/tokens.json nexus accent；白底对比 5.1:1，深色卡片底 9.3:1）。 */
 :root {
-  --ac-accent: #8e581d;
+  --ac-accent: #986321;
   --ac-on-accent: #ffffff;
-  --ac-accent-hover: #7a4b18;
+  --ac-accent-hover: #84551b;
+  --ac-accent-soft: #f7efdf;
+  --ac-focus: rgba(152, 99, 33, 0.24);
 }
 html.pf-v5-theme-dark {
-  --ac-accent: #e6c08a;
+  --ac-accent: #e4bf84;
   --ac-on-accent: #2b2318;
-  --ac-accent-hover: #edcd9f;
+  --ac-accent-hover: #ecd0a3;
+  --ac-accent-soft: #383124;
+  --ac-focus: rgba(228, 191, 132, 0.3);
 }
