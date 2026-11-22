@@ -79,6 +79,23 @@ test('L01/L03/L05/L06: first visit is a usable home; saves stay in this browser,
   expect(priv).toEqual([]);
 });
 
+test('L08: a saved page that is not on the home page is found by the home search and by 快速打开', async ({ page }) => {
+  await addPage(page, '没有固定的参考文档', 'https://docs.example.org/reference/unpinned');
+  await page.goto('/');
+  await expect(page.locator('[data-dock]')).toHaveCount(0);
+  const search = page.getByRole('combobox', { name: '搜索' });
+  await search.fill('参考文档');
+  await expect(page.getByRole('listbox', { name: '搜索结果' }).getByRole('option').filter({ hasText: '没有固定的参考文档' })).toBeVisible();
+  await shot(page, 'u2-search-unpinned');
+  await search.fill('');
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: '快速打开' }).first().click();
+  const panel = page.getByRole('dialog', { name: '快速打开' });
+  await page.getByLabel('筛选收藏').fill('参考');
+  await expect(panel.getByRole('link', { name: /没有固定的参考文档/ })).toBeVisible();
+  await shot(page, 'u2-quick-open');
+});
+
 test('L10: signing in cancelled — back where the person was, the collection untouched', async ({ page }) => {
   await addPage(page, '取消前保存的', 'https://kept.example.org/');
   await page.goto('/');

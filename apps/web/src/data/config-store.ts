@@ -261,7 +261,7 @@ function accept(res: ConfigResponse, pending = useConfigStore.getState().pending
   const { wallpapers, ...snap } = res;
   const r = rebase(snap.config, pending);
   r.dropped.forEach((e) => notifyRejected(`一项更改未能同步：${e.message}`));
-  r.conflicts.forEach((h) => notifyRejected(`${h.message}。这项更改已保留在本机，可在「设置 › 数据、同步与安全」处理`));
+  r.conflicts.forEach((h) => notifyRejected(`${h.message}。这项更改已保留在本机，可在「设置 › 账号与同步」处理`));
   useConfigStore.setState({ confirmed: snap, snapshot: { ...snap, config: r.config }, pending: r.pending, wallpapers, online: true, ...(s.space === 'account' ? { auth: 'authenticated' as const } : {}), ready: true, fallback: false, lastSavedAt: Date.parse(snap.updatedAt), ...(r.conflicts.length ? { held: [...s.held, ...r.conflicts].slice(-40) } : {}) });
   persist();
 }
@@ -319,7 +319,7 @@ async function sendPending() {
         const conflict = e.status === 409 && CONFLICT_HTTP.includes(e.code);
         // Over a limit: kept on this device as a draft, never lost. Anything else the server refuses
         // (validation) is dropped; the rest of the queue continues.
-        notifyRejected(quota ? `${e.message}。这项更改已保留在本机，腾出空间后可在「设置 › 数据、同步与安全」重试` : conflict ? `${e.message}。这项更改已保留在本机，可在「设置 › 数据、同步与安全」处理` : `更改未能保存：${e.message}`);
+        notifyRejected(quota ? `${e.message}。这项更改已保留在本机，腾出空间后可在「设置 › 账号与同步」重试` : conflict ? `${e.message}。这项更改已保留在本机，可在「设置 › 账号与同步」处理` : `更改未能保存：${e.message}`);
         const s2 = useConfigStore.getState();
         const rest = s2.pending.filter((b) => b.id !== batch.id);
         const r = rebase(s2.confirmed?.config ?? defaultConfig(), rest);

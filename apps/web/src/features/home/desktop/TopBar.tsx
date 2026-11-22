@@ -25,7 +25,7 @@ interface Props {
  * Logo, navigation, service status and settings, each following 首页显示 (always / on hover /
  * hidden). A failing service is shown whatever the setting says.
  */
-export const TopBar = forwardRef<HTMLButtonElement, Props>(function TopBar({ summary, showStatus, statusOpen, breathe, staticRing, ui, near, onToggleStatus, onOpenDrawer, onOpenOverview }, pillRef) {
+export const TopBar = forwardRef<HTMLButtonElement, Props>(function TopBar({ summary, showStatus, statusOpen, breathe, staticRing, ui, near, onToggleStatus, onOpenOverview }, pillRef) {
   const navLink = 'text-ink/60 no-underline transition-colors duration-140 hover:text-ink';
   const left = reveal(ui.topbar, near.top);
   const alert = summary.level === 'error';
@@ -52,16 +52,9 @@ export const TopBar = forwardRef<HTMLButtonElement, Props>(function TopBar({ sum
                 </a>
               )}
               {ui.navApps && (
-                <a
-                  href="#apps"
-                  className={navLink}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    onOpenDrawer();
-                  }}
-                >
+                <Link to="/library" className={navLink}>
                   收藏库
-                </a>
+                </Link>
               )}
               {ui.navApps && (
                 <Link to="/catalog" className={navLink}>

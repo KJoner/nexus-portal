@@ -43,7 +43,7 @@ test.describe('desktop', () => {
     // A typo of an app name: only a guess, listed after the web search.
     await input.fill('gtihub');
     await expect(results.getByRole('group').first()).toHaveAttribute('aria-label', '网页');
-    await expect(results.getByRole('group', { name: '可能是这些应用' })).toContainText('GitHub');
+    await expect(results.getByRole('group', { name: '可能是这些收藏' })).toContainText('GitHub');
     await input.press('Enter');
     await expect(page).toHaveURL(/google\.com\/search\?q=gtihub/);
 
@@ -75,12 +75,12 @@ test.describe('desktop', () => {
     await addApps(page.context().request);
     await page.reload();
     await page.getByRole('combobox', { name: '搜索' }).fill('zzqx');
-    await expect(page.getByRole('status').filter({ hasText: '没有匹配的应用或收藏' })).toBeVisible();
+    await expect(page.getByRole('status').filter({ hasText: '没有匹配的收藏' })).toBeVisible();
     await page.keyboard.press('Escape');
     await page.keyboard.press('Escape');
-    await page.getByRole('button', { name: '收藏库' }).click();
-    await page.getByLabel('筛选应用').fill('tx');
-    await expect(page.getByRole('dialog', { name: '收藏库' }).getByRole('link', { name: '腾讯文档' })).toBeVisible();
+    await page.getByRole('button', { name: '快速打开' }).click();
+    await page.getByLabel('筛选收藏').fill('tx');
+    await expect(page.getByRole('dialog', { name: '快速打开' }).getByRole('link', { name: '腾讯文档' })).toBeVisible();
   });
 });
 

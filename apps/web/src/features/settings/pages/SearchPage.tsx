@@ -216,7 +216,7 @@ export function SearchPage() {
         <p className="m-0 -mt-4 px-4 text-[12.5px] leading-[1.6] text-ink/46">排序与自定义引擎在电脑上编辑更方便；这里的顺序即首页引擎胶囊的顺序。</p>
         <Group>
           {toggles}
-          <Row label="在结果中显示应用" sub="把匹配的应用与服务排在网页搜索之前">
+          <Row label="在结果中显示收藏" sub="把匹配的收藏（网站与服务）排在网页搜索之前">
             <Switch label="在结果中显示应用" checked={s.showApps} onChange={(v) => patch('search', { showApps: v })} />
           </Row>
         </Group>
@@ -319,7 +319,7 @@ export function SearchPage() {
       </Group>
 
       <Group title="结果来源">
-        <Row label="在结果中显示应用" sub="输入时把匹配的应用与服务排在网页搜索之前">
+        <Row label="在结果中显示收藏" sub="输入时把匹配的收藏（网站与服务）排在网页搜索之前">
           <Switch label="在结果中显示应用" checked={s.showApps} onChange={(v) => patch('search', { showApps: v })} />
         </Row>
         {admin && lwToggle}

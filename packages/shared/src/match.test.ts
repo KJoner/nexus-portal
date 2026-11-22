@@ -90,7 +90,7 @@ describe('search sections with fuzzy matches', () => {
   it('guesses only: web search first, so Enter does not open a wrong app', () => {
     const r = buildSearch(input('gtihub'));
     expect(r.sections.map((s) => s.id)).toEqual(['web', 'apps']);
-    expect(r.sections[1]!.title).toBe('可能是这些应用');
+    expect(r.sections[1]!.title).toBe('可能是这些收藏');
     expect(r.sections[1]!.rows[0]).toMatchObject({ weak: true });
   });
 

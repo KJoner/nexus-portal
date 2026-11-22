@@ -396,14 +396,14 @@ export function Dock(props: Props) {
           <button
             ref={allRef}
             type="button"
-            aria-label="收藏库"
+            aria-label="快速打开"
             onClick={props.onOpenDrawer}
             tabIndex={edit ? -1 : undefined}
             className={cn(itemClass, 'flex-none border-0 bg-transparent p-0', !edit && liftClass, edit && 'pointer-events-none opacity-40')}
             style={{ width: cell }}
           >
             <AppTile target={{ kind: 'all' }} size={iconSize} />
-            <Label name="收藏库" labels={labels} onHover={labelsOnHover} cell={cell} />
+            <Label name="快速打开" labels={labels} onHover={labelsOnHover} cell={cell} />
           </button>
         </div>
 

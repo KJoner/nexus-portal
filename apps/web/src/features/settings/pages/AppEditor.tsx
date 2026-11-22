@@ -619,7 +619,7 @@ export function AppEditor({ appId, initialName, initialUrl, onClose, onDelete }:
   }
 
   return (
-    <DrawerShell title={isNew ? '新增应用' : `编辑 ${existing!.name}`} subtitle={isNew ? '保存后出现在收藏库与搜索中' : dirty ? '有未保存的更改' : '尚未修改'} onRequestClose={requestClose} footer={footer} confirming={confirm}>
+    <DrawerShell title={isNew ? '添加网站' : `编辑 ${existing!.name}`} subtitle={isNew ? '保存后出现在收藏库与搜索中' : dirty ? '有未保存的更改' : '尚未修改'} onRequestClose={requestClose} footer={footer} confirming={confirm}>
       {body}
     </DrawerShell>
   );

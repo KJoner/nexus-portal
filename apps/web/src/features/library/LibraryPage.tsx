@@ -5,7 +5,7 @@ import { Link } from 'react-router';
 import { PageBackdrop } from '../../components/PageBackdrop';
 import { toast } from '../../components/toast-store';
 import { ToastHost } from '../../components/ToastHost';
-import { currentTransport, useConfig, useConfigStore } from '../../data/config-store';
+import { currentTransport, useConfig, useConfigStore, useIsAdmin } from '../../data/config-store';
 import { conflictChoices, libraryApi, loadLibrary, pinNotice, pullLibrary, resolveConflict, useLibrary, type Folder, type LibraryChoice, type LibraryConflict, type WriteOutcome } from '../../data/library';
 import { AppTile } from '../../icons/AppTile';
 import { cn } from '../../lib/cn';
@@ -395,7 +395,11 @@ export default function LibraryPage() {
   const config = useConfig();
   // The collection shown: the verified account's, or (v0.5) this browser's local collection.
   const account = useConfigStore((s) => (s.space === 'local' ? s.localId : (s.account?.account.id ?? null)));
-  const { status, error, items, pins, folders, queued, conflicts } = useLibrary();
+  const { status, error, items, pins, folders: allFolders, queued, conflicts } = useLibrary();
+  // 我的服务 is where an operator's self-hosted services live: shown to others (and in a local
+  // collection) only when something is actually filed there (v0.5 · U2).
+  const admin = useIsAdmin();
+  const folders = useMemo(() => (admin ? allFolders : allFolders.filter((f) => f.id !== LOCKED_CATEGORY.hosted || Object.values(items).some((i) => i.deletedAt === null && i.folderId === f.id))), [admin, allFolders, items]);
   const pinyin = usePinyin((s) => s.fn);
   const [view, setView] = useState<View>({ kind: 'all' });
   const [query, setQuery] = useState('');

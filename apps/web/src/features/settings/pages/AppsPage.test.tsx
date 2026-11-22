@@ -25,7 +25,7 @@ beforeEach(() => {
 describe('app editor (R2 · 表单手动保存)', () => {
   it('adds an app, completing the scheme on blur, and syncs it', async () => {
     const { router, user } = open('/settings/apps?new=Jellyfin');
-    const dialog = await screen.findByRole('dialog', { name: '新增应用' });
+    const dialog = await screen.findByRole('dialog', { name: '添加网站' });
     expect(screen.getByRole('textbox', { name: /名称/ })).toHaveValue('Jellyfin');
     const url = screen.getByRole('textbox', { name: /网址/ });
     await user.type(url, 'jellyfin.home');
@@ -41,7 +41,7 @@ describe('app editor (R2 · 表单手动保存)', () => {
 
   it('blocks saving while a required field is missing', async () => {
     const { user } = open('/settings/apps?new=');
-    await screen.findByRole('dialog', { name: '新增应用' });
+    await screen.findByRole('dialog', { name: '添加网站' });
     await user.click(screen.getByRole('button', { name: '添加' }));
     expect(screen.getByText('请填写名称')).toBeInTheDocument();
     expect(screen.getByText('还有 2 项需要修正')).toBeInTheDocument();

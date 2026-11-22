@@ -299,7 +299,7 @@ function MobileShell({ page }: { page: PageId | null }) {
   const editing = page === 'apps' && (params.has('edit') || params.has('new'));
   const editApp = editing ? config.apps.find((a) => a.id === params.get('edit')) : undefined;
   const [scrolled, setScrolled] = useState(false);
-  const title = editing ? (editApp ? `编辑 ${editApp.name}` : '新增应用') : page ? PAGES.find((p) => p.id === page)!.short : '';
+  const title = editing ? (editApp ? `编辑 ${editApp.name}` : '添加网站') : page ? PAGES.find((p) => p.id === page)!.short : '';
   const back = editing ? { label: '应用', to: '/settings/apps' } : page ? { label: '设置', to: '/settings' } : null;
 
   useEffect(() => setScrolled(false), [page, editing]);
@@ -327,7 +327,7 @@ function MobileShell({ page }: { page: PageId | null }) {
         </span>
         <span className="flex-1" />
         {page === 'apps' && !editing && (
-          <button type="button" onClick={() => navigate('/settings/apps?new=')} aria-label="新增应用" className="grid size-11 place-items-center border-0 bg-transparent text-amber-hi">
+          <button type="button" onClick={() => navigate('/settings/apps?new=')} aria-label="添加网站" className="grid size-11 place-items-center border-0 bg-transparent text-amber-hi">
             <Plus className="size-[22px]" />
           </button>
         )}

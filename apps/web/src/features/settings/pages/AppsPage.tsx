@@ -137,9 +137,9 @@ export function AppsPage() {
   const empty = (
     <div className="flex flex-col items-center gap-2 px-5 py-14 text-center">
       <span className="text-[16px] font-medium">{q ? `没有匹配「${q}」的应用` : '这个分类下还没有应用'}</span>
-      <span className="text-[13px] text-ink/50">{q ? '可按名称、外网地址或内网 IP 查找' : '新增应用时选择该分类，或在编辑中更改分类'}</span>
+      <span className="text-[13px] text-ink/50">{q ? '可按名称、外网地址或内网 IP 查找' : '添加网站时选择该分类，或在编辑中更改分类'}</span>
       <Button variant="text" className="mt-2.5 h-[38px] bg-amber/14" onClick={() => navigate(`/settings/apps?new=${encodeURIComponent(q)}`)}>
-        新增应用
+        添加网站
       </Button>
     </div>
   );
@@ -213,7 +213,7 @@ export function AppsPage() {
         </div>
         <Button variant="text" size="lg" className="w-full rounded-2xl bg-amber/14 font-medium" onClick={() => navigate('/settings/apps?new=')}>
           <Plus className="size-[18px]" />
-          新增应用
+          添加网站
         </Button>
         <Button size="lg" className="w-full rounded-2xl" onClick={() => navigate('/catalog')}>
           <LayoutGrid className="size-[18px]" />
@@ -235,7 +235,7 @@ export function AppsPage() {
   return (
     <div className="flex max-w-[1080px] flex-col gap-5">
       <PageHeader
-        title="应用与服务"
+        title="网站与服务"
         sub="网站与自托管服务都在这里管理。点任一行编辑；自托管服务可分别填写外网与内网地址。"
         actions={
           <>
@@ -252,7 +252,7 @@ export function AppsPage() {
             </Button>
             <Button variant="primary" className="h-10 rounded-xl pr-[18px] pl-3.5 text-[13.5px]" onClick={() => navigate('/settings/apps?new=')}>
               <Plus className="size-4" />
-              新增应用
+              添加网站
             </Button>
           </>
         }

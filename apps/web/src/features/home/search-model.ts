@@ -8,6 +8,7 @@ import type { TileTarget } from '../../icons/AppTile';
 import { navigateTo, openApp } from '../../lib/open';
 import { usePinyin } from '../../lib/pinyin';
 import { formatAgo } from '../../lib/time';
+import { useCollectionApps } from './collection';
 import { useShownWallpaper } from './rotation';
 
 export type QuickActionId = 'status' | 'wallpaper' | 'settings';
@@ -69,7 +70,10 @@ function useSuggestions(query: string, engineId: string, enabled: boolean): stri
 }
 
 export function useSearchModel(query: string, engineId: string, maxApps: number) {
-  const config = useConfig();
+  const base = useConfig();
+  // L08: typing searches the whole collection (unpinned pages too), loaded on the first keystroke.
+  const apps = useCollectionApps(query.trim().length > 0);
+  const config = useMemo(() => (apps === base.apps ? base : { ...base, apps }), [apps, base]);
   const engines = useEngines();
   const { engine: prefixed, rest } = resolvePrefix(query, engines);
   const admin = useIsAdmin();
@@ -88,7 +92,7 @@ export function useSearchModel(query: string, engineId: string, maxApps: number)
       // Service status is the operator's view (v0.4): other accounts are not offered it.
       ...(guest || !admin ? [] : [{ id: 'status', title: '查看服务状态', sub: summary.text }]),
       { id: 'wallpaper', title: '更换壁纸', sub: shown ? `当前：${shown}` : '换一张' },
-      { id: 'settings', title: '打开设置', sub: '外观、快捷方式、应用与搜索' },
+      { id: 'settings', title: '打开设置', sub: '外观、快捷方式、网站与搜索' },
     ];
     // Within a match tier: pinned apps first, then the ones opened most recently / often.
     const opened = new Map<string, number>();
@@ -109,7 +113,8 @@ export function useSearchModel(query: string, engineId: string, maxApps: number)
       actions,
       formatAgo,
     });
-    return { engines, result, rows: flattenRows(result.sections) };
+    // `config` (the home view plus the rest of the collection) is what rowTile / activateRow look results up in.
+    return { engines, result, rows: flattenRows(result.sections), config };
   }, [config, admin, engines, recentItems, summary.text, shown, query, engineId, maxApps, bookmarks, suggestions, pinyin]);
 }
 

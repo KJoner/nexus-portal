@@ -15,6 +15,7 @@ import { host } from '../../../lib/host';
 import { appLinkProps, openApp, recordAppOpen } from '../../../lib/open';
 import { usePinyin } from '../../../lib/pinyin';
 import { SpaceBadge } from '../../account/SpaceBadge';
+import { useCollectionApps } from '../collection';
 import { storage } from '../../../lib/storage';
 import { formatClock, formatDate } from '../../../lib/time';
 import { homeActions } from '../actions';
@@ -222,7 +223,7 @@ export function MobileHome() {
         }}
       >
         <Grabber
-          label={!isHome ? '收起' : hasExtra ? (expanded ? '收起快捷方式' : '展开更多快捷方式') : '展开收藏库'}
+          label={!isHome ? '收起' : hasExtra ? (expanded ? '收起快捷方式' : '展开更多快捷方式') : '展开快速打开'}
           expanded={isHome && hasExtra ? expanded : undefined}
           onTap={() => (!isHome ? goHome() : hasExtra && home.shortcuts.mode === 'expand' ? setExpanded(!expanded) : openApps())}
           onSwipe={(dir) => {
@@ -236,7 +237,7 @@ export function MobileHome() {
         <div className="absolute top-[26px] right-3.5 left-3.5 flex flex-col transition-[opacity,transform] duration-200 ease-soft" style={{ bottom: contentB, ...layer(isHome, false) }} inert={!isHome}>
           {statusPill && (
             <div className="flex items-center px-0.5">
-              <button type="button" onClick={openApps} aria-label={`服务状态：${summary.text}，查看收藏库`} className="-my-1.5 flex h-11 items-center border-0 bg-transparent p-0">
+              <button type="button" onClick={openApps} aria-label={`服务状态：${summary.text}，查看快速打开`} className="-my-1.5 flex h-11 items-center border-0 bg-transparent p-0">
                 <span className="flex h-8 items-center gap-2 rounded-full pr-3 pl-[11px] text-[12.5px]" style={pillStyle(summary.level)}>
                   <span
                     className={cn('size-1.5 flex-none rounded-full', summary.level === 'error' && motion === 'full' && 'animate-breathe')}
@@ -332,7 +333,7 @@ export function MobileHome() {
           <button
             type="button"
             onClick={() => (isHome ? openApps() : goHome())}
-            aria-label={isHome ? '收藏库' : mode === 'search' ? '取消' : '完成'}
+            aria-label={isHome ? '快速打开' : mode === 'search' ? '取消' : '完成'}
             className="grid h-[52px] min-w-[52px] flex-none place-items-center rounded-[18px] border-0 text-[15px] text-ink transition-colors duration-200 active:scale-[.96]"
             style={isHome ? { ...GLASS, padding: 0 } : { background: 'transparent', padding: '0 16px' }}
           >
@@ -370,12 +371,12 @@ interface SearchProps {
 function MobileSearch({ mode, q, engineId, setEngineId, contentB, layer, onAction, onDone }: SearchProps) {
   const config = useConfig();
   const on = mode === 'search';
-  const { engines, result } = useSearchModel(q, engineId, 2);
+  const { engines, result, config: searchConfig } = useSearchModel(q, engineId, 2);
   const hasQ = !!q.trim();
   const activate = (row: SearchRow, e: React.MouseEvent) => {
     e.preventDefault();
     if (row.kind === 'action') onDone();
-    activateRow(row, config, false, onAction);
+    activateRow(row, searchConfig, false, onAction);
   };
   let first = true;
   return (
@@ -396,7 +397,7 @@ function MobileSearch({ mode, q, engineId, setEngineId, contentB, layer, onActio
                   className="flex min-h-[54px] items-center gap-3 rounded-[14px] px-2.5 text-ink no-underline active:bg-ink/10"
                   style={{ background: isFirst ? 'rgba(239,234,225,0.08)' : 'transparent' }}
                 >
-                  <AppTile target={rowTile(row, config, result.engine)} size={34} />
+                  <AppTile target={rowTile(row, searchConfig, result.engine)} size={34} />
                   <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span className="truncate text-[15px]">
                       <Highlight text={row.title} ranges={row.highlight} />
@@ -444,22 +445,25 @@ interface AppsProps {
 
 function MobileApps({ open, q, contentB, layer, all, showStatus, bind, pressed, onWebSearch }: AppsProps) {
   const config = useConfig();
+  // v0.5 · U2 (L08): the whole collection, pages that are not on the home page included.
+  const collection = useCollectionApps(open);
+  const onHome = useMemo(() => new Set(config.apps.map((a) => a.id)), [config.apps]);
   const fl = open ? q.trim() : '';
   const pinyin = usePinyin((s) => s.fn);
-  const matched = useMemo(() => new Set(matchApps(config.apps, fl, false, { pinyin }).map((a) => a.id)), [config.apps, fl, pinyin]);
+  const matched = useMemo(() => new Set(matchApps(collection, fl, false, { pinyin }).map((a) => a.id)), [collection, fl, pinyin]);
   const services = all.filter((s) => matched.has(s.app.id));
   const cats = config.categories
     .filter((c) => c.id !== 'hosted')
-    .map((c) => ({ ...c, apps: config.apps.filter((a) => a.kind === 'site' && a.categoryId === c.id && matched.has(a.id)) }))
+    .map((c) => ({ ...c, apps: collection.filter((a) => a.kind === 'site' && a.categoryId === c.id && matched.has(a.id)) }))
     .filter((c) => c.apps.length);
-  const count = config.apps.filter((a) => !a.hidden).length;
+  const count = collection.filter((a) => !a.hidden).length;
   const empty = !!fl && !services.length && !cats.length;
 
   return (
     <div className="absolute top-[26px] right-0 left-0 flex flex-col transition-[opacity,transform] duration-200 ease-soft" style={{ bottom: contentB, ...layer(open) }} inert={!open}>
       <div className="flex flex-none items-baseline gap-2.5 px-6 pt-2 pb-1">
-        <span className="text-[22px] font-medium tracking-[-0.01em]">收藏库</span>
-        <span className="text-[12.5px] text-ink/46">{count} 个</span>
+        <span className="text-[22px] font-medium tracking-[-0.01em]">快速打开</span>
+        <span className="text-[12.5px] text-ink/46">{count} 个收藏</span>
         <span className="flex-1" />
         {count > 0 && <span className="text-[12px] text-ink/46">长按管理</span>}
         <Link to="/catalog" className="-my-2 flex h-11 items-center rounded-xl px-3 text-[13px] text-amber-hi no-underline">
@@ -468,7 +472,7 @@ function MobileApps({ open, q, contentB, layer, all, showStatus, bind, pressed, 
       </div>
       {count === 0 && !fl && (
         <div className="mx-6 mt-4 flex flex-col gap-2.5 rounded-2xl bg-ink/6 p-4">
-          <span className="text-[15px] font-medium">收藏库还是空的</span>
+          <span className="text-[15px] font-medium">还没有收藏</span>
           <span className="text-[13px] leading-[1.6] text-ink/56">从应用目录挑几个常用网站，或者粘贴网址自己添加。新加的网站不会自动固定到首页。</span>
           <div className="flex gap-2.5">
             <Link to="/catalog" className="flex h-11 items-center rounded-xl bg-amber px-4 text-[14px] font-semibold text-on-amber no-underline">
@@ -522,7 +526,8 @@ function MobileApps({ open, q, contentB, layer, all, showStatus, bind, pressed, 
             <div className="px-2.5 pt-5 pb-3 text-[11.5px] text-ink/50">{c.label}</div>
             <div className="grid grid-cols-4 gap-y-4">
               {c.apps.map((a) => {
-                const { consumeClick, ...handlers } = bind(a.id);
+                // A saved page that is not on the home page opens on tap; 收藏库 edits it (no home-page sheet).
+                const { consumeClick, ...handlers } = onHome.has(a.id) ? bind(a.id) : { consumeClick: () => false };
                 const pinned = config.pins.includes(a.id);
                 return (
                   <a

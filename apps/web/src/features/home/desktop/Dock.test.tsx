@@ -136,7 +136,7 @@ describe('Dock extension (v0.2)', () => {
     await user.click(toggle);
     within(screen.getByRole('group', { name: '更多快捷方式' })).getAllByRole('link')[0]!.focus();
     fireEvent.click(toggle);
-    expect(screen.getByRole('button', { name: '收藏库' })).toHaveFocus();
+    expect(screen.getByRole('button', { name: '快速打开' })).toHaveFocus();
   });
 
   it('a focus that is elsewhere stays where it is', async () => {

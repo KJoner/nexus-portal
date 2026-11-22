@@ -157,14 +157,14 @@ export function buildSearch(input: SearchInput): SearchResult {
     if (picked.length) {
       apps = {
         id: 'apps',
-        title: strong.length ? '应用' : '可能是这些应用',
+        title: strong.length ? '收藏' : '可能是这些收藏',
         rows: picked.map((m) => ({
           key: `app:${m.app.id}`,
           kind: 'app',
           title: m.app.name,
           // Only the host: a path or query could carry tokens.
           sub: m.via && !m.via.startsWith(hostOf(m.app.url)) ? m.via : hostOf(m.app.url),
-          meta: m.app.kind === 'service' ? '自托管' : '应用',
+          meta: m.app.kind === 'service' ? '自托管' : '收藏',
           appId: m.app.id,
           highlight: m.ranges,
           weak: m.weak || undefined,

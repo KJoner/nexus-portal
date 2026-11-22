@@ -3,6 +3,7 @@ import { LayoutGrid, Search, X } from 'lucide-react';
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { Link } from 'react-router';
 import { useConfig } from '../../../data/config-store';
+import { useCollectionApps } from '../collection';
 import { useRecentStore } from '../../../data/recent';
 import type { ServiceView } from '../../../data/status';
 import { AppTile } from '../../../icons/AppTile';
@@ -31,6 +32,9 @@ interface Props {
 
 export const Drawer = forwardRef<DrawerHandle, Props>(function Drawer({ open, width, top, bottom, services, showStatus, onClose, onMenu, onEnterEdit }, ref) {
   const config = useConfig();
+  // v0.5 · U2 (L08): 快速打开 lists the whole collection — pages that are not on the home page too.
+  const collection = useCollectionApps(open);
+  const onHome = useMemo(() => new Set(config.apps.map((a) => a.id)), [config.apps]);
   const [filter, setFilter] = useState('');
   const [sel, setSel] = useState(-1);
   const [gridNav, setGridNav] = useState(false);
@@ -56,12 +60,12 @@ export const Drawer = forwardRef<DrawerHandle, Props>(function Drawer({ open, wi
   const cols = Math.max(4, Math.min(8, Math.floor(inner / 120)));
   const hostedCols = inner < 600 ? 2 : 3;
   const pins = config.pins;
-  const hiddenCount = config.apps.filter((a) => a.hidden).length;
+  const hiddenCount = collection.filter((a) => a.hidden).length;
   const pinyin = usePinyin((s) => s.fn);
 
   /** Flat order + 2-D rows of indices: hosted cards (3 per row) then each category grid. */
   const model = useMemo(() => {
-    const matched = new Set(matchApps(config.apps, filter, showHidden, { pinyin }).map((a) => a.id));
+    const matched = new Set(matchApps(collection, filter, showHidden, { pinyin }).map((a) => a.id));
     const flat: AppEntry[] = [];
     const rows: number[][] = [];
     const take = (list: AppEntry[], perRow: number) => {
@@ -78,15 +82,15 @@ export const Drawer = forwardRef<DrawerHandle, Props>(function Drawer({ open, wi
     const cats = config.categories
       .filter((c) => c.id !== 'hosted')
       .map((c) => {
-        const apps = config.apps.filter((a) => a.kind === 'site' && a.categoryId === c.id && matched.has(a.id));
+        const apps = collection.filter((a) => a.kind === 'site' && a.categoryId === c.id && matched.has(a.id));
         return { id: c.id, label: c.label, apps, start: take(apps, cols) };
       })
       .filter((c) => c.apps.length);
     // Sites filed under 我的服务 still need a home in the grid.
-    const stray = config.apps.filter((a) => a.kind === 'site' && a.categoryId === 'hosted' && matched.has(a.id));
+    const stray = collection.filter((a) => a.kind === 'site' && a.categoryId === 'hosted' && matched.has(a.id));
     if (stray.length) cats.push({ id: 'stray', label: '我的服务', apps: stray, start: take(stray, cols) });
     return { flat, rows, hosted, hostedStart, cats };
-  }, [config.apps, config.categories, filter, showHidden, services, cols, hostedCols, pinyin]);
+  }, [collection, config.categories, filter, showHidden, services, cols, hostedCols, pinyin]);
 
   const { flat, rows } = model;
 
@@ -147,10 +151,10 @@ export const Drawer = forwardRef<DrawerHandle, Props>(function Drawer({ open, wi
   const tab = open ? 0 : -1;
   const empty = !!filter.trim() && flat.length === 0;
   // A new account starts with an empty collection: point at 应用目录 instead of a blank panel.
-  const blank = !filter.trim() && config.apps.length === 0;
+  const blank = !filter.trim() && collection.length === 0;
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="收藏库" aria-hidden={!open} inert={!open} className="absolute inset-0 z-10 transition-opacity duration-280 ease-soft" style={{ opacity: open ? 1 : 0, pointerEvents: open ? 'auto' : 'none' }}>
+    <div role="dialog" aria-modal="true" aria-label="快速打开" aria-hidden={!open} inert={!open} className="absolute inset-0 z-10 transition-opacity duration-280 ease-soft" style={{ opacity: open ? 1 : 0, pointerEvents: open ? 'auto' : 'none' }}>
       <div className="absolute inset-0" style={{ background: 'rgba(17,16,14,0.38)' }} onClick={() => onClose(true)} />
       <div
         className="absolute left-1/2 flex flex-col overflow-hidden rounded-[30px] backdrop-blur-[44px] backdrop-saturate-[1.15] transition-transform duration-420 ease-emph"
@@ -164,11 +168,11 @@ export const Drawer = forwardRef<DrawerHandle, Props>(function Drawer({ open, wi
         }}
       >
         <div className="flex items-center gap-4 pt-[26px] pr-[30px] pb-5 pl-[34px]">
-          <h2 className="m-0 text-[22px] font-medium tracking-[-0.01em]">收藏库</h2>
-          <span className="text-[13px] text-ink/46">{config.apps.filter((a) => !a.hidden).length} 个</span>
-          {/* v0.4: every saved item (pages too), folders, tags, import and export live on their own page. */}
+          <h2 className="m-0 text-[22px] font-medium tracking-[-0.01em]">快速打开</h2>
+          <span className="text-[13px] text-ink/46">{collection.filter((a) => !a.hidden).length} 个收藏</span>
+          {/* Folders, tags, the trash, import and export: the collection's own page. */}
           <Link to="/library" tabIndex={tab} className="flex h-9 items-center rounded-lg px-3 text-[13px] text-ink/72 no-underline transition-colors duration-150 hover:bg-ink/8 hover:text-ink">
-            管理收藏库
+            查看全部收藏
           </Link>
           <span className="flex-1" />
           <div className="box-border flex h-10 w-[300px] items-center gap-2.5 rounded-xl pr-2 pl-3.5" style={{ background: 'rgba(239,234,225,0.07)', boxShadow: focused ? 'inset 0 0 0 1px rgba(230,192,138,0.4)' : 'none' }}>
@@ -186,7 +190,7 @@ export const Drawer = forwardRef<DrawerHandle, Props>(function Drawer({ open, wi
               onFocus={() => setFocused(true)}
               onBlur={() => setFocused(false)}
               placeholder="筛选名称、域名或别名"
-              aria-label="筛选应用"
+              aria-label="筛选收藏"
               aria-controls="nx-drawer-grid"
               spellCheck={false}
               autoComplete="off"
@@ -256,7 +260,8 @@ export const Drawer = forwardRef<DrawerHandle, Props>(function Drawer({ open, wi
                       tabIndex={tab}
                       aria-label={`${a.name}${pinned ? '，已固定' : ''}${a.hidden ? '，已隐藏' : ''}`}
                       onClick={() => recordAppOpen(a)}
-                      onContextMenu={(e) => onMenu(e, a, 'drawer')}
+                      // A saved page that is not on the home page has no home-page actions here: it opens; 收藏库 edits it.
+                      onContextMenu={onHome.has(a.id) ? (e) => onMenu(e, a, 'drawer') : undefined}
                       className={cn('flex flex-col items-center gap-[9px] rounded-[18px] pt-2 pb-1.5 text-ink no-underline transition-[transform,background] duration-140 ease-soft hover:-translate-y-[3px] active:-translate-y-px active:scale-[.96]', a.hidden && 'opacity-42')}
                       style={{ background: di === sel ? 'rgba(239,234,225,0.08)' : 'transparent', boxShadow: ring(di) }}
                     >
@@ -274,7 +279,7 @@ export const Drawer = forwardRef<DrawerHandle, Props>(function Drawer({ open, wi
               <span className="grid size-[52px] place-items-center rounded-2xl bg-ink/6">
                 <LayoutGrid className="size-[22px] text-ink/50" />
               </span>
-              <span className="mt-1.5 text-[17px] font-medium">收藏库还是空的</span>
+              <span className="mt-1.5 text-[17px] font-medium">还没有收藏</span>
               <span className="text-[13px] text-ink/50">从应用目录挑几个常用网站，或者自己添加。新加的网站不会自动固定到首页。</span>
               <div className="mt-3 flex gap-2.5">
                 <Link to="/catalog" tabIndex={tab} className="flex h-10 items-center gap-2 rounded-xl bg-amber px-4 text-[13.5px] font-semibold text-on-amber no-underline">
@@ -291,7 +296,7 @@ export const Drawer = forwardRef<DrawerHandle, Props>(function Drawer({ open, wi
               <span className="grid size-[52px] place-items-center rounded-2xl bg-ink/6">
                 <Search className="size-[22px] text-ink/50" />
               </span>
-              <span className="mt-1.5 text-[17px] font-medium">没有匹配「{filter}」的应用</span>
+              <span className="mt-1.5 text-[17px] font-medium">没有匹配「{filter}」的收藏</span>
               <span className="text-[13px] text-ink/50">可按名称、拼音或首字母、域名、别名筛选；隐藏的应用不参与匹配</span>
               <div className="mt-3 flex gap-2.5">
                 {webEngine && (

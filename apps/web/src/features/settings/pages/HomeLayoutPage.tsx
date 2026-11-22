@@ -153,7 +153,7 @@ function AddShortcut() {
               <div className="px-2.5 py-3.5 text-[13px] text-ink/50">
                 没有可添加的应用 ·{' '}
                 <button type="button" onClick={() => navigate('/settings/apps?new=')} className="border-0 bg-transparent p-0 text-[13px] text-amber-hi underline">
-                  新增应用
+                  添加网站
                 </button>
               </div>
             )}

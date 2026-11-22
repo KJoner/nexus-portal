@@ -35,7 +35,7 @@ test('search mode: results above the field, 取消 returns home', async ({ home:
 
 test('settings use push navigation with a back label', async ({ home: page }) => {
   await page.goto('/settings');
-  await page.getByRole('button', { name: /应用与服务/ }).tap();
+  await page.getByRole('button', { name: /网站与服务/ }).tap();
   await expect(page.getByRole('button', { name: '设置', exact: true })).toBeVisible();
   await page.getByRole('button', { name: /OBsync/ }).first().tap();
   await expect(page.getByRole('button', { name: '应用', exact: true })).toBeVisible();

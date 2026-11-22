@@ -50,7 +50,7 @@ export const SearchSlab = forwardRef<SearchSlabHandle, Props>(function SearchSla
   useEffect(() => setEngineId(defaultEngine), [defaultEngine]);
   useImperativeHandle(ref, () => ({ focus: () => inputRef.current?.focus() }), []);
 
-  const { engines, result, rows } = useSearchModel(q, engineId, 3);
+  const { engines, result, rows, config: searchConfig } = useSearchModel(q, engineId, 3);
   const engine = engines.find((e) => e.id === engineId) ?? engines[0] ?? config.engines[0]!;
   const shown = result.engine;
 
@@ -80,7 +80,7 @@ export const SearchSlab = forwardRef<SearchSlabHandle, Props>(function SearchSla
 
   const activate = (row: SearchRow, newTab: boolean) => {
     if (row.kind === 'action') close();
-    activateRow(row, config, newTab, onAction);
+    activateRow(row, searchConfig, newTab, onAction);
   };
 
   const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -226,7 +226,7 @@ export const SearchSlab = forwardRef<SearchSlabHandle, Props>(function SearchSla
           <div id="nx-results" role="listbox" aria-label="搜索结果" className="nx-scroll-hidden min-h-0 flex-1 overflow-y-auto">
             {noApps && (
               <div role="status" className="flex h-7 items-center px-3.5 text-[12px] text-ink/42">
-                没有匹配的应用或收藏
+                没有匹配的收藏
               </div>
             )}
             {result.sections.map((sec) => (
@@ -251,7 +251,7 @@ export const SearchSlab = forwardRef<SearchSlabHandle, Props>(function SearchSla
                       }}
                       className={cn('flex h-[46px] items-center gap-3.5 rounded-xl px-3.5 text-ink no-underline transition-colors duration-90', selected ? 'bg-ink/9' : 'bg-transparent')}
                     >
-                      <AppTile target={rowTile(row, config, shown)} size={30} />
+                      <AppTile target={rowTile(row, searchConfig, shown)} size={30} />
                       <span className="truncate text-[14.5px]">
                         <Highlight text={row.title} ranges={row.highlight} />
                       </span>

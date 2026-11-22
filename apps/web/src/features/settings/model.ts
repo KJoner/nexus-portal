@@ -10,7 +10,7 @@ export const PAGES: { id: PageId; label: string; short: string; icon: LucideIcon
   { id: 'appearance', label: '外观与个性化', short: '外观与个性化', icon: Palette },
   { id: 'display', label: '首页显示与布局', short: '显示与布局', icon: LayoutTemplate },
   { id: 'home', label: '首页与快捷方式', short: '首页与快捷方式', icon: House },
-  { id: 'apps', label: '应用与服务', short: '应用与服务', icon: LayoutGrid },
+  { id: 'apps', label: '网站与服务', short: '网站与服务', icon: LayoutGrid },
   { id: 'search', label: '搜索', short: '搜索', icon: Search },
   // v0.5: who is signed in and where data goes is one task; backups and privacy another (01-UX-PLAN §7).
   { id: 'account', label: '账号与同步', short: '账号与同步', icon: UserRound },
@@ -35,7 +35,7 @@ export const INDEX: { page: PageId; label: string; kw: string }[] = [
   ['home', '首页快捷方式', '固定 排序 移除 dock'],
   ['home', '布局偏好', 'dock 数量 手机行数 标签 名称'],
   ['home', '已隐藏的应用', '恢复 隐藏'],
-  ['apps', '新增应用', '名称 网址 图标 添加'],
+  ['apps', '添加网站', '新增 新增应用 应用与服务 名称 网址 图标 添加'],
   ['apps', '分类管理', '分类 重命名'],
   ['apps', '健康检查', '监测 状态'],
   ['apps', '内外网地址', '内网 外网 局域网 lan'],

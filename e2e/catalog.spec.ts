@@ -32,8 +32,8 @@ test('应用目录: browse, add without pinning, then find it in 收藏库', asy
 
   if (!isMobile) {
     await page.getByRole('link', { name: '返回首页' }).click();
-    await page.getByRole('button', { name: '收藏库' }).first().click();
-    await expect(page.getByRole('dialog', { name: '收藏库' }).getByRole('link', { name: /知乎/ })).toBeVisible();
+    await page.getByRole('button', { name: '快速打开' }).first().click();
+    await expect(page.getByRole('dialog', { name: '快速打开' }).getByRole('link', { name: /知乎/ })).toBeVisible();
     await shot(page, `library-drawer-${info.project.name}`);
   }
 });

@@ -141,7 +141,7 @@ export function LoginPage({ reauth = false }: { reauth?: boolean }) {
           {everywhere && (
             <div className="flex flex-col gap-2 rounded-[18px] px-3.5 py-3" style={{ background: 'rgba(239,234,225,0.06)' }}>
               <RevocationResult result={everywhere.result} at={everywhere.at} />
-              <p className="m-0 text-[12px] text-ink/50">登录后可以在「设置 › 数据、同步与安全」查看最新状态，并重新发送没有送达的通知。</p>
+              <p className="m-0 text-[12px] text-ink/50">登录后可以在「设置 › 账号与同步」查看最新状态，并重新发送没有送达的通知。</p>
               <button type="button" onClick={() => (dismissEverywhere(), setEverywhere(null))} className="h-8 self-start rounded-[10px] border-0 bg-ink/9 px-3 text-[12.5px] text-ink hover:bg-ink/15">
                 知道了
               </button>
@@ -166,7 +166,7 @@ export function LoginPage({ reauth = false }: { reauth?: boolean }) {
               )}
               <button type="button" onClick={signIn} className="flex h-[52px] items-center justify-center gap-2.5 rounded-[18px] border-0 bg-amber text-[15.5px] font-semibold text-on-amber transition-colors hover:bg-amber-hi">
                 <LogIn className="size-[18px]" />
-                使用统一账号登录
+                登录
               </button>
               <p className="m-0 px-1 text-[12.5px] leading-[1.6] text-ink/56">
                 {options.registration === 'closed' ? '暂未开放注册，已有账号可以直接登录。' : '还没有账号？在账号中心选择「注册」，验证邮箱后回到这里。'}同一个账号也可以登录 LiteSync。

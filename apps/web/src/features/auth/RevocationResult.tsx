@@ -28,11 +28,11 @@ const PRODUCT: Record<string, string> = { litesync: 'LiteSync', nexus: 'Nexus' }
 
 export function peerLine(p: PeerRevocationState): { tone: 'ok' | 'warn' | 'error'; text: string } {
   const name = PRODUCT[p.product] ?? p.product;
-  if (p.state === 'not_configured') return { tone: 'warn', text: `${name}：本部署没有配置跨产品撤销，${name} 没有收到通知。请到 ${name} 的账户页执行「退出本产品的全部设备」。` };
+  if (p.state === 'not_configured') return { tone: 'warn', text: `${name}：本部署没有配置跨产品撤销，${name} 没有收到通知。请到 ${name} 的账号页执行「退出本产品的全部设备」。` };
   if (p.state === 'delivered') return { tone: 'ok', text: p.result === 'unknown-identity' ? `${name}：已送达（${name} 中没有这个账号，没有需要撤销的内容）` : `${name}：已送达，它的网页登录、设备与待领取授权已撤销` };
   const why = p.error ? PEER_ERRORS[p.error] ?? p.error : '';
   if (p.state === 'pending') return { tone: 'warn', text: `${name}：还没有确认（已尝试 ${p.attempts} 次${why ? `，${why}` : ''}）。会在后台继续重试${p.nextAttemptAt ? `，下次 ${formatHm(Date.parse(p.nextAttemptAt))}` : ''}。` };
-  return { tone: 'error', text: `${name}：没有送达${why ? `（${why}）` : ''}，不会再自动重试。登录后可以在「设置 › 数据、同步与安全」重新发送。` };
+  return { tone: 'error', text: `${name}：没有送达${why ? `（${why}）` : ''}，不会再自动重试。登录后可以在「设置 › 账号与同步」重新发送。` };
 }
 
 const ICON = { ok: CircleCheck, warn: Clock, error: CircleAlert } as const;

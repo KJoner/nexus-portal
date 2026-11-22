@@ -248,7 +248,7 @@ test.describe('desktop', () => {
   test('Tab skips a folded extension and walks through an open one, both ways', async ({ home: page }) => {
     const pins = await addPinnedSites(page.context().request, 7);
     await page.reload();
-    const all = page.locator('[data-dock-row="first"]').getByRole('button', { name: '收藏库' });
+    const all = page.locator('[data-dock-row="first"]').getByRole('button', { name: '快速打开' });
     const handle = page.getByRole('button', { name: /更多快捷方式/ });
     const first = page.locator(dock(pins[5]!));
     const last = page.locator(dock(pins[pins.length - 1]!));
@@ -398,8 +398,8 @@ test.describe('desktop', () => {
     await signIn(other);
     const b = await other.newPage();
     await b.goto('/');
-    await b.getByRole('button', { name: '收藏库' }).click();
-    const devGrid = b.getByRole('dialog', { name: '收藏库' }).locator('section', { hasText: '开发' });
+    await b.getByRole('button', { name: '快速打开' }).click();
+    const devGrid = b.getByRole('dialog', { name: '快速打开' }).locator('section', { hasText: '开发' });
     await expect(devGrid.getByRole('link')).toHaveText(['GitHub', 'Vercel', 'Cloudflare']);
 
     await page.goto('/settings/apps');

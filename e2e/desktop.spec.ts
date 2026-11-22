@@ -47,16 +47,16 @@ test('search keyboard model (R1.5 · 01)', async ({ home: page }) => {
 });
 
 test('drawer: filter, 2-D arrows, Esc clears then closes and returns focus', async ({ home: page }) => {
-  const all = page.getByRole('button', { name: '收藏库' });
+  const all = page.getByRole('button', { name: '快速打开' });
   await all.click();
-  const filter = page.getByLabel('筛选应用');
+  const filter = page.getByLabel('筛选收藏');
   await expect(filter).toBeFocused();
   await filter.fill('g');
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Escape');
   await expect(filter).toHaveValue('');
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('dialog', { name: '收藏库' })).toBeHidden();
+  await expect(page.getByRole('dialog', { name: '快速打开' })).toBeHidden();
   await expect(all).toBeFocused();
 });
 
@@ -93,7 +93,7 @@ test('offline edits are kept and sent when the connection returns', async ({ hom
 
 test('settings: adding an app is validated, saved and survives reload', async ({ home: page }) => {
   await page.goto('/settings/apps?new=Jellyfin');
-  const dialog = page.getByRole('dialog', { name: '新增应用' });
+  const dialog = page.getByRole('dialog', { name: '添加网站' });
   await expect(dialog).toBeVisible();
   await dialog.getByRole('button', { name: '添加' }).click();
   await expect(dialog.getByText('还有 1 项需要修正')).toBeVisible();
