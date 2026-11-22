@@ -2,7 +2,7 @@ import { appHref, displayUrl, LOCKED_CATEGORY, matchApps, type AppEntry, type Ca
 import { ArrowDownUp, ChevronDown, ChevronUp, Copy, Ellipsis, Eye, EyeOff, LayoutGrid, Pencil, Pin, PinOff, Plus, Search, Trash2 } from 'lucide-react';
 import { DropdownMenu } from 'radix-ui';
 import { useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 import { ActionSheet, type SheetState } from '../../../components/ActionSheet';
 import { toast } from '../../../components/toast-store';
 import { useConfig } from '../../../data/config-store';
@@ -236,7 +236,7 @@ export function AppsPage() {
     <div className="flex max-w-[1080px] flex-col gap-5">
       <PageHeader
         title="网站与服务"
-        sub="网站与自托管服务都在这里管理。点任一行编辑；自托管服务可分别填写外网与内网地址。"
+        sub={<>首页上的图标、搜索别名、分类与排序，以及自托管服务的内外网地址和健康检查。网站的网址、标题、标签与备注在<Link to="/library" className="text-amber-hi no-underline hover:underline">收藏库</Link>修改。</>}
         actions={
           <>
             <Button className={cn('h-10 rounded-xl px-4 text-[13.5px]', sorting && 'bg-amber/16 text-amber-hi')} aria-pressed={sorting} onClick={() => setSorting((v) => !v)}>

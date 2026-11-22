@@ -94,7 +94,8 @@ export function MobileHome() {
     const app = c.apps.find((a) => a.id === id);
     if (!app) return;
     const i = c.pins.indexOf(id);
-    const toSettings: SheetItem = { label: '在设置中编辑', icon: Pencil, hint: '›', onSelect: () => navigate(`/settings/apps?edit=${id}`) };
+    // U2b: a site is edited where the collection is (收藏库); a self-hosted service where services are.
+    const toSettings: SheetItem = !ro && app.kind === 'site' ? { label: '编辑收藏', icon: Pencil, hint: '›', onSelect: () => navigate(`/library?edit=${encodeURIComponent(id)}`) } : { label: app.kind === 'service' ? '编辑服务' : '在设置中编辑', icon: Pencil, hint: '›', onSelect: () => navigate(`/settings/apps?edit=${id}`) };
     const hide: SheetItem = { label: '隐藏此应用', icon: EyeOff, danger: true, onSelect: () => homeActions.hide(id) };
     const newTab: SheetItem = { label: '在新标签页打开', icon: ExternalLink, onSelect: () => openApp(app, true) };
     const usage = `${c.pins.length}/${MAX_PINS}`;

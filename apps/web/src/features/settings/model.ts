@@ -1,26 +1,55 @@
 import { homeCapacity, pinnedSites, shownServices, type Config, type Op, type SettingsSection } from '@nexus/shared';
-import { DatabaseBackup, House, LayoutGrid, LayoutTemplate, Palette, Search, UserRound, type LucideIcon } from 'lucide-react';
+import { DatabaseBackup, EyeOff, LayoutGrid, Palette, Search, UserRound, type LucideIcon } from 'lucide-react';
 import { toast } from '../../components/toast-store';
 import { dispatch } from '../../data/config-store';
 import type { WallpaperEntry } from '../home/Wallpaper';
 
-export type PageId = 'appearance' | 'display' | 'home' | 'apps' | 'search' | 'account' | 'data';
+export type PageId = 'appearance' | 'display' | 'home' | 'apps' | 'search' | 'account' | 'data' | 'privacy';
+export type GroupId = 'look' | 'search' | 'account' | 'data' | 'privacy' | 'apps';
 
-export const PAGES: { id: PageId; label: string; short: string; icon: LucideIcon }[] = [
-  { id: 'appearance', label: '外观与个性化', short: '外观与个性化', icon: Palette },
-  { id: 'display', label: '首页显示与布局', short: '显示与布局', icon: LayoutTemplate },
-  { id: 'home', label: '首页与快捷方式', short: '首页与快捷方式', icon: House },
-  { id: 'apps', label: '网站与服务', short: '网站与服务', icon: LayoutGrid },
-  { id: 'search', label: '搜索', short: '搜索', icon: Search },
-  // v0.5: who is signed in and where data goes is one task; backups and privacy another (01-UX-PLAN §7).
-  { id: 'account', label: '账号与同步', short: '账号与同步', icon: UserRound },
-  { id: 'data', label: '数据与备份', short: '数据与备份', icon: DatabaseBackup },
+/**
+ * 设置的五组（v0.5 · U2b，01-UX-PLAN §3.1、审查 7.2）：首页与外观 / 搜索 / 账号与同步 / 数据与备份 /
+ * 隐私与展示，加上管理用的「网站与服务」。「首页与外观」一组三页（壁纸与主题、首页显示、快捷方式），
+ * 用页内分页切换；每页的地址不变（/settings/appearance、/display、/home），旧链接照常打开（A08）。
+ */
+export const GROUPS: { id: GroupId; label: string; icon: LucideIcon; pages: PageId[]; manage?: true }[] = [
+  { id: 'look', label: '首页与外观', icon: Palette, pages: ['appearance', 'display', 'home'] },
+  { id: 'search', label: '搜索', icon: Search, pages: ['search'] },
+  // v0.5: who is signed in and where data goes is one task; backups another (01-UX-PLAN §7).
+  { id: 'account', label: '账号与同步', icon: UserRound, pages: ['account'] },
+  { id: 'data', label: '数据与备份', icon: DatabaseBackup, pages: ['data'] },
+  { id: 'privacy', label: '隐私与展示', icon: EyeOff, pages: ['privacy'] },
+  { id: 'apps', label: '网站与服务', icon: LayoutGrid, pages: ['apps'], manage: true },
 ];
+
+/** Every page: its title, its name inside its group (a tab, and the phone's title bar), and its group. */
+export const PAGES: { id: PageId; label: string; group: GroupId }[] = [
+  { id: 'appearance', label: '壁纸与主题', group: 'look' },
+  { id: 'display', label: '首页显示', group: 'look' },
+  { id: 'home', label: '快捷方式', group: 'look' },
+  { id: 'search', label: '搜索', group: 'search' },
+  { id: 'account', label: '账号与同步', group: 'account' },
+  { id: 'data', label: '数据与备份', group: 'data' },
+  { id: 'privacy', label: '隐私与展示', group: 'privacy' },
+  { id: 'apps', label: '网站与服务', group: 'apps' },
+];
+
+export const pageOf = (id: PageId) => PAGES.find((p) => p.id === id)!;
+export const groupOf = (id: PageId) => GROUPS.find((g) => g.pages.includes(id))!;
+/** Where a page is, as a person reads it: 「首页与外观 › 快捷方式」, or just 「搜索」. */
+export const whereIs = (id: PageId) => {
+  const g = groupOf(id);
+  return g.pages.length > 1 ? `${g.label} › ${pageOf(id).label}` : g.label;
+};
 
 export const isPage = (p: string | undefined): p is PageId => PAGES.some((x) => x.id === p);
 
 /** Settings search (R2 · 设置搜索): label + keywords → page. */
 export const INDEX: { page: PageId; label: string; kw: string }[] = [
+  // 旧的页面名（v0.5 之前的菜单）仍能搜到新位置（A08）
+  ['appearance', '壁纸与主题', '外观与个性化 外观 个性化 首页与外观'],
+  ['display', '首页显示', '首页显示与布局 显示与布局 布局 首页与外观'],
+  ['home', '快捷方式', '首页与快捷方式 首页 快捷方式 首页与外观'],
   ['appearance', '壁纸', '更换 上传 焦点 背景 图片 图库 每日 unsplash 网址'],
   ['appearance', '自动切换壁纸', '轮换 每天 每小时 每次打开 收藏 不喜欢 锁定'],
   ['display', '首页显示预设', '极简 日常 自定义'],
@@ -50,9 +79,11 @@ export const INDEX: { page: PageId; label: string; kw: string }[] = [
   ['account', '浏览器扩展', 'chrome edge 扩展 新标签页 设备 授权 连接 撤销'],
   ['data', '收藏备份', '导出 导入 备份 恢复 书签 json nexus-collection'],
   ['data', '外观与首页配置', 'json 配置 导入 导出 nexus-config'],
-  ['data', '隐私与展示', '投屏隐私 访客模式 访客 最近使用 图标'],
   ['data', '本地存储', '本地收藏 删除 存储空间 清除'],
   ['data', '重置设置', '恢复默认 重置'],
+  ['privacy', '投屏隐私', '访客模式 访客 投屏 借给 隐私与展示 隐私'],
+  ['privacy', '记录最近使用', '最近使用 最近 隐私'],
+  ['privacy', '网站图标从哪里加载', '图标 缓存 服务端缓存图标 第三方 隐私'],
 ].map(([page, label, kw]) => ({ page: page as PageId, label: label!, kw: kw! }));
 
 export function searchIndex(q: string) {
@@ -65,6 +96,7 @@ const ROTATION = { off: '固定壁纸', open: '每次打开换一张', hourly: '
 const PRESET = { daily: '日常模式', minimal: '极简模式', custom: '自定义显示' } as const;
 
 export function summaries(c: Config, wp: WallpaperEntry, sync: string, data = '导出、导入与重置'): Record<PageId, string> {
+  const pr = c.settings.privacy;
   const sites = c.apps.filter((a) => a.kind === 'site');
   const services = c.apps.filter((a) => a.kind === 'service');
   const hidden = c.apps.filter((a) => a.hidden).length;
@@ -79,7 +111,14 @@ export function summaries(c: Config, wp: WallpaperEntry, sync: string, data = '�
     search: `默认 ${engine?.name ?? '—'} · ${c.engines.length} 个引擎 · 历史${c.settings.search.history ? '开启' : '关闭'}`,
     account: sync,
     data,
+    privacy: `投屏隐私${pr.guest ? '已开启' : '关闭'} · ${pr.recordRecent ? '记录最近使用' : '不记录最近使用'}`,
   };
+}
+
+/** A group's line on the overview: its pages' summaries, the most telling part of each. */
+export function groupSummary(g: GroupId, sum: Record<PageId, string>): string {
+  if (g === 'look') return `${sum.appearance} · ${sum.home}`;
+  return sum[g];
 }
 
 export interface Attention {

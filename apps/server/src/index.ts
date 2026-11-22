@@ -37,7 +37,7 @@ async function main() {
   // Administrators come only from this server: the access password's account, claimed by a unified
   // identity. Without a password nobody could ever become one (invitations, disabling, status).
   if (result === 'missing' && env.oidc && !(await users.list()).some((u) => u.isAdmin && u.issuer && !u.disabled)) {
-    console.warn('[nexus] 统一身份已启用，但还没有管理员：请设置访问密码（NEXUS_PASSWORD_HASH），用它登录后在「设置 › 数据、同步与安全」绑定统一账号');
+    console.warn('[nexus] 统一身份已启用，但还没有管理员：请设置访问密码（NEXUS_PASSWORD_HASH），用它登录后在「设置 › 账号与同步」绑定统一账号');
   }
   const policy = { allowPrivate: env.allowPrivate, allowLoopback: env.allowLoopback };
   // Health checks probe the administrator's own services, nobody else's.

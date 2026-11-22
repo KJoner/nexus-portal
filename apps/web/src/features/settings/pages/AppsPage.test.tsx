@@ -50,16 +50,28 @@ describe('app editor (R2 · 表单手动保存)', () => {
 
   it('asks before discarding unsaved changes', async () => {
     const { user } = open('/settings/apps?edit=github');
-    await screen.findByRole('dialog', { name: '编辑 GitHub' });
+    await screen.findByRole('dialog', { name: '首页显示 · GitHub' });
     expect(screen.getByRole('button', { name: '保存' })).toBeDisabled();
-    await user.type(screen.getByRole('textbox', { name: /名称/ }), '!');
+    await user.type(screen.getByRole('textbox', { name: '添加别名' }), '代码{Enter}');
     await user.click(screen.getByRole('button', { name: '取消' }));
     expect(screen.getByText('有未保存的更改，确定放弃？')).toBeInTheDocument();
   });
 
+  // U2b: one field, one place. A site's address, title and folder belong to the collection (收藏库);
+  // here only how it shows on the home page. A service keeps every field here.
+  it('does not edit a site’s address or title: those are changed in the collection', async () => {
+    open('/settings/apps?edit=github');
+    const dialog = await screen.findByRole('dialog', { name: '首页显示 · GitHub' });
+    expect(screen.queryByRole('textbox', { name: /名称/ })).toBeNull();
+    expect(screen.queryByRole('textbox', { name: /网址/ })).toBeNull();
+    expect(screen.queryByRole('combobox', { name: '分类' })).toBeNull();
+    expect(dialog).toHaveTextContent('网址、标题与分组在收藏库修改');
+    expect(screen.getByRole('link', { name: '去收藏库修改' })).toHaveAttribute('href', '/library?edit=github');
+  });
+
   it('deletes after confirmation and can be undone', async () => {
     const { user } = open('/settings/apps?edit=github');
-    await screen.findByRole('dialog', { name: '编辑 GitHub' });
+    await screen.findByRole('dialog', { name: '首页显示 · GitHub' });
     await user.click(screen.getByRole('button', { name: '删除' }));
     const confirm = await screen.findByRole('dialog', { name: '删除「GitHub」？' });
     expect(confirm).toHaveTextContent('它会从首页、收藏库和搜索结果中移除');

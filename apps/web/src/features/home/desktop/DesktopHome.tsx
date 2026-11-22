@@ -185,7 +185,8 @@ export function DesktopHome() {
     }
     const pins = useConfigStore.getState().snapshot.config.pins;
     const i = pins.indexOf(app.id);
-    const toSettings: MenuItem = { label: '在设置中编辑', icon: Pencil, hint: '↗', onSelect: () => navigate(`/settings/apps?edit=${app.id}`) };
+    // U2b: a site is edited where the collection is (收藏库); a self-hosted service where services are.
+    const toSettings: MenuItem = !ro && app.kind === 'site' ? { label: '编辑收藏', icon: Pencil, hint: '↗', onSelect: () => navigate(`/library?edit=${encodeURIComponent(app.id)}`) } : { label: app.kind === 'service' ? '编辑服务' : '在设置中编辑', icon: Pencil, hint: '↗', onSelect: () => navigate(`/settings/apps?edit=${app.id}`) };
     const open: MenuItem[] = [
       { label: '打开', icon: ArrowUpRight, onSelect: () => openApp(app) },
       { label: '在新标签页打开', icon: ExternalLink, hint: '中键', onSelect: () => openApp(app, true) },

@@ -251,7 +251,7 @@ export function HomeLayoutPage() {
   const content = (
     <div className="flex min-w-0 flex-col gap-7">
       <PageHeader
-        title="首页与快捷方式"
+        title="快捷方式"
         sub={`桌面与手机共用同一个顺序：桌面首排显示前 ${home.dockSize} 个，手机首页显示前 ${mobileCap} 个${single ? '' : '，其余在桌面扩展区和手机后续页面'}。改动即时保存。`}
       />
       <Group

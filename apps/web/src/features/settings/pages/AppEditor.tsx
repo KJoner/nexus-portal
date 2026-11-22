@@ -2,6 +2,7 @@ import { hostOf, isHttpUrl, LOCKED_CATEGORY, MAX_PINS, newAppId, slug, TONES, va
 import { ChevronDown, Upload, X } from 'lucide-react';
 import { Dialog as RDialog } from 'radix-ui';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Link } from 'react-router';
 import { testHealth, useConfig, useConfigStore, useIsAdmin, uploadIcon } from '../../../data/config-store';
 import { BUILTIN_GLYPHS, libraryIconUrl } from '../../../icons/glyphs';
 import { AppTile } from '../../../icons/AppTile';
@@ -116,6 +117,9 @@ export function AppEditor({ appId, initialName, initialUrl, onClose, onDelete }:
 
   const isNew = !existing;
   const svc = draft.kind === 'service';
+  // U2b：一个字段只在一处修改。网站的网址、标题与分组属于收藏本身，在收藏库修改；这里管它在首页上的
+  // 样子（图标、搜索别名、打开方式）。新添加的网站与自托管服务仍在这里填写全部字段。
+  const basicsInLibrary = !!existing && existing.kind === 'site' && !svc;
   const dirty = JSON.stringify({ d: draft, p: pin }) !== orig.current;
   const v = useMemo(() => validateApp(draft, config.apps), [draft, config.apps]);
   const err = (k: FieldKey) => (tried || touched.has(k) ? v.errors[k] : undefined);
@@ -212,7 +216,7 @@ export function AppEditor({ appId, initialName, initialUrl, onClose, onDelete }:
       ? 'Dock 与手机首页的服务区会显示它和状态角标'
       : '只在「收藏库」和搜索中出现'
     : pinsFull
-      ? `首页已固定 ${MAX_PINS} 个网站，先在「首页与快捷方式」中移除一个`
+      ? `首页已固定 ${MAX_PINS} 个网站，先在「首页与外观 › 快捷方式」中移除一个`
       : pin
         ? pos <= config.settings.home.dockSize
           ? `首页第 ${pos} 位 · 桌面 Dock 与手机首页都显示`
@@ -486,6 +490,18 @@ export function AppEditor({ appId, initialName, initialUrl, onClose, onDelete }:
     </div>
   );
 
+  const basicsNote = basicsInLibrary && (
+    <div className={cn('flex items-center gap-3 rounded-2xl px-4 py-3', compact ? 'bg-ink/6' : 'bg-ink/4')}>
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="text-[13px] text-ink/72">网址、标题与分组在收藏库修改</span>
+        <span className="truncate font-mono text-[12px] text-ink/50">{draft.url}</span>
+      </span>
+      <Link to={`/library?edit=${encodeURIComponent(draft.id)}`} className="flex h-9 flex-none items-center rounded-[10px] bg-ink/9 px-3.5 text-[13px] text-ink no-underline hover:bg-ink/15">
+        去收藏库修改
+      </Link>
+    </div>
+  );
+
   const errorList = compact && (tried || touched.size > 0) && (
     <div className="-mt-1 flex flex-col gap-1 px-4">
       {(['name', 'url', 'lanUrl'] as const).map((k) => err(k) && <span key={k} className="text-[13px] leading-[1.5] text-danger-ink">{err(k)}</span>)}
@@ -496,8 +512,9 @@ export function AppEditor({ appId, initialName, initialUrl, onClose, onDelete }:
   const body = compact ? (
     <>
       {header}
-      {typeSeg}
-      <div className="flex flex-col gap-2">
+      {(!basicsInLibrary || admin) && typeSeg}
+      {basicsNote}
+      <div className={cn('flex flex-col gap-2', basicsInLibrary && 'hidden')}>
         <div className="flex flex-col divide-y divide-ink/7 rounded-2xl bg-ink/6">
           {input({ label: '名称', required: true, value: draft.name, onChange: (name) => set((d) => ({ ...d, name })), onBlur: () => touch('name'), error: err('name'), warn: v.warnings.name })}
           {input({ label: svc ? '外网地址' : '网址', required: true, mono: true, inputMode: 'url', placeholder: 'https://', value: draft.url, onChange: (url) => set((d) => ({ ...d, url })), onBlur: autoHttps, error: err('url') })}
@@ -519,7 +536,7 @@ export function AppEditor({ appId, initialName, initialUrl, onClose, onDelete }:
         {iconSection}
       </div>
       <div className="flex flex-col divide-y divide-ink/7 rounded-2xl bg-ink/6">
-        <div className="relative flex min-h-[52px] items-center gap-3 px-4">
+        <div className={cn('relative flex min-h-[52px] items-center gap-3 px-4', basicsInLibrary && 'hidden')}>
           <span className="flex-1 text-[15px]">分类</span>
           <span className="text-[15px] text-ink/60">{config.categories.find((c) => c.id === draft.categoryId)?.label ?? '未分类'}</span>
           <ChevronDown className="size-3.5 text-ink/40" />
@@ -539,16 +556,19 @@ export function AppEditor({ appId, initialName, initialUrl, onClose, onDelete }:
   ) : (
     <>
       {header}
-      <div className="flex flex-col gap-2">
-        <span className="text-[13px] text-ink/72">类型</span>
-        <div className="self-start">{typeSeg}</div>
-      </div>
-      {input({ label: '名称', required: true, placeholder: '例如 Jellyfin', value: draft.name, onChange: (name) => {
+      {(!basicsInLibrary || admin) && (
+        <div className="flex flex-col gap-2">
+          <span className="text-[13px] text-ink/72">类型</span>
+          <div className="self-start">{typeSeg}</div>
+        </div>
+      )}
+      {basicsNote}
+      {!basicsInLibrary && input({ label: '名称', required: true, placeholder: '例如 Jellyfin', value: draft.name, onChange: (name) => {
         const follow = !libQ || libQ === slug(draft.name);
         set((d) => ({ ...d, name }));
         if (follow) setLibQ(slug(name));
       }, onBlur: () => touch('name'), error: err('name'), warn: v.warnings.name })}
-      {input({ label: svc ? '外网地址' : '网址', required: true, mono: true, inputMode: 'url', placeholder: 'https://', value: draft.url, onChange: (url) => set((d) => ({ ...d, url })), onBlur: autoHttps, error: err('url'), warn: v.warnings.url })}
+      {!basicsInLibrary && input({ label: svc ? '外网地址' : '网址', required: true, mono: true, inputMode: 'url', placeholder: 'https://', value: draft.url, onChange: (url) => set((d) => ({ ...d, url })), onBlur: autoHttps, error: err('url'), warn: v.warnings.url })}
       <AliasEditor aliases={draft.aliases} onChange={(aliases) => set((d) => ({ ...d, aliases }))} />
       {svc && (
         <>
@@ -566,11 +586,13 @@ export function AppEditor({ appId, initialName, initialUrl, onClose, onDelete }:
         </>
       )}
       {iconSection}
-      <div className="flex flex-col gap-2">
-        <span className="text-[13px] text-ink/72">分类</span>
-        {categorySelect}
-        {newCatRow}
-      </div>
+      {!basicsInLibrary && (
+        <div className="flex flex-col gap-2">
+          <span className="text-[13px] text-ink/72">分类</span>
+          {categorySelect}
+          {newCatRow}
+        </div>
+      )}
       <div className="flex flex-col divide-y divide-ink/6 rounded-2xl bg-ink/4">
         {pinRow}
         {openRow}
@@ -619,7 +641,7 @@ export function AppEditor({ appId, initialName, initialUrl, onClose, onDelete }:
   }
 
   return (
-    <DrawerShell title={isNew ? '添加网站' : `编辑 ${existing!.name}`} subtitle={isNew ? '保存后出现在收藏库与搜索中' : dirty ? '有未保存的更改' : '尚未修改'} onRequestClose={requestClose} footer={footer} confirming={confirm}>
+    <DrawerShell title={isNew ? '添加网站' : basicsInLibrary ? `首页显示 · ${existing!.name}` : `编辑 ${existing!.name}`} subtitle={isNew ? '保存后出现在收藏库与搜索中' : dirty ? '有未保存的更改' : basicsInLibrary ? '图标、搜索别名与打开方式' : '尚未修改'} onRequestClose={requestClose} footer={footer} confirming={confirm}>
       {body}
     </DrawerShell>
   );

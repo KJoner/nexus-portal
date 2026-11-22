@@ -11,15 +11,16 @@ import { useViewport } from '../../lib/hooks';
 import { formatHm } from '../../lib/time';
 import { useWallpaper } from '../home/Wallpaper';
 import { lookDiff, useLookDraft } from './look-draft';
-import { attention, isPage, PAGES, searchIndex, summaries, type PageId } from './model';
+import { attention, GROUPS, groupOf, groupSummary, isPage, pageOf, searchIndex, summaries, whereIs, type GroupId, type PageId } from './model';
 import { AccountPage } from './pages/AccountPage';
 import { AppearancePage } from './pages/AppearancePage';
 import { AppsPage } from './pages/AppsPage';
 import { DataPage } from './pages/DataPage';
 import { DisplayPage } from './pages/DisplayPage';
 import { HomeLayoutPage } from './pages/HomeLayoutPage';
+import { PrivacyPage } from './pages/PrivacyPage';
 import { SearchPage } from './pages/SearchPage';
-import { CompactContext, Spinner } from './ui';
+import { CompactContext, Spinner, useCompact } from './ui';
 
 const PAGE_VIEW: Record<PageId, () => ReactNode> = {
   appearance: () => <AppearancePage />,
@@ -29,7 +30,41 @@ const PAGE_VIEW: Record<PageId, () => ReactNode> = {
   search: () => <SearchPage />,
   account: () => <AccountPage />,
   data: () => <DataPage />,
+  privacy: () => <PrivacyPage />,
 };
+
+/** The page a group opens on (its first page). */
+const firstPage = (g: GroupId) => GROUPS.find((x) => x.id === g)!.pages[0]!;
+const MAIN = GROUPS.filter((g) => !g.manage);
+const MANAGE = GROUPS.filter((g) => g.manage);
+
+/**
+ * 一组里的几页（首页与外观：壁纸与主题 / 首页显示 / 快捷方式），用页内分页切换。每页仍是自己的地址，
+ * 旧链接与书签照常打开（A08）；切换用 replace，手机的「返回」仍回到设置首页。
+ */
+function GroupTabs({ page }: { page: PageId }) {
+  const group = groupOf(page);
+  const compact = useCompact();
+  if (group.pages.length < 2) return null;
+  return (
+    <div className={cn('flex items-center gap-3', compact && 'flex-col items-stretch gap-0')}>
+      {!compact && <span className="text-[13px] text-ink/50">{group.label}</span>}
+      <nav aria-label={`${group.label}的分页`} className={cn('flex gap-0.5 rounded-[12px] bg-ink/6 p-[3px]', compact ? 'w-full' : 'self-start')}>
+        {group.pages.map((id) => (
+          <Link
+            key={id}
+            to={`/settings/${id}`}
+            replace
+            aria-current={id === page ? 'page' : undefined}
+            className={cn('flex items-center justify-center rounded-[9px] text-[13.5px] no-underline transition-colors duration-140', compact ? 'h-10 flex-1 px-2 text-[14px]' : 'h-9 px-4', id === page ? 'bg-ink/14 text-ink' : 'text-ink/62 hover:text-ink')}
+          >
+            {pageOf(id).label}
+          </Link>
+        ))}
+      </nav>
+    </div>
+  );
+}
 
 function useSyncSummary(): string {
   const save = useSaveState();
@@ -91,17 +126,17 @@ function Overview({ onGo }: { onGo(page: PageId, edit?: string): void }) {
     <div className="flex max-w-[880px] flex-col gap-7">
       <div className="flex flex-col gap-2">
         <h1 className="m-0 text-[28px] font-medium tracking-[-0.01em]">设置</h1>
-        <p className="m-0 text-[14px] leading-[1.7] text-ink/56">调整首页的外观、快捷方式、应用和搜索。开关类设置即时保存；外观在预览确认后应用；应用编辑需要手动保存。</p>
+        <p className="m-0 text-[14px] leading-[1.7] text-ink/56">首页与外观、搜索、账号与同步、数据与备份、隐私与展示。开关类设置即时保存；壁纸与主题在预览确认后应用；网站编辑需要手动保存。</p>
       </div>
       <div className="grid grid-cols-2 gap-4">
-        {PAGES.map((p) => (
-          <button key={p.id} type="button" onClick={() => onGo(p.id)} className="flex items-start gap-4 rounded-[20px] border-0 bg-ink/[0.045] p-5 text-left text-ink shadow-[inset_0_0_0_1px_rgba(239,234,225,0.05)] transition-colors duration-140 hover:bg-ink/8">
+        {[...MAIN, ...MANAGE].map((g) => (
+          <button key={g.id} type="button" onClick={() => onGo(firstPage(g.id))} className="flex items-start gap-4 rounded-[20px] border-0 bg-ink/[0.045] p-5 text-left text-ink shadow-[inset_0_0_0_1px_rgba(239,234,225,0.05)] transition-colors duration-140 hover:bg-ink/8">
             <span className="grid size-10 flex-none place-items-center rounded-xl bg-ink/8">
-              <p.icon className="size-[18px] text-amber" />
+              <g.icon className="size-[18px] text-amber" />
             </span>
             <span className="flex min-w-0 flex-1 flex-col gap-[5px]">
-              <span className="text-[16px] font-medium">{p.label}</span>
-              <span className="text-[13px] leading-[1.6] text-ink/60">{sum[p.id]}</span>
+              <span className="text-[16px] font-medium">{g.label}</span>
+              <span className="text-[13px] leading-[1.6] text-ink/60">{groupSummary(g.id, sum)}</span>
             </span>
             <ChevronRight className="mt-3 size-4 flex-none text-ink/40" />
           </button>
@@ -135,7 +170,8 @@ function DesktopShell({ page }: { page: PageId | null }) {
   const config = useConfig();
   const [q, setQ] = useState('');
   const hits = searchIndex(q);
-  const counts: Partial<Record<PageId, number>> = { home: config.pins.length, apps: config.apps.length, search: config.engines.length };
+  const counts: Partial<Record<GroupId, number>> = { apps: config.apps.length, search: config.engines.length };
+  const here = page ? groupOf(page).id : null;
   const go = (p: PageId | null, edit?: string) => {
     setQ('');
     navigate(p ? `/settings/${p}${edit ? `?edit=${encodeURIComponent(edit)}` : ''}` : '/settings');
@@ -180,7 +216,7 @@ function DesktopShell({ page }: { page: PageId | null }) {
               {hits.map((h) => (
                 <button key={h.label} type="button" onClick={() => go(h.page)} className="flex flex-col items-start gap-0.5 rounded-[11px] border-0 bg-transparent px-3 py-[9px] text-left text-ink hover:bg-ink/7">
                   <span className="text-[13.5px]">{h.label}</span>
-                  <span className="text-[11.5px] text-ink/46">{PAGES.find((p) => p.id === h.page)!.label}</span>
+                  <span className="text-[11.5px] text-ink/46">{whereIs(h.page)}</span>
                 </button>
               ))}
               {!hits.length && <span className="px-3 py-2.5 text-[13px] text-ink/50">没有匹配「{q}」的设置</span>}
@@ -189,8 +225,12 @@ function DesktopShell({ page }: { page: PageId | null }) {
             <>
               <NavItem current={page === null} onClick={() => go(null)} icon={<SlidersHorizontal className="size-4" />} label="概览" />
               <div className="mx-3 my-2 h-px bg-ink/6" />
-              {PAGES.map((p) => (
-                <NavItem key={p.id} current={page === p.id} onClick={() => go(p.id)} icon={<p.icon className="size-4" />} label={p.label} count={counts[p.id]} />
+              {MAIN.map((g) => (
+                <NavItem key={g.id} current={here === g.id} onClick={() => go(firstPage(g.id))} icon={<g.icon className="size-4" />} label={g.label} count={counts[g.id]} />
+              ))}
+              <div className="mx-3 mt-3 mb-1 text-[11.5px] text-ink/42">管理</div>
+              {MANAGE.map((g) => (
+                <NavItem key={g.id} current={here === g.id} onClick={() => go(firstPage(g.id))} icon={<g.icon className="size-4" />} label={g.label} count={counts[g.id]} />
               ))}
             </>
           )}
@@ -199,7 +239,16 @@ function DesktopShell({ page }: { page: PageId | null }) {
         </nav>
         <div className="relative min-h-0">
           <div className="absolute inset-0 overflow-x-hidden overflow-y-auto" id="nx-settings-scroll">
-            <div className="box-border flex flex-col gap-7 px-12 pt-9 pb-36">{page ? PAGE_VIEW[page]() : <Overview onGo={go} />}</div>
+            <div className="box-border flex flex-col gap-7 px-12 pt-9 pb-36">
+              {page ? (
+                <>
+                  <GroupTabs page={page} />
+                  {PAGE_VIEW[page]()}
+                </>
+              ) : (
+                <Overview onGo={go} />
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -245,7 +294,7 @@ function MobileRoot() {
             <button key={h.label} type="button" onClick={() => navigate(`/settings/${h.page}`)} className="flex min-h-14 items-center gap-3 border-0 bg-transparent px-4 py-2 text-left text-ink active:bg-ink/8">
               <span className="flex flex-1 flex-col gap-0.5">
                 <span className="text-[16px]">{h.label}</span>
-                <span className="text-[12.5px] text-ink/50">{PAGES.find((p) => p.id === h.page)!.label}</span>
+                <span className="text-[12.5px] text-ink/50">{whereIs(h.page)}</span>
               </span>
               <ChevronRight className="size-4 text-ink/36" />
             </button>
@@ -254,20 +303,25 @@ function MobileRoot() {
         </div>
       ) : (
         <>
-          <div className="flex flex-col divide-y divide-ink/7 overflow-hidden rounded-2xl bg-ink/6">
-            {PAGES.map((p) => (
-              <button key={p.id} type="button" onClick={() => navigate(`/settings/${p.id}`)} className="flex min-h-16 items-center gap-3.5 border-0 bg-transparent px-3.5 py-2.5 text-left text-ink active:bg-ink/8">
-                <span className="grid size-[34px] flex-none place-items-center rounded-[10px] bg-ink/9">
-                  <p.icon className="size-[17px] text-amber" />
-                </span>
-                <span className="flex min-w-0 flex-1 flex-col gap-[3px]">
-                  <span className="text-[16px]">{p.label}</span>
-                  <span className="truncate text-[12.5px] text-ink/52">{sum[p.id]}</span>
-                </span>
-                <ChevronRight className="size-4 flex-none text-ink/36" />
-              </button>
-            ))}
-          </div>
+          {[MAIN, MANAGE].map((list, i) => (
+            <div key={i} className="flex flex-col gap-2">
+              {i > 0 && <span className="px-4 text-[13px] text-ink/50">管理</span>}
+              <div className="flex flex-col divide-y divide-ink/7 overflow-hidden rounded-2xl bg-ink/6">
+                {list.map((g) => (
+                  <button key={g.id} type="button" onClick={() => navigate(`/settings/${firstPage(g.id)}`)} className="flex min-h-16 items-center gap-3.5 border-0 bg-transparent px-3.5 py-2.5 text-left text-ink active:bg-ink/8">
+                    <span className="grid size-[34px] flex-none place-items-center rounded-[10px] bg-ink/9">
+                      <g.icon className="size-[17px] text-amber" />
+                    </span>
+                    <span className="flex min-w-0 flex-1 flex-col gap-[3px]">
+                      <span className="text-[16px]">{g.label}</span>
+                      <span className="truncate text-[12.5px] text-ink/52">{groupSummary(g.id, sum)}</span>
+                    </span>
+                    <ChevronRight className="size-4 flex-none text-ink/36" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
           {attn.length > 0 && (
             <div className="flex flex-col gap-2">
               <span className="px-4 text-[13px] text-ink/50">需要注意</span>
@@ -299,8 +353,9 @@ function MobileShell({ page }: { page: PageId | null }) {
   const editing = page === 'apps' && (params.has('edit') || params.has('new'));
   const editApp = editing ? config.apps.find((a) => a.id === params.get('edit')) : undefined;
   const [scrolled, setScrolled] = useState(false);
-  const title = editing ? (editApp ? `编辑 ${editApp.name}` : '添加网站') : page ? PAGES.find((p) => p.id === page)!.short : '';
-  const back = editing ? { label: '应用', to: '/settings/apps' } : page ? { label: '设置', to: '/settings' } : null;
+  // An existing site's address and title are edited in 收藏库 (U2b): here only how it shows on the home page.
+  const title = editing ? (editApp ? (editApp.kind === 'site' ? `首页显示 · ${editApp.name}` : `编辑 ${editApp.name}`) : '添加网站') : page ? groupOf(page).label : '';
+  const back = editing ? { label: '网站与服务', to: '/settings/apps' } : page ? { label: '设置', to: '/settings' } : null;
 
   useEffect(() => setScrolled(false), [page, editing]);
 
@@ -340,6 +395,7 @@ function MobileShell({ page }: { page: PageId | null }) {
         <div className="box-border flex min-h-full flex-col gap-6 px-4" style={{ paddingTop: 'calc(env(safe-area-inset-top) + 56px)', paddingBottom: 'calc(env(safe-area-inset-bottom) + 140px)' }}>
           {page ? (
             <div key={page + String(editing)} className="flex animate-[nx-push_.32s_var(--ease-emph)] flex-col gap-[22px]">
+              {!editing && <GroupTabs page={page} />}
               {PAGE_VIEW[page]()}
             </div>
           ) : (
@@ -365,7 +421,7 @@ export default function SettingsPage() {
   }, [page, params, navigate]);
   const compact = !(w >= 900 && h >= 560);
   useEffect(() => {
-    document.title = current ? `${PAGES.find((p) => p.id === current)!.label} · Nexus 设置` : 'Nexus 设置';
+    document.title = current ? `${whereIs(current)} · Nexus 设置` : 'Nexus 设置';
     return () => {
       document.title = 'Nexus';
     };

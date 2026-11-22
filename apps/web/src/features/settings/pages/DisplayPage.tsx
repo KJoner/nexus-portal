@@ -14,7 +14,7 @@ const MODES: { value: Mode; label: string }[] = [
 ];
 
 /**
- * 首页显示与布局 (v0.2): what the home page shows, per element, separately for desktop and phone.
+ * 首页显示 (v0.2; 首页显示与布局 before U2b): what the home page shows, per element, separately for desktop and phone.
  * Changes apply right away; touching any single item switches the preset to 自定义.
  */
 export function DisplayPage() {
@@ -64,7 +64,7 @@ export function DisplayPage() {
           <>
             {toggle('Nexus 标志', undefined, d.brand, (v) => setD({ brand: v }))}
             {toggle('「首页」导航', undefined, d.navHome, (v) => setD({ navHome: v }))}
-            {toggle('「应用」导航', undefined, d.navApps, (v) => setD({ navApps: v }))}
+            {toggle('「收藏库」与「应用目录」导航', undefined, d.navApps, (v) => setD({ navApps: v }))}
             {admin && toggle('「运行概览」导航', undefined, d.navOverview, (v) => setD({ navOverview: v }))}
           </>
         )}
@@ -72,7 +72,7 @@ export function DisplayPage() {
         {mode('设置按钮', '隐藏后仍可按 , 键、右键空白处，或访问 /settings 打开设置', d.settings, (v) => setD({ settings: v }))}
       </Group>
       <Group title="桌面 · 中间">
-        {toggle('时钟', '日期在「外观与个性化」中设置', d.clock === 'show', (v) => setD({ clock: v ? 'show' : 'hide' }))}
+        {toggle('时钟', '日期在「壁纸与主题」中设置', d.clock === 'show', (v) => setD({ clock: v ? 'show' : 'hide' }))}
         {toggle('搜索框', '隐藏后按 / 或 Ctrl+K 唤出', d.search === 'show', (v) => setD({ search: v ? 'show' : 'hide' }))}
         {toggle('快捷方式图标', undefined, d.shortcuts === 'show', (v) => setD({ shortcuts: v ? 'show' : 'hide' }))}
         {mode('快捷方式名称', '悬停时：名称只在鼠标停在图标上时出现', labelMode, setLabels)}
@@ -98,7 +98,7 @@ export function DisplayPage() {
 
   return (
     <div className="flex max-w-[760px] flex-col gap-7">
-      <PageHeader title="首页显示与布局" sub="决定首页显示哪些内容。桌面与手机分开设置，改动即时保存；预设只改变显示方式，不会改动应用与快捷方式。" />
+      <PageHeader title="首页显示" sub="决定首页显示哪些内容。桌面与手机分开设置，改动即时保存；预设只改变显示方式，不会改动收藏与快捷方式。" />
       <Group title="预设">
         <Row label="显示方式" sub={ui.preset === 'minimal' ? '只保留时间、搜索与快捷方式；其余移到鼠标附近或长按菜单中' : ui.preset === 'custom' ? '已按下面的选项单独调整' : '默认的完整首页'} stacked>
           <Segmented

@@ -101,7 +101,7 @@ const clientId = (() => {
 })();
 
 /**
- * A batch kept on this device instead of being sent or dropped (shown in 设置 › 数据与安全):
+ * A batch kept on this device instead of being sent or dropped (shown in 设置 › 账号与同步):
  *  - quota     the server refused it with QUOTA_EXCEEDED; retried after making room;
  *  - conflict  (v0.4.1, NEX-04) another device got there first — the app was deleted (ITEM_DELETED),
  *              the same field was changed (FIELD_CONFLICT), or what this deletes / restores changed
@@ -373,7 +373,7 @@ function scheduleRetry(afterMs?: number) {
 
 const isQuotaHeld = (h: HeldBatch) => h.reason !== 'conflict';
 
-/** 设置 › 数据与安全: send the changes held over a limit again (after making room), or let them go. */
+/** 设置 › 账号与同步: send the changes held over a limit again (after making room), or let them go. */
 export function retryHeld(): DispatchResult[] {
   const all = useConfigStore.getState().held;
   const held = all.filter(isQuotaHeld);
@@ -664,7 +664,7 @@ export const wallpaperSources = {
 /** v0.4 应用目录 (public templates; whether one is already added is decided against this account's data). */
 export const catalogApi = { load: () => transport.catalog() };
 
-/** Browser extensions paired with this portal (数据、同步与安全 · 浏览器扩展). */
+/** Browser extensions paired with this portal (账号与同步 · 浏览器扩展). */
 export const devicesApi = {
   list: () => transport.devices(),
   revoke: (id: string) => transport.revokeDevice(id),

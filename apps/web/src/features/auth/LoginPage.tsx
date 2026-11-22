@@ -29,6 +29,17 @@ export const AUTH_ERRORS: Record<string, string> = {
   session_ended: '登录已失效，请重新登录。',
 };
 
+/**
+ * What 登录同步 says when the account center sent the browser back without a session: its reason
+ * (the same words as the account center's own pages — 已取消登录、邀请码无效…), and that nothing here
+ * changed. Cancelling is not an error: the way on is to keep using this browser's collection.
+ */
+export function returnedWithout(code: string | null): string {
+  const why = AUTH_ERRORS[code ?? ''];
+  if (code === 'access_denied') return `${why}此浏览器的收藏没有任何改动，可以继续只在此浏览器使用。`;
+  return `${why ?? '没有完成登录。'}此浏览器的收藏没有任何改动，可以再试一次。`;
+}
+
 /** Signing in needs the server and the identity service; nothing is pretended offline. */
 export const AUTH_OFFLINE = '当前设备离线：统一登录需要连接 Nexus 服务端与账号中心，恢复网络后再试。';
 
@@ -130,7 +141,7 @@ export function LoginPage({ reauth = false }: { reauth?: boolean }) {
           <div className="flex items-center gap-2.5 px-1 text-[15px] font-semibold">
             <span className="size-2 rounded-full bg-amber" style={{ boxShadow: '0 0 14px rgba(230,192,138,0.75)' }} />
             Nexus
-            <span className="text-[13px] font-normal text-ink/50">{reauth ? '需要重新登录' : options?.oidc ? '登录或注册以继续' : '输入访问密码以继续'}</span>
+            <span className="text-[13px] font-normal text-ink/50">{reauth ? '需要重新登录' : options?.oidc ? '登录以继续' : '输入访问密码以继续'}</span>
           </div>
           {reauth && (
             <p className="m-0 px-1 text-[12.5px] leading-[1.6] text-ink/62">
@@ -156,7 +167,7 @@ export function LoginPage({ reauth = false }: { reauth?: boolean }) {
                 <input
                   value={invite}
                   onChange={(e) => setInvite(e.target.value)}
-                  placeholder="邀请码（第一次注册时填写）"
+                  placeholder="邀请码（第一次创建账号时填写）"
                   aria-label="邀请码"
                   autoComplete="off"
                   spellCheck={false}
@@ -169,7 +180,7 @@ export function LoginPage({ reauth = false }: { reauth?: boolean }) {
                 登录
               </button>
               <p className="m-0 px-1 text-[12.5px] leading-[1.6] text-ink/56">
-                {options.registration === 'closed' ? '暂未开放注册，已有账号可以直接登录。' : '还没有账号？在账号中心选择「注册」，验证邮箱后回到这里。'}同一个账号也可以登录 LiteSync。
+                一个账号可用于 LiteSync 和 Nexus。{options.registration === 'closed' ? '暂未开放注册。已有账号可以直接登录。' : '还没有账号？在账号中心选择「创建账号」，验证邮箱后会回到这里。'}
               </p>
             </div>
           )}

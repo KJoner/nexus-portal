@@ -7,7 +7,7 @@ import { flush, useConfig, useConfigStore, useIsAdmin, useSaveState } from '../.
 import { webLocalTransport } from '../../../data/local/web';
 import { host } from '../../../lib/host';
 import { apply, patch } from '../model';
-import { Button, Dialog, Group, PageHeader, Row, Switch, useCompact } from '../ui';
+import { Button, Dialog, Group, PageHeader, Row, useCompact } from '../ui';
 
 /** Downloads `data` as a JSON file. */
 function download(name: string, data: unknown) {
@@ -49,8 +49,8 @@ function parseImport(text: string): Config {
 type Reset = 'look' | 'home' | 'all';
 
 /**
- * 数据与备份 (v0.5): files in and out, privacy, and resets — the account and its sync moved to
- * 账号与同步. For a local collection also its storage: what is kept where, the collection backup,
+ * 数据与备份 (v0.5): files in and out and resets — the account and its sync moved to 账号与同步,
+ * privacy to 隐私与展示 (U2b). For a local collection also its storage: what is kept where, the collection backup,
  * and deleting it (an action of its own, never part of clearing a cache).
  */
 export function DataPage() {
@@ -67,7 +67,6 @@ export function DataPage() {
   const [counts, setCounts] = useState<ReturnType<typeof localCounts> | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteTyped, setDeleteTyped] = useState('');
-  const pr = config.settings.privacy;
   const local = space === 'local';
   // A local collection and an ordinary account start from the public template; only the operator's own
   // account has the self-hosted seed (its private services) to go back to.
@@ -200,22 +199,6 @@ export function DataPage() {
             选择文件
           </label>
         </Row>
-      </Group>
-
-      <Group title="隐私与展示">
-        <Row label="投屏隐私" sub="隐藏服务状态、最近使用与搜索历史，适合投屏或借给他人使用（不是账号或数据模式；收藏照常保存）">
-          <Switch label="投屏隐私" checked={pr.guest} onChange={(v) => patch('privacy', { guest: v })} />
-        </Row>
-        <Row label="记录最近使用" sub="用于搜索框的「最近」；只保存在本浏览器">
-          <Switch label="记录最近使用" checked={pr.recordRecent} onChange={(v) => patch('privacy', { recordRecent: v })} />
-        </Row>
-        {local ? (
-          <Row label="网站图标" sub="本地收藏的图标直接从公共图标库和网站图标服务加载；登录并开启同步后，可改由 Nexus 服务端缓存" />
-        ) : (
-          <Row label="服务端缓存图标" sub="由 Nexus 服务端获取并缓存品牌图标，浏览器不再直接请求第三方图标服务；图标源故障时继续使用缓存">
-            <Switch label="服务端缓存图标" checked={pr.cacheIcons} onChange={(v) => patch('privacy', { cacheIcons: v })} />
-          </Row>
-        )}
       </Group>
 
       <Group title="重置">

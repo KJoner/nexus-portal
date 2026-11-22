@@ -38,6 +38,6 @@ test('settings use push navigation with a back label', async ({ home: page }) =>
   await page.getByRole('button', { name: /网站与服务/ }).tap();
   await expect(page.getByRole('button', { name: '设置', exact: true })).toBeVisible();
   await page.getByRole('button', { name: /OBsync/ }).first().tap();
-  await expect(page.getByRole('button', { name: '应用', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '网站与服务', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '保存' })).toBeDisabled();
 });

@@ -9,7 +9,7 @@ import { forgetSignIn, leaveNotice, rememberSignIn, signInIntent, switchWorkspac
 import { useConfigStore } from '../../data/config-store';
 import { cn } from '../../lib/cn';
 import { useViewport } from '../../lib/hooks';
-import { AUTH_ERRORS, AUTH_OFFLINE } from '../auth/LoginPage';
+import { AUTH_ERRORS, AUTH_OFFLINE, returnedWithout } from '../auth/LoginPage';
 import { Wallpaper } from '../home/Wallpaper';
 import { Segmented, Spinner } from '../settings/ui';
 
@@ -57,7 +57,8 @@ export default function ConnectPage() {
     void checkIdentity().then((status) => {
       if (status === 'signed-in') setStep('choose');
       else {
-        if (params.get('return')) setError('没有完成登录。此浏览器的收藏没有任何改动，可以再试一次。');
+        // Back without a session: say why when the account center said so (邀请码无效、已取消…), not only that it did not work.
+        if (params.get('return')) setError(returnedWithout(params.get('auth_error')));
         setStep('signin');
       }
     });
@@ -160,7 +161,7 @@ export default function ConnectPage() {
             <>
               <div className="flex flex-col gap-2">
                 <h1 className="m-0 text-[24px] font-medium tracking-[-0.01em]">登录以跨设备同步</h1>
-                <p className="m-0 text-[14px] leading-[1.7] text-ink/66">一个账号可用于 Nexus 和 LiteSync。登录后由你决定如何处理这台浏览器里的收藏——不会自动上传。</p>
+                <p className="m-0 text-[14px] leading-[1.7] text-ink/66">一个账号可用于 LiteSync 和 Nexus。登录后由你决定如何处理这台浏览器里的收藏——不会自动上传。</p>
               </div>
               {step === 'checking' ? (
                 <p role="status" className="m-0 flex items-center gap-2 text-[13.5px] text-ink/70">
@@ -258,7 +259,7 @@ export function SignInOptions(p: {
         <>
           {options.registration === 'invite' && (
             <label className="flex flex-col gap-1.5 text-[13px] text-ink/70">
-              邀请码（第一次注册时填写）
+              邀请码（第一次创建账号时填写）
               <input value={p.invite} onChange={(e) => p.setInvite(e.target.value)} autoComplete="off" spellCheck={false} className="h-11 rounded-[14px] border-0 bg-ink/9 px-4 text-[16px] text-ink outline-none sm:text-[14.5px]" />
             </label>
           )}
@@ -266,7 +267,7 @@ export function SignInOptions(p: {
             <LogIn className="size-[18px]" />
             登录或创建账号
           </button>
-          <p className="m-0 text-[12.5px] leading-[1.6] text-ink/56">{options.registration === 'closed' ? '暂未开放注册，已有账号可以直接登录。' : '还没有账号？在登录页选择「注册」，验证邮箱后会回到这里。'}</p>
+          <p className="m-0 text-[12.5px] leading-[1.6] text-ink/56">{options.registration === 'closed' ? '暂未开放注册。已有账号可以直接登录。' : '还没有账号？在账号中心选择「创建账号」，验证邮箱后会回到这里。'}</p>
         </>
       )}
       {options.legacyPassword && options.oidc && !p.showPassword && (

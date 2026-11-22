@@ -399,7 +399,7 @@ export function AppearancePage() {
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_456px] items-start gap-10">
       <div className="flex min-w-0 flex-col gap-7">
-        <PageHeader title="外观与个性化" sub="右侧预览会立即反映每项调整。确认后点「应用到首页」，在此之前首页保持不变。" />
+        <PageHeader title="壁纸与主题" sub="右侧预览会立即反映每项调整。确认后点「应用到首页」，在此之前首页保持不变。" />
         {groups}
       </div>
       <aside className="sticky top-0 flex flex-col gap-3.5">

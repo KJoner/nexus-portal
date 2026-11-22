@@ -1,7 +1,7 @@
 import { hostOf, itemUrlKey, LOCKED_CATEGORY, matchApp, type AppEntry, type Item } from '@nexus/shared';
 import { ArrowLeft, Download, FolderInput, Grid2x2, List, Pin, PinOff, Plus, RotateCcw, Search, Tag as TagIcon, Trash2, Upload, X } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { PageBackdrop } from '../../components/PageBackdrop';
 import { toast } from '../../components/toast-store';
 import { ToastHost } from '../../components/ToastHost';
@@ -72,7 +72,13 @@ function Sidebar({ view, setView, folders, counts }: { view: View; setView(v: Vi
   );
 }
 
-function ItemDialog({ open, item, folders, defaultFolder, onClose }: { open: boolean; item: Item | null; folders: Folder[]; defaultFolder: string; onClose(): void }) {
+/**
+ * U2b：一个字段只在一处修改。收藏本身的网址、标题、分组、标签与备注在这里；首页上的图标、搜索别名与
+ * 打开方式在「设置 › 网站与服务」（它不再改网址与标题）。自托管服务（运营者的）的名称、地址与分组仍
+ * 只在「网站与服务」修改，这里只改它的标签与备注。
+ */
+function ItemDialog({ open, item, home, folders, defaultFolder, onClose }: { open: boolean; item: Item | null; home?: AppEntry; folders: Folder[]; defaultFolder: string; onClose(): void }) {
+  const service = home?.kind === 'service';
   const [title, setTitle] = useState('');
   const [url, setUrl] = useState('');
   const [folderId, setFolderId] = useState(defaultFolder);
@@ -100,7 +106,7 @@ function ItemDialog({ open, item, folders, defaultFolder, onClose }: { open: boo
     setError('');
     let r: WriteOutcome;
     if (item) {
-      const patch = { ...(title.trim() !== item.title ? { title: title.trim() } : {}), ...(url.trim() !== item.url ? { url: url.trim() } : {}), ...(folderId !== item.folderId ? { folderId } : {}), ...(JSON.stringify(tagList) !== JSON.stringify(item.tags) ? { tags: tagList } : {}), ...(note !== item.note ? { note } : {}) };
+      const patch = { ...(!service && title.trim() !== item.title ? { title: title.trim() } : {}), ...(!service && url.trim() !== item.url ? { url: url.trim() } : {}), ...(!service && folderId !== item.folderId ? { folderId } : {}), ...(JSON.stringify(tagList) !== JSON.stringify(item.tags) ? { tags: tagList } : {}), ...(note !== item.note ? { note } : {}) };
       r = Object.keys(patch).length ? await libraryApi.patch(item, patch) : { ok: true };
     } else r = await libraryApi.create({ kind: 'page', title: title.trim() || url.trim(), url: url.trim(), folderId, tags: tagList, note }, { pinToHome: pin, duplicatePolicy: policy });
     setBusy(false);
@@ -145,16 +151,16 @@ function ItemDialog({ open, item, folders, defaultFolder, onClose }: { open: boo
       <form className="flex flex-col gap-3" onSubmit={(e) => (e.preventDefault(), void save())}>
         <label className="flex flex-col gap-1.5 text-[12.5px] text-ink/60">
           网址
-          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://" aria-label="网址" spellCheck={false} autoComplete="off" className="h-10 rounded-lg border-0 bg-ink/7 px-3 font-mono text-[13.5px] text-ink outline-none" />
+          <input value={url} onChange={(e) => setUrl(e.target.value)} readOnly={service} placeholder="https://" aria-label="网址" spellCheck={false} autoComplete="off" className="h-10 rounded-lg border-0 bg-ink/7 px-3 font-mono text-[13.5px] text-ink outline-none read-only:text-ink/56" />
         </label>
         <label className="flex flex-col gap-1.5 text-[12.5px] text-ink/60">
           标题
-          <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} aria-label="标题" className="h-10 rounded-lg border-0 bg-ink/7 px-3 text-[14px] text-ink outline-none" />
+          <input value={title} onChange={(e) => setTitle(e.target.value)} readOnly={service} maxLength={200} aria-label="标题" className="h-10 rounded-lg border-0 bg-ink/7 px-3 text-[14px] text-ink outline-none read-only:text-ink/56" />
         </label>
         <div className="grid grid-cols-2 gap-3">
           <label className="flex flex-col gap-1.5 text-[12.5px] text-ink/60">
             分组
-            <select value={folderId} onChange={(e) => setFolderId(e.target.value)} aria-label="分组" className="h-10 rounded-lg border-0 bg-ink/7 px-2.5 text-[13.5px] text-ink outline-none">
+            <select value={folderId} onChange={(e) => setFolderId(e.target.value)} disabled={service} aria-label="分组" className="h-10 rounded-lg border-0 bg-ink/7 px-2.5 text-[13.5px] text-ink outline-none disabled:text-ink/56">
               {folders.map((f) => (
                 <option key={f.id} value={f.id} className="bg-[#2a2824]">
                   {f.id === LOCKED_CATEGORY.none ? '收件箱（未分组）' : f.label}
@@ -171,6 +177,14 @@ function ItemDialog({ open, item, folders, defaultFolder, onClose }: { open: boo
           备注
           <textarea value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000} rows={2} aria-label="备注" className="rounded-lg border-0 bg-ink/7 px-3 py-2 text-[13.5px] text-ink outline-none" />
         </label>
+        {home && (
+          <p className="m-0 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-ink/5 px-3 py-2 text-[12.5px] leading-[1.6] text-ink/66">
+            {service ? '这是自托管服务：名称、地址与分组在「设置 › 网站与服务」修改，这里只改标签与备注。' : '首页上的图标、搜索别名与打开方式在「设置 › 网站与服务」修改。'}
+            <Link to={`/settings/apps?edit=${encodeURIComponent(home.id)}`} className="text-amber-hi no-underline hover:underline">
+              {service ? '编辑服务' : '编辑首页显示'}
+            </Link>
+          </p>
+        )}
         {!item && (
           <label className="flex min-h-9 items-center gap-2 text-[13px] text-ink/76">
             <input type="checkbox" className="size-4 accent-[#e6c08a]" checked={pin} onChange={(e) => setPin(e.target.checked)} />
@@ -439,10 +453,11 @@ export default function LibraryPage() {
   const shown = useMemo(() => {
     const base = view.kind === 'trash' ? all.filter((i) => i.deletedAt !== null) : live.filter((i) => (view.kind === 'pinned' ? pinnedSet.has(i.id) : view.kind === 'folder' ? i.folderId === view.id : true));
     const tagged = tag ? base.filter((i) => i.tags.includes(tag)) : base;
-    const q = query.trim();
+    // The matcher compares lowercase (as the home page's rankApps does): 「GitHub」 finds GitHub.
+    const q = query.trim().toLowerCase();
     if (!q) return tagged;
     // Name, pinyin, aliases (tags) and domain — the same matcher as the home page.
-    return tagged.filter((i) => matchApp(asApp(i, real), q, pinyin) !== null || i.note.includes(q));
+    return tagged.filter((i) => matchApp(asApp(i, real), q, pinyin) !== null || i.note.toLowerCase().includes(q));
   }, [all, live, view, tag, query, pinnedSet, real, pinyin]);
 
   useEffect(() => {
@@ -529,6 +544,19 @@ export default function LibraryPage() {
     a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   };
+
+  // Links into the library (U2b): ?edit=<id> opens that item (首页右键「编辑收藏」、网站与服务),
+  // ?import=1 / ?export=1 come from 设置 › 数据与备份. Read once the collection is here, then dropped.
+  const [params, setParams] = useSearchParams();
+  useEffect(() => {
+    if (status !== 'ready' || !(params.has('edit') || params.has('import') || params.has('export'))) return;
+    const target = items[params.get('edit') ?? ''];
+    if (target && target.deletedAt === null) setEditing(target);
+    if (params.get('import') === '1') setImporting(true);
+    if (params.get('export') === '1') void exportAll().catch((e: unknown) => toast({ msg: `导出失败：${e instanceof Error ? e.message : String(e)}`, tone: 'error' }));
+    setParams({}, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, params]);
 
   const folderLabel = (id: string) => (id === LOCKED_CATEGORY.none ? '收件箱' : (folders.find((f) => f.id === id)?.label ?? '—'));
   const existingUrls = useMemo(() => new Set(live.map((i) => itemUrlKey(i.url))), [live]);
@@ -762,7 +790,7 @@ export default function LibraryPage() {
           </div>
         )}
 
-        <ItemDialog open={editing !== null} item={editing === 'new' ? null : editing} folders={folders} defaultFolder={view.kind === 'folder' ? view.id : LOCKED_CATEGORY.none} onClose={() => setEditing(null)} />
+        <ItemDialog open={editing !== null} item={editing === 'new' ? null : editing} home={editing && editing !== 'new' ? real.get(editing.id) : undefined} folders={folders} defaultFolder={view.kind === 'folder' ? view.id : LOCKED_CATEGORY.none} onClose={() => setEditing(null)} />
         <ImportDialog open={importing} folders={folders} existing={existingUrls} onClose={() => setImporting(false)} />
         <ToastHost variant={compact ? 'mobile' : 'desktop'} bottom={chosen.length ? 96 : 24} />
       </div>

@@ -44,7 +44,7 @@ export function render(template: Template, data: Record<string, string>): { subj
     case 'device-authorized':
       return {
         subject: '新的浏览器扩展已连接到你的 Nexus 账号',
-        text: `你的 Nexus 账号刚刚授权了一个新设备：${data.device ?? '浏览器扩展'}（权限：${data.scopes ?? '读取导航'}）。\n\n如果这不是你本人的操作，请登录 Nexus，在「设置 › 数据、同步与安全 › 浏览器扩展」中撤销它，并修改账号密码。\n\n这封邮件由系统自动发送，请勿直接回复。`,
+        text: `你的 Nexus 账号刚刚授权了一个新设备：${data.device ?? '浏览器扩展'}（权限：${data.scopes ?? '读取导航'}）。\n\n如果这不是你本人的操作，请登录 Nexus，在「设置 › 账号与同步 › 浏览器扩展」中撤销它，并修改账号密码。\n\n这封邮件由系统自动发送，请勿直接回复。`,
       };
     case 'signed-out-everywhere':
       return {
@@ -54,7 +54,7 @@ export function render(template: Template, data: Record<string, string>): { subj
     case 'signed-out-all-products':
       return {
         subject: '你的账号已在所有产品与设备上退出',
-        text: '刚才有人在 Nexus 中选择了「退出所有产品与设备」：Nexus 的全部登录与已连接的扩展已失效，账号中心在所有浏览器的登录已结束，LiteSync 也会收到撤销通知（它的网页登录、Obsidian 设备与待领取授权随之失效；LiteSync 暂时连不上时 Nexus 会继续重试，状态可在「设置 › 数据、同步与安全」查看）。\n\n如果这不是你本人的操作，请立即修改账号密码。\n\n这封邮件由系统自动发送，请勿直接回复。',
+        text: '刚才有人在 Nexus 中选择了「退出所有产品与设备」：Nexus 的全部登录与已连接的扩展已失效，账号中心在所有浏览器的登录已结束，LiteSync 也会收到撤销通知（它的网页登录、Obsidian 设备与待领取授权随之失效；LiteSync 暂时连不上时 Nexus 会继续重试，状态可在「设置 › 账号与同步」查看）。\n\n如果这不是你本人的操作，请立即修改账号密码。\n\n这封邮件由系统自动发送，请勿直接回复。',
       };
   }
 }

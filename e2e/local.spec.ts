@@ -109,6 +109,9 @@ test('L10: signing in cancelled — back where the person was, the collection un
   // The identity service sending back a cancelled sign-in: a notice, the local home.
   await page.goto('/?auth_error=access_denied');
   await expect(page.getByLabel('搜索', { exact: true })).toBeVisible();
+  // Back on 登录同步 without a session (U2b): the account center's reason is kept, not replaced by a generic one.
+  await page.goto('/account/connect?return=1&auth_error=invite_invalid');
+  await expect(page.locator('#connect-error')).toHaveText('邀请码无效、已过期或已经用过。此浏览器的收藏没有任何改动，可以再试一次。');
 });
 
 test('L11/L12: after signing in, nothing is uploaded until a previewed merge is confirmed; the local collection stays', async ({ page }) => {
