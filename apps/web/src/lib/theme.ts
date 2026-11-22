@@ -22,7 +22,11 @@ export function resolveTheme(choice: ThemeChoice): ResolvedTheme {
 
 export function applyTheme(choice: ThemeChoice): ResolvedTheme {
   const resolved = resolveTheme(choice);
-  if (typeof document !== 'undefined') document.documentElement.dataset.theme = resolved;
+  if (typeof document !== 'undefined') {
+    document.documentElement.dataset.theme = resolved;
+    // Native controls and scrollbars follow the theme on screen (public/theme-boot.js sets the first frame).
+    document.querySelector('meta[name="color-scheme"]')?.setAttribute('content', resolved);
+  }
   storage.set(KEY, choice);
   return resolved;
 }
