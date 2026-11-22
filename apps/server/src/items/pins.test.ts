@@ -98,13 +98,19 @@ describe.each(DIALECTS)('NEX-07 固定上限 (%s)', (dialect) => {
     await s.agree(MAX_PINS);
   });
 
-  it('自托管服务与隐藏的应用不能固定（任何入口），首页与收藏库不会显示不一致的固定', async () => {
+  // UI v2 (v12.0.3 N2): a self-hosted service is a favorite with service options and is pinned like
+  // any other; what is hidden still cannot be pinned, by any route, and every reader agrees.
+  it('自托管服务可以固定；隐藏的收藏不能固定（任何入口），首页与收藏库不会显示不一致的固定', async () => {
     const s = await setup(dialect, `pins-d-${dialect}`);
     const created = ((await s.req('POST', '/api/v2/items', { opId: op('svc'), item: { kind: 'app', title: '我的服务', url: 'https://svc.example.org/' } })).body as unknown as ItemWriteResult).item;
     const view = ((await s.req('GET', '/api/config')).body as unknown as { config: Config }).config;
     const svc = view.apps.find((a) => a.id === created.id)!;
-    expect((await s.req('POST', '/api/config/ops', { clientId: 'home', batchId: op('k'), ops: [{ type: 'app.upsert', app: { ...svc, kind: 'service', categoryId: 'hosted' }, base: svc }] })).status).toBe(200);
-    const pinned = await s.req('POST', `/api/v2/pins/${created.id}`, { opId: op('p') });
+    expect((await s.req('POST', '/api/config/ops', { clientId: 'home', batchId: op('k'), ops: [{ type: 'app.upsert', app: { ...svc, kind: 'service' }, base: svc }] })).status).toBe(200);
+    expect((await s.req('POST', `/api/v2/pins/${created.id}`, { opId: op('p') })).status).toBe(200);
+    await s.agree(1);
+    const shown = ((await s.req('GET', '/api/config')).body as unknown as { config: Config }).config.apps.find((a) => a.id === created.id)!;
+    expect((await s.req('POST', '/api/config/ops', { clientId: 'home', batchId: op('h'), ops: [{ type: 'app.setHidden', appId: shown.id, hidden: true }] })).status).toBe(200);
+    const pinned = await s.req('POST', `/api/v2/pins/${created.id}`, { opId: op('p2') });
     expect(pinned.status).toBe(409);
     expect(pinned.body.code).toBe('NOT_PINNABLE');
     expect((await s.req('POST', '/api/v2/items', { opId: op('dupsvc'), item: { title: '再存一次', url: 'https://svc.example.org/' }, pinToHome: true, duplicatePolicy: 'update' })).body).toMatchObject({ pin: { pinned: false, code: 'NOT_PINNABLE' } });

@@ -1,6 +1,18 @@
 import {
+  BookmarkImportSchema,
+  bookmarkGroup,
+  CreateFavoritesSchema,
   CreateItemSchema,
   DEVICE_SCOPE_LABELS,
+  extraForNew,
+  FavoriteRefused,
+  favoriteConflicts,
+  MoveItemsSchema,
+  newGroupId,
+  placeInGroup,
+  planBookmarkTree,
+  planFavoriteUpdate,
+  SaveFavoriteSchema,
   ITEM_LIMITS,
   ItemInputSchema,
   itemUrlKey,
@@ -29,7 +41,7 @@ import type { SecretBox } from '../integrations/secret';
 import type { User } from '../users/users';
 import type { IconStore } from '../icons/store';
 import { COLLECTION_FORMAT, COLLECTION_VERSION, CollectionFileSchema, planRestore, summary, type CollectionFile } from './restore';
-import { extraOf, PinRefused } from './store';
+import { extraOf, PinRefused, type Row } from './store';
 
 /**
  * 我的收藏 v2 API (需求 §8.3–8.4, 契约 §6): items, pins, snapshot and changes.
@@ -84,6 +96,7 @@ export function registerItemsApi(app: Hono<{ Variables: Vars }>, deps: ItemsApiD
   };
   const fail = (c: C, e: unknown) => {
     if (e instanceof ApiError) return v2Error(c, e.status, e.code, e.message, { retryable: false, details: e.details });
+    if (e instanceof FavoriteRefused) return v2Error(c, e.status, e.code, e.message, { retryable: false, details: e.details ?? undefined });
     throw e;
   };
   const body = async <T>(c: C, schema: z.ZodType<T>): Promise<T> => {
@@ -146,7 +159,7 @@ export function registerItemsApi(app: Hono<{ Variables: Vars }>, deps: ItemsApiD
     if (item.deletedAt !== null) throw new ApiError(409, 'ITEM_DELETED', '这条收藏已被删除；需要时先恢复', { item });
     return item;
   };
-  const folders = async (ownerId: string) => (await repo.snapshot(ownerId)).config.categories.map((k) => ({ id: k.id, label: k.label, locked: !!k.locked }));
+  const folders = async (ownerId: string) => (await repo.snapshot(ownerId)).config.categories.map((k) => ({ id: k.id, label: k.label, locked: !!k.locked, parentId: k.parentId ?? null }));
   const folderOf = async (ownerId: string, folderId: string | undefined) => {
     if (!folderId) return LOCKED_CATEGORY.none;
     if (!(await folders(ownerId)).some((f) => f.id === folderId)) throw new ApiError(422, 'VALIDATION', '分组不存在');
@@ -239,6 +252,7 @@ export function registerItemsApi(app: Hono<{ Variables: Vars }>, deps: ItemsApiD
           watermark,
           cursor: seal({ o: ownerId, s: watermark }),
           nextPage: more && last ? seal({ o: ownerId, w: watermark, p: [last.position, last.id] }) : null,
+          starterVersion: await store.starterVersion(ownerId),
         };
       });
       return c.json(res);
@@ -413,35 +427,201 @@ export function registerItemsApi(app: Hono<{ Variables: Vars }>, deps: ItemsApiD
   app.patch('/api/v2/pins/:itemId', bodyLimit({ maxSize: 4096 }), pinWrite('move'));
   app.delete('/api/v2/pins/:itemId', pinWrite('unpin'));
 
-  // ── import / export (需求 §8.3) — sessions only ─────────────────────────
-  const ImportSchema = z.object({
-    opId: OpIdSchema,
-    /** Folder for everything imported (an existing one), or the inbox. */
-    folderId: z.string().max(64).optional(),
-    items: z.array(ItemInputSchema.extend({ kind: z.enum(['app', 'page']).default('page') })).min(1).max(5000),
-    /** Addresses already in the collection are skipped unless asked otherwise. */
-    skipDuplicates: z.boolean().default(true),
+  // ── 我的收藏的统一保存与排序 (UI v2 · v12.0.3 N1/N2) ─────────────────────
+  const favoriteRow = (r: Row) => ({ id: r.id, kind: r.kind, title: r.title, url: r.url, folderId: r.folder_id, tags: JSON.parse(r.tags || '[]') as string[], note: r.note, iconRef: r.icon_ref, catalogId: r.catalog_id, extra: r.extra, version: Number(r.version), fieldVersions: JSON.parse(r.field_versions || '{}') as Record<string, number>, deletedAt: r.deleted_at === null ? null : Number(r.deleted_at) });
+
+  /**
+   * 添加收藏 — one or many favorites with all their fields (CreateFavoritesSchema), one transaction.
+   * Scopes as for saving an item (items:write; pins:write when pinning): an extension saves with the
+   * permissions it was given, nothing more.
+   */
+  app.post('/api/v2/favorites', bodyLimit({ maxSize: 256 * 1024 }), async (c) => {
+    try {
+      need(c, 'items:write');
+      const req = await body(c, CreateFavoritesSchema);
+      if (req.pin) need(c, 'pins:write');
+      return await write(c, req.opId, ['create-favorites', req], async () => {
+        const ownerId = owner(c);
+        const admin = c.get('user').isAdmin;
+        const groups = new Set((await folders(ownerId)).map((f) => f.id));
+        const folderFor = (id: string | undefined) => {
+          if (!id) return LOCKED_CATEGORY.none;
+          if (!groups.has(id)) throw new ApiError(422, 'VALIDATION', '分组不存在');
+          return id;
+        };
+        const dupes: { index: number; id: string; title: string }[] = [];
+        if (req.duplicatePolicy !== 'create') {
+          for (const [index, input] of req.items.entries()) {
+            const found = await store.findByUrl(ownerId, input.url);
+            if (found) dupes.push({ index, id: found.id, title: found.title });
+          }
+        }
+        if (dupes.length && req.duplicatePolicy === 'prompt') throw new ApiError(409, 'DUPLICATE', dupes.length === 1 ? '这个网址已经在收藏里' : `其中 ${dupes.length} 个网址已经在收藏里`, { item: await store.get(ownerId, dupes[0]!.id), duplicates: dupes });
+        await admitItems(c, req.items.length - dupes.length);
+        const results: { index: number; result: 'created' | 'updated' | 'skipped'; item: Item; duplicateOf?: string }[] = [];
+        const toPin: string[] = [];
+        let healthForcedOff = false;
+        for (const [index, input] of req.items.entries()) {
+          const folderId = folderFor(input.folderId ?? req.folderId);
+          const existing = req.duplicatePolicy === 'create' ? null : await store.findByUrl(ownerId, input.url);
+          if (existing && req.duplicatePolicy === 'skip') {
+            results.push({ index, result: 'skipped', item: existing, duplicateOf: existing.id });
+            continue;
+          }
+          if (existing) {
+            const row = (await store.row(ownerId, existing.id))!;
+            const plan = planFavoriteUpdate(favoriteRow(row), { title: input.title, folderId, tags: input.tags, ...(input.note ? { note: input.note } : {}), ...(input.app ? { app: input.app } : {}) }, { admin, groups: [...groups].map((id) => ({ id })) });
+            healthForcedOff ||= plan.healthForcedOff;
+            if (Object.keys(plan.set).length) await store.update(ownerId, existing.id, plan.set, 'upsert', plan.fields.filter((f) => f.startsWith('app.')));
+            results.push({ index, result: 'updated', item: (await store.get(ownerId, existing.id))!, duplicateOf: existing.id });
+            if (req.pin) toPin.push(existing.id);
+            continue;
+          }
+          const extra = extraForNew({ title: input.title, url: input.url, folderId, catalogId: input.catalogId ?? null, app: input.app }, admin);
+          healthForcedOff ||= extra.healthForcedOff;
+          const item = await store.insert(ownerId, { kind: input.kind ?? 'page', source: req.source, catalogId: input.catalogId ?? null, title: input.title, url: input.url, folderId, tags: input.tags, note: input.note, iconRef: input.iconRef, extra: extra.extra });
+          results.push({ index, result: 'created', item });
+          if (req.pin) toPin.push(item.id);
+        }
+        const pinned: string[] = [];
+        const notPinned: { id: string; code: 'PINS_FULL' | 'NOT_PINNABLE' }[] = [];
+        for (const id of toPin) {
+          const p = await pinIfRoom(ownerId, id);
+          if (p.pinned) pinned.push(id);
+          else notPinned.push({ id, code: p.code ?? 'NOT_PINNABLE' });
+        }
+        const final = await Promise.all(results.map(async (r) => ({ ...r, item: (await store.get(ownerId, r.item.id))! })));
+        return { status: 201, body: { results: final, pin: { pinned, notPinned, limit: MAX_PINS, used: (await store.pinnedIds(ownerId)).length }, ...(healthForcedOff ? { healthForcedOff: true } : {}), ownerRevision: 0 } };
+      });
+    } catch (e) {
+      return fail(c, e);
+    }
   });
+
+  /**
+   * 保存 of the unified editor: every field — title, address, group, tags, note, icon, aliases, how
+   * it opens, service options — and the pin, in one transaction (SaveFavoriteSchema). Fields changed
+   * elsewhere after `baseVersion`: FIELD_CONFLICT with the favorite as it is now, nothing written.
+   * A pin the rule refuses fails the whole save (QUOTA_EXCEEDED kind pins / NOT_PINNABLE).
+   */
+  app.patch('/api/v2/favorites/:id', bodyLimit({ maxSize: 64 * 1024 }), async (c) => {
+    try {
+      need(c, 'items:write');
+      const req = await body(c, SaveFavoriteSchema);
+      if (req.patch.pin !== undefined) need(c, 'pins:write');
+      const id = c.req.param('id');
+      return await write(c, req.opId, ['save-favorite', id, req], async () => {
+        const ownerId = owner(c);
+        const item = await live(ownerId, id);
+        const row = (await store.row(ownerId, id))!;
+        const groups = (await folders(ownerId)).map((f) => ({ id: f.id }));
+        const plan = planFavoriteUpdate(favoriteRow(row), req.patch, { admin: c.get('user').isAdmin, groups });
+        const conflictFields = favoriteConflicts(favoriteRow(row).fieldVersions, plan.fields, req.baseVersion);
+        if (conflictFields.length) throw new ApiError(409, 'FIELD_CONFLICT', '这些字段在别处已被修改，请先合并', { currentVersion: item.version, conflictFields, item });
+        if (Object.keys(plan.set).length) await store.update(ownerId, id, plan.set, 'upsert', plan.fields.filter((f) => f.startsWith('app.')));
+        try {
+          if (plan.pin === true) await store.pin(ownerId, id);
+          else if (plan.pin === false) await store.unpin(ownerId, id);
+        } catch (e) {
+          return pinError(e);
+        }
+        const changed = Object.keys(plan.set).length > 0 || plan.pin !== undefined;
+        return { status: 200, body: { ...result((await store.get(ownerId, id))!, changed ? 'updated' : 'unchanged'), ...(plan.healthForcedOff ? { healthForcedOff: true } : {}) } };
+      });
+    } catch (e) {
+      return fail(c, e);
+    }
+  });
+
+  /**
+   * 移动 / 排序 (MoveItemsSchema): the favorites, in this order, into `folderId` right after `afterId`
+   * (null: first; absent: last). One transaction; the order of the group only — pins and the order
+   * of groups are not touched. An anchor no longer in that group: ORDER_CONFLICT (with the order now).
+   */
+  app.post('/api/v2/items/move', bodyLimit({ maxSize: 32 * 1024 }), async (c) => {
+    try {
+      need(c, 'items:write');
+      const req = await body(c, MoveItemsSchema);
+      return await write(c, req.opId, ['move-items', req], async () => {
+        const ownerId = owner(c);
+        const folderId = await folderOf(ownerId, req.folderId);
+        const ids = [...new Set(req.ids)];
+        for (const id of ids) {
+          const item = await live(ownerId, id);
+          const base = req.baseVersions?.[id];
+          if (base !== undefined) {
+            const f = await store.fieldVersions(ownerId, id);
+            const moved = ['position', 'folderId'].filter((k) => (f[k] ?? 0) > base);
+            if (moved.length) throw new ApiError(409, 'FIELD_CONFLICT', `「${item.title}」在别处已被移动，请刷新后再移动`, { currentVersion: item.version, conflictFields: moved, item });
+          }
+        }
+        const moving = new Set(ids);
+        const group = (await store.groupPositions(ownerId, folderId)).filter((p) => !moving.has(p.id));
+        const placed = placeInGroup(group, ids.length, req.afterId);
+        if (placed.renumber) for (const p of placed.renumber) await store.update(ownerId, p.id, { position: p.position });
+        for (const [i, id] of ids.entries()) {
+          const row = (await store.row(ownerId, id))!;
+          await store.update(ownerId, id, { position: placed.positions[i]!, ...(row.folder_id !== folderId ? { folderId } : {}) });
+        }
+        return { status: 200, body: { items: await Promise.all(ids.map(async (id) => (await store.get(ownerId, id))!)), ownerRevision: 0 } };
+      });
+    } catch (e) {
+      return fail(c, e);
+    }
+  });
+
+  // ── import / export (需求 §8.3) — sessions only ─────────────────────────
+  /**
+   * A browser's bookmark file (BookmarkImportSchema): `single` puts the pages into one group;
+   * `tree` (UI v2 N2) makes the file's folders nested groups under `parentId`, a folder that exists
+   * at the same place being reused. `dryRun`: the preview — the groups it would create or use, the
+   * folders too deep or over the limit, how many pages — nothing written.
+   */
+  const planImport = async (ownerId: string, req: z.infer<typeof BookmarkImportSchema>) => {
+    const known = new Set((await store.list(ownerId)).map((i) => itemUrlKey(i.url)));
+    const seen = new Set<string>();
+    const fresh = req.items.filter((i) => {
+      const k = itemUrlKey(i.url);
+      if (seen.has(k) || (req.skipDuplicates && known.has(k))) return false;
+      seen.add(k);
+      return true;
+    });
+    const categories = (await repo.snapshot(ownerId)).config.categories;
+    const taken = new Set(categories.map((k) => k.id));
+    const tree = req.folderMode === 'tree' ? planBookmarkTree(categories, req.items.map((i) => i.path ?? []), req.parentId ?? null, () => {
+      const id = newGroupId(taken);
+      taken.add(id);
+      return id;
+    }) : null;
+    return { fresh, tree };
+  };
   app.post('/api/v2/import', bodyLimit({ maxSize: 8 * 1024 * 1024 }), async (c) => {
     try {
       if (c.get('viaDevice')) throw new ApiError(403, 'SCOPE_REQUIRED', '导入只能在网页中进行');
-      const req = await body(c, ImportSchema);
-      return await write(c, req.opId, ['import', req], async () => {
-        const ownerId = owner(c);
-        const folderId = await folderOf(ownerId, req.folderId);
-        const known = new Set((await store.list(ownerId)).map((i) => itemUrlKey(i.url)));
-        const seen = new Set<string>();
-        const fresh = req.items.filter((i) => {
-          const k = itemUrlKey(i.url);
-          if (seen.has(k) || (req.skipDuplicates && known.has(k))) return false;
-          seen.add(k);
-          return true;
+      const req = await body(c, BookmarkImportSchema);
+      const ownerId = owner(c);
+      if (req.dryRun) {
+        const preview = await db.tx(async () => {
+          const { fresh, tree } = await planImport(ownerId, req);
+          return { imported: fresh.length, skipped: req.items.length - fresh.length, folders: tree ? { create: tree.created, matched: tree.matched, overDepth: tree.overDepth, overLimit: tree.overLimit } : null, basis: (await repo.version(ownerId)).revision };
         });
+        return c.json({ dryRun: true, importId: null, ...preview });
+      }
+      return await write(c, req.opId, ['import', req], async () => {
+        const single = await folderOf(ownerId, req.folderId);
+        const { fresh, tree } = await planImport(ownerId, req);
         await admitItems(c, fresh.length);
+        if (tree?.created.length) await repo.writeCategories(ownerId, tree.categories);
+        const groups = new Set((await folders(ownerId)).map((f) => f.id));
         const importId = `imp-${req.opId.slice(-16)}`;
         let position = (await store.maxPosition(ownerId)) + 1;
-        for (const i of fresh) await store.insert(ownerId, { kind: i.kind ?? 'page', source: 'import', title: i.title, url: i.url, folderId: i.folderId && (await folders(ownerId)).some((f) => f.id === i.folderId) ? i.folderId : folderId, tags: i.tags, note: i.note, iconRef: i.iconRef, position: position++, importId });
-        return { status: 201, body: { importId, imported: fresh.length, skipped: req.items.length - fresh.length, ownerRevision: 0 } };
+        for (const i of fresh) {
+          const folderId = tree ? bookmarkGroup(tree, i.path) : i.folderId && groups.has(i.folderId) ? i.folderId : single;
+          await store.insert(ownerId, { kind: i.kind ?? 'page', source: 'import', title: i.title, url: i.url, folderId, tags: i.tags, note: i.note, iconRef: i.iconRef, position: position++, importId });
+        }
+        const created = tree?.created.map((g) => ({ id: g.id, label: g.label })) ?? [];
+        // What 撤销本次导入 may take back besides the pages: the groups this import created (when empty).
+        return { status: 201, body: { importId, imported: fresh.length, skipped: req.items.length - fresh.length, ...(tree ? { folders: { create: tree.created, matched: tree.matched, overDepth: tree.overDepth, overLimit: tree.overLimit } } : {}), ...(created.length ? { undo: { folders: created, pins: [] } } : {}), ownerRevision: 0 } };
       });
     } catch (e) {
       return fail(c, e);

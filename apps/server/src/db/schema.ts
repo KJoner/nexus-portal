@@ -408,6 +408,13 @@ export const MIGRATIONS: readonly string[] = [
   );
   create index revocation_inbox_user on revocation_inbox (user_id, received_at);
   `,
+  `
+  -- v10 (UI v2 · v12.0.3 N2/N3): the one-time tree migration of each account (我的服务 becomes an
+  -- ordinary group, the services its home page showed are pinned; what it did is kept here as JSON,
+  -- null = not yet), and the starter set a new account was created with (0: created before).
+  alter table user_config add column tree_migration text;
+  alter table user_config add column starter_version integer not null default 0;
+  `,
 ];
 
 /**
@@ -697,6 +704,11 @@ export const PG_MIGRATIONS: readonly string[] = [
     received_at bigint not null
   );
   create index revocation_inbox_user on revocation_inbox (user_id, received_at);
+  `,
+  `
+  -- v4 (UI v2 · v12.0.3 N2/N3): see SQLite v10.
+  alter table user_config add column tree_migration text;
+  alter table user_config add column starter_version integer not null default 0;
   `,
 ];
 

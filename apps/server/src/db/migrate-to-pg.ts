@@ -61,7 +61,9 @@ export async function migrateSqliteToPg(opts: { sqliteFile: string; target: Data
     for (const t of TABLES) rows[t] = await copy.all<Record<string, unknown>>(`select * from ${t}`);
     await copy.close();
 
-    const fingerprint = sha256(JSON.stringify(TABLES.map((t) => [t, rows[t].length])) + JSON.stringify(rows.user_config) + JSON.stringify(rows.wallpapers.map((w) => w.id)));
+    // (user_config.tree_migration records when the copy was migrated — UI v2 N2 — so it differs between
+    // two runs over the same source: left out of the fingerprint.)
+    const fingerprint = sha256(JSON.stringify(TABLES.map((t) => [t, rows[t].length])) + JSON.stringify(rows.user_config.map(({ tree_migration: _t, ...r }) => r)) + JSON.stringify(rows.wallpapers.map((w) => w.id)));
     const report: MigrationReport = {
       dryRun: !!opts.dryRun,
       alreadyMigrated: false,

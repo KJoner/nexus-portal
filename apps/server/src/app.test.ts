@@ -163,12 +163,14 @@ describe('config ops', () => {
     const cookie = await login();
     await ops(cookie, { clientId: 'phone', batchId: 'p1', ops: [{ type: 'pin.add', appId: 'figma' }] });
     const r = (await (await ops(cookie, { clientId: 'pc', batchId: 'c1', ops: [{ type: 'pin.move', appId: 'notion', toIndex: 0 }] })).json()) as ConfigResponse;
-    expect(r.config.pins).toEqual(['notion', 'github', 'gmail', 'youtube', 'bilibili', 'figma']);
+    // UI v2 (N2): the tree migration pinned the services the home page showed, after the sites.
+    expect(r.config.pins).toEqual(['notion', 'github', 'gmail', 'youtube', 'bilibili', 'litebox', 'obsync', 'linkwarden', 'figma']);
   });
 
   it('rejects invalid ops atomically', async () => {
     const cookie = await login();
-    const res = await ops(cookie, { clientId: 'c', batchId: 'b2', ops: [{ type: 'pin.remove', appId: 'github' }, { type: 'pin.add', appId: 'litebox' }] });
+    // (UI v2: services can be pinned now; a hidden app still cannot.)
+    const res = await ops(cookie, { clientId: 'c', batchId: 'b2', ops: [{ type: 'pin.remove', appId: 'github' }, { type: 'app.setHidden', appId: 'vercel', hidden: true }, { type: 'pin.add', appId: 'vercel' }] });
     expect(res.status).toBe(422);
     expect(((await res.json()) as { error: { code: string } }).error.code).toBe('not_pinnable');
     const cfg = (await (await app.request('/api/config', { headers: { cookie } })).json()) as ConfigResponse;

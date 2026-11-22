@@ -33,7 +33,8 @@ async function main() {
   if (result === 'missing' && !env.oidc) throw new EnvError('尚未设置访问密码：用 deploy.sh 设置（写入 NEXUS_PASSWORD_HASH），或设置环境变量 NEXUS_PASSWORD（至少 8 个字符）；公开部署请改为配置统一身份（NEXUS_OIDC_ISSUER 等）');
 
   const users = new Users(db);
-  const repo = new ConfigRepo(db, undefined, async (id) => ((await users.get(id))?.isAdmin ? null : (env.quotas ?? DEFAULT_QUOTAS).items));
+  // UI v2 (N3): new accounts start with the eight starter sites.
+  const repo = new ConfigRepo(db, undefined, async (id) => ((await users.get(id))?.isAdmin ? null : (env.quotas ?? DEFAULT_QUOTAS).items), undefined, { starterSites: true });
   // Administrators come only from this server: the access password's account, claimed by a unified
   // identity. Without a password nobody could ever become one (invitations, disabling, status).
   if (result === 'missing' && env.oidc && !(await users.list()).some((u) => u.isAdmin && u.issuer && !u.disabled)) {

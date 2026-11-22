@@ -1,4 +1,4 @@
-import { AppSchema, extraOf, isPinnable, itemUrlKey, LOCKED_CATEGORY, MAX_PINS, OpError, type AppEntry, type Config, type Item, type ItemField, type ItemKind, type ItemSource, type Op } from '@nexus/shared';
+import { AppSchema, extraOf, favoriteAppFields, isPinnable, itemUrlKey, LOCKED_CATEGORY, MAX_PINS, OpError, STARTER_SITES, starterApp, survivingAncestor, viewPositions, type AppEntry, type Category, type Config, type Item, type ItemField, type ItemKind, type ItemSource, type Op } from '@nexus/shared';
 import { randomBytes } from 'node:crypto';
 import type { DB } from '../db';
 
@@ -74,6 +74,7 @@ function toItem(r: Row, pinned: Set<string>): Item {
     updatedAt: Number(r.updated_at),
     deletedAt: r.deleted_at === null ? null : Number(r.deleted_at),
     importId: r.import_id,
+    app: favoriteAppFields(r.extra),
   };
 }
 
@@ -263,7 +264,7 @@ export class ItemStore {
       if (!r) throw new PinRefused('NOT_FOUND', '收藏不存在', before.length);
       if (r.deleted_at !== null) throw new PinRefused('ITEM_DELETED', `「${r.title}」已被删除，不能固定`, before.length);
       const app = toApp(r);
-      if (!app || !isPinnable(app)) throw new PinRefused('NOT_PINNABLE', `「${r.title}」不能固定到首页（自托管服务显示在服务区，隐藏的应用先取消隐藏）`, before.length);
+      if (!app || !isPinnable(app)) throw new PinRefused('NOT_PINNABLE', `「${r.title}」不能固定到首页（隐藏的收藏先取消隐藏）`, before.length);
     }
     const same = list.length === before.length && list.every((id, i) => id === before[i]);
     // Rows a reader would not show (an older release's excess) are cleaned up by any write.
@@ -367,10 +368,12 @@ export class ItemStore {
    * Changes some columns of an item: one new version, the changed fields remember it (field-level
    * CAS for PATCH), one change record.
    */
-  async update(owner: string, id: string, set: Partial<Record<ItemField | 'extra' | 'position' | 'kind' | 'catalogId', unknown>>, action: 'upsert' | 'restore' = 'upsert'): Promise<Item> {
+  async update(owner: string, id: string, set: Partial<Record<ItemField | 'extra' | 'position' | 'kind' | 'catalogId', unknown>>, action: 'upsert' | 'restore' = 'upsert', extraFields: readonly string[] = []): Promise<Item> {
     const r = (await this.row(owner, id))!;
     const version = Number(r.version) + 1;
     const fields = parse<Record<string, number>>(r.field_versions, {});
+    // UI v2 (N1): the unified editor records which `extra` fields it changed (app.icon, app.aliases…).
+    for (const f of extraFields) fields[f] = version;
     // A restore is remembered (NEX-04): a later restore made from an older view is a stale one.
     const extraSql = action === 'restore' ? ', deleted_at = null' : '';
     if (action === 'restore') fields.restored = version;
@@ -454,7 +457,10 @@ export class ItemStore {
     const pinned = new Set(pins);
     const rows = await this.db.all<Row>("select * from items where owner_id = ? and deleted_at is null and kind = 'app' order by position, id", [owner]);
     const pages = pins.length ? await this.db.all<Row>(`select * from items where owner_id = ? and deleted_at is null and kind = 'page' and id in (${pins.map(() => '?').join(', ')}) order by position, id`, [owner, ...pins]) : [];
-    const apps = [...rows, ...pages].map(toApp).filter((a): a is AppEntry => !!a);
+    // In position order, pinned pages among the apps (UI v2 N2: the order of a group is the position
+    // order of all its favorites).
+    const byPos = (a: Row, b: Row) => Number(a.position) - Number(b.position) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+    const apps = [...rows, ...pages].sort(byPos).map(toApp).filter((a): a is AppEntry => !!a);
     return { apps, pins: pins.filter((id) => pinned.has(id) && apps.some((a) => a.id === id)) };
   }
 
@@ -549,21 +555,22 @@ export class ItemStore {
     let changed = false;
     const fresh = after.apps.filter((a) => !prev.has(a.id));
     if (fresh.length) await admit(fresh.length);
-    let position = 0;
+    // UI v2 (N2): positions compare within a group; only favorites whose order the ops changed move
+    // (a page edited through the home page keeps its place: the view orders only its own).
+    const positions = before.apps === after.apps ? new Map<string, number>() : viewPositions(after.apps, plan.extra, (id) => (rows.has(id) ? Number(rows.get(id)!.position) : undefined));
+    let tail = (await this.maxPosition(owner)) + 1;
     for (const app of before.apps === after.apps ? [] : after.apps) {
-      // A page edited through the home page keeps its place in 我的收藏: the view orders only its own.
-      const ordered = !plan.extra.has(app.id);
-      if (ordered) position++;
       const old = prev.get(app.id);
       const row = rows.get(app.id);
+      const position = positions.get(app.id);
       if (!row) {
-        await this.insert(owner, { id: app.id, kind: 'app', source: app.catalogId ? 'catalog' : 'manual', catalogId: app.catalogId ?? null, title: app.name, url: app.url, folderId: app.categoryId, note: app.description, extra: extraOf(app), position });
+        await this.insert(owner, { id: app.id, kind: 'app', source: app.catalogId ? 'catalog' : 'manual', catalogId: app.catalogId ?? null, title: app.name, url: app.url, folderId: app.categoryId, note: app.description, extra: extraOf(app), position: position ?? tail++ });
         changed = true;
         continue;
       }
       const was = old ?? toApp((await this.row(owner, app.id))!);
       const set: Parameters<ItemStore['update']>[2] = was ? changesOf(was, app) : { title: app.name, url: app.url, folderId: app.categoryId, extra: extraOf(app) };
-      if (ordered && Number(row.position) !== position) set.position = position;
+      if (position !== undefined && Number(row.position) !== position) set.position = position;
       if (row.deleted_at !== null) {
         // Only an explicit restore brings a deleted item back (NEX-04) — never an upsert.
         if (!plan.restores.has(app.id)) throw new OpError('deleted', `「${app.name}」已被删除（在回收站中），这次修改没有应用`, undefined, { appId: app.id, name: app.name });
@@ -593,6 +600,63 @@ export class ItemStore {
       changed = true;
     }
     return changed;
+  }
+
+  // ── groups, order, starter sites, tree migration (UI v2 · v12.0.3) ─────────
+  /**
+   * Favorites of groups that no longer exist (deleted, or dropped by an older client's whole-list
+   * replace) go to the nearest surviving ancestor, else 未分组 — the ones outside the home view too
+   * (the reducer already moved the view's). Tombstones follow quietly (no new version).
+   */
+  async reassignRemovedGroups(owner: string, before: readonly Category[], after: readonly Category[]): Promise<number> {
+    const kept = new Set(after.map((k) => k.id));
+    const gone = before.filter((k) => !kept.has(k.id)).map((k) => k.id);
+    if (!gone.length) return 0;
+    const rows = await this.db.all<Row>(`select * from items where owner_id = ? and folder_id in (${gone.map(() => '?').join(', ')})`, [owner, ...gone]);
+    for (const r of rows) {
+      const to = survivingAncestor(before, r.folder_id, kept);
+      if (r.deleted_at !== null) await this.db.run('update items set folder_id = ? where owner_id = ? and id = ?', [to, owner, r.id]);
+      else await this.update(owner, r.id, { folderId: to });
+    }
+    return rows.length;
+  }
+
+  /** Live favorites of one group with their positions (the order of the group). */
+  async groupPositions(owner: string, folderId: string): Promise<{ id: string; position: number }[]> {
+    const rows = await this.db.all<{ id: string; position: number }>('select id, position from items where owner_id = ? and folder_id = ? and deleted_at is null order by position, id', [owner, folderId]);
+    return rows.map((r) => ({ id: r.id, position: Number(r.position) }));
+  }
+
+  /**
+   * N3: the eight starter sites of a NEW account, inside the transaction that creates it — real
+   * favorites (catalog copies) in their groups, pinned in order. Never called for an existing one.
+   */
+  async seedStarter(owner: string): Promise<void> {
+    let position = 0;
+    for (const site of STARTER_SITES) {
+      const app = starterApp(site);
+      await this.insert(owner, { id: site.catalogId, kind: 'app', source: 'catalog', catalogId: site.catalogId, title: site.name, url: site.url, folderId: site.group, extra: extraOf(app), position: ++position });
+    }
+    await this.writePins(owner, STARTER_SITES.map((s) => s.catalogId));
+  }
+
+  /** Whether the account's tree migration (N2) has not run yet. */
+  async treePending(owner: string): Promise<boolean> {
+    const r = await this.db.get<{ t: string | null }>('select tree_migration as t from user_config where owner_id = ?', [owner]);
+    return !!r && (r.t === null || r.t === undefined);
+  }
+
+  async markTree(owner: string, record: unknown): Promise<void> {
+    await this.db.run('update user_config set tree_migration = ? where owner_id = ?', [JSON.stringify(record), owner]);
+  }
+
+  async treeRecord(owner: string): Promise<unknown> {
+    const r = await this.db.get<{ t: string | null }>('select tree_migration as t from user_config where owner_id = ?', [owner]);
+    return r?.t ? parse<unknown>(r.t, null) : null;
+  }
+
+  async starterVersion(owner: string): Promise<number> {
+    return Number((await this.db.get<{ v: number }>('select starter_version as v from user_config where owner_id = ?', [owner]))?.v ?? 0);
   }
 
   // ── idempotency ──────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import { applyOps, ConfigSchema, defaultConfig, newUserConfig, normalizeConfig, OpError, type Config, type Op, type Snapshot } from '@nexus/shared';
+import { applyOps, ConfigSchema, defaultConfig, newUserConfig, normalizeConfig, OpError, planTreeMigration, STARTER_VERSION, type Config, type Op, type Snapshot, type TreeMigration } from '@nexus/shared';
 import { forUpdate, LEGACY_ADMIN_ID, type DB } from '../db';
 import { ItemStore } from '../items/store';
 
@@ -46,13 +46,36 @@ export class ConfigRepo {
     /** Live items an account may keep (null: no limit — the administrator). */
     private itemLimit: (ownerId: string) => Promise<number | null> = async () => null,
     now: () => number = Date.now,
+    /**
+     * UI v2 (N3): a new account (not the legacy administrator) starts with the eight starter sites,
+     * seeded in the transaction that creates it. On in the server (index.ts); tests opt in.
+     */
+    private options: { starterSites?: boolean } = {},
   ) {
     this.items = new ItemStore(db, now);
   }
 
-  /** Creates the account's document on first use (idempotent). */
+  /**
+   * Creates the account's document on first use (idempotent). A new account is created in this
+   * release's shape — nothing to migrate (tree_migration `fresh`) — and, with starterSites, with the
+   * starter sites and starter_version in the same transaction: an account is seeded once, when it is
+   * created, never because its collection is empty.
+   */
   async ensure(ownerId: string): Promise<void> {
-    await this.db.run('insert into user_config (owner_id, revision, updated_at, data) values (?, 1, ?, ?) on conflict (owner_id) do nothing', [ownerId, new Date().toISOString(), JSON.stringify(this.template(ownerId))]);
+    if (await this.db.get('select 1 as x from user_config where owner_id = ?', [ownerId])) return;
+    await this.db.tx(async () => {
+      const at = new Date().toISOString();
+      const created = (await this.db.run('insert into user_config (owner_id, revision, updated_at, data) values (?, 1, ?, ?) on conflict (owner_id) do nothing', [ownerId, at, JSON.stringify(this.template(ownerId))])).changes > 0;
+      if (!created || ownerId === LEGACY_ADMIN_ID) return;
+      const fresh: TreeMigration = { version: 1, at, fresh: true, hostedGroup: null, showServices: false, servicesPinned: [], servicesNotPinned: [], pinsBefore: [], pinsAfter: [] };
+      await this.db.run('update user_config set items_migrated = 1 where owner_id = ?', [ownerId]);
+      if (this.options.starterSites) {
+        await this.items.seedStarter(ownerId);
+        fresh.pinsAfter = await this.items.pinnedIds(ownerId);
+        await this.db.run('update user_config set starter_version = ? where owner_id = ?', [STARTER_VERSION, ownerId]);
+      }
+      await this.items.markTree(ownerId, fresh);
+    });
   }
 
   private async row(ownerId: string): Promise<Row> {
@@ -65,15 +88,25 @@ export class ConfigRepo {
   }
 
   async snapshot(ownerId: string): Promise<Snapshot> {
-    const row = await this.row(ownerId);
+    let row = await this.row(ownerId);
+    // Checked every time (one key lookup): a migration inside a transaction that later rolls back
+    // must run again, so no in-memory flag can be trusted here. A migration rewrites the document
+    // (UI v2: the tree migration changes its groups): read it again after one ran.
+    let migrated = false;
+    if (!(await this.items.migrated(ownerId))) {
+      await this.migrateItems(ownerId);
+      migrated = true;
+    }
+    if (await this.items.treePending(ownerId)) {
+      await this.migrateTree(ownerId);
+      migrated = true;
+    }
+    if (migrated) row = await this.row(ownerId);
     const parsed = ConfigSchema.safeParse(JSON.parse(row.data));
     // A document that no longer validates (manual edit, schema change) must not take the portal down.
     // Since v0.4 it holds settings, categories and engines only: the apps live in the items table,
     // so even this fallback can no longer lose them.
     const doc = parsed.success ? parsed.data : this.template(ownerId);
-    // Checked every time (one key lookup): a migration inside a transaction that later rolls back
-    // must run again, so no in-memory flag can be trusted here.
-    if (!(await this.items.migrated(ownerId))) await this.migrateItems(ownerId);
     const view = await this.items.homeView(ownerId);
     return { revision: Number(row.revision), updatedAt: row.updated_at, config: normalizeConfig({ ...doc, apps: view.apps, pins: view.pins }) };
   }
@@ -88,6 +121,31 @@ export class ConfigRepo {
       const config = parsed.success ? normalizeConfig(parsed.data) : this.template(ownerId);
       await this.items.migrate(ownerId, config);
       await this.db.run('update user_config set data = ? where owner_id = ?', [JSON.stringify({ ...config, apps: [], pins: [] }), ownerId]);
+    });
+  }
+
+  /**
+   * N2, once per account created before the tree (in the account's transaction, recorded in
+   * user_config.tree_migration): 我的服务 becomes an ordinary group and the services its home page
+   * showed are pinned after the sites, as far as the limit allows (planTreeMigration). No id
+   * changes, no favorite moves between groups, nothing is unpinned.
+   */
+  private async migrateTree(ownerId: string): Promise<void> {
+    await this.db.tx(async () => {
+      await this.lock(ownerId);
+      if (!(await this.items.treePending(ownerId))) return;
+      const row = (await this.db.get<Row>('select revision, updated_at, data from user_config where owner_id = ?', [ownerId]))!;
+      const parsed = ConfigSchema.safeParse(JSON.parse(row.data));
+      const doc = parsed.success ? parsed.data : this.template(ownerId);
+      const view = await this.items.homeView(ownerId);
+      const config = normalizeConfig({ ...doc, apps: view.apps, pins: view.pins });
+      const plan = planTreeMigration(config, new Date().toISOString());
+      if (JSON.stringify(plan.categories) !== JSON.stringify(doc.categories)) {
+        await this.db.run('update user_config set data = ? where owner_id = ?', [JSON.stringify({ ...doc, categories: plan.categories, apps: [], pins: [] }), ownerId]);
+        await this.items.change(ownerId, 'folders', 'shared', await this.items.seq(ownerId), 'folders');
+      }
+      if (plan.record.servicesPinned.length) await this.items.writePins(ownerId, plan.pins);
+      await this.items.markTree(ownerId, plan.record);
     });
   }
 
@@ -138,6 +196,9 @@ export class ConfigRepo {
         },
         plan,
       );
+      // Favorites outside the home view in groups that are gone (UI v2 N2): to the nearest surviving
+      // ancestor, else 未分组 — never left pointing at a group that does not exist.
+      await this.items.reassignRemovedGroups(ownerId, plan.config.categories, next.categories);
       // Folders are config categories: 我的收藏 clients learn about a change through the feed.
       if (JSON.stringify(current.config.categories) !== JSON.stringify(next.categories)) await this.items.change(ownerId, 'folders', 'shared', await this.items.seq(ownerId), 'folders');
       const written = await this.write(ownerId, current.revision + 1, next);

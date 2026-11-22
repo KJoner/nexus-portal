@@ -35,11 +35,13 @@ describe.each(DIALECTS)('我的收藏 (%s)', (dialect) => {
     const seed = defaultConfig();
     const view = await config(a);
     expect(view.config.apps.map((x) => x.id)).toEqual(seed.apps.map((x) => x.id));
-    expect(view.config.pins).toEqual(seed.pins);
+    // UI v2 (N2): the tree migration pins the services the home page showed, after the sites.
+    const shown = seed.settings.home.showServices ? seed.apps.filter((x) => x.kind === 'service' && !x.hidden && x.showInServices).map((x) => x.id) : [];
+    expect(view.config.pins).toEqual([...seed.pins, ...shown.filter((id) => !seed.pins.includes(id))]);
     const snap = (await req(a, 'GET', '/api/v2/snapshot')).body as unknown as SnapshotResponse;
     expect(snap.items.map((i) => i.id)).toEqual(seed.apps.map((x) => x.id));
     expect(snap.items.every((i) => i.kind === 'app' && i.source === 'legacy')).toBe(true);
-    expect(snap.pins).toEqual(seed.pins);
+    expect(snap.pins).toEqual(view.config.pins);
     expect(snap.folders.map((f) => f.id)).toEqual(view.config.apps.length ? expect.arrayContaining(['hosted', 'none']) : []);
   });
 

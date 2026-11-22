@@ -78,7 +78,11 @@ describe('SQLite → PostgreSQL (M4)', { timeout: 30_000 }, () => {
     const repo = new ConfigRepo(target);
     const snap = await repo.snapshot(LEGACY_ADMIN_ID);
     expect(snap.revision).toBe(87);
-    expect(JSON.stringify(snap.config.pins)).toBe(JSON.stringify((JSON.parse(config) as { pins: string[] }).pins));
+    // The copy is read once before it is moved (M5 and the UI v2 tree migration run on it): the pins
+    // are the old ones plus the services the home page showed, after them.
+    const source = JSON.parse(config) as { pins: string[]; apps: { id: string; kind: string; hidden: boolean; showInServices: boolean }[]; settings: { home: { showServices: boolean } } };
+    const services = source.settings.home.showServices ? source.apps.filter((a) => a.kind === 'service' && !a.hidden && a.showInServices).map((a) => a.id) : [];
+    expect(JSON.stringify(snap.config.pins)).toBe(JSON.stringify([...source.pins, ...services.filter((id) => !source.pins.includes(id))]));
     expect(await target.get('select owner_id, scopes from devices')).toEqual({ owner_id: LEGACY_ADMIN_ID, scopes: 'config:read' });
     expect(await target.get('select owner_id, base_url from integrations')).toEqual({ owner_id: LEGACY_ADMIN_ID, base_url: 'http://links.home' });
     expect(await target.get('select count(*) as n from sessions')).toEqual({ n: 0 });

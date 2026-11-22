@@ -25,7 +25,8 @@ describe.each(DIALECTS)('concurrency (%s)', (dialect) => {
   it('concurrent batches for one account all land, each with its own revision (no lost update)', async () => {
     db = await testDb(dialect);
     const repo = new ConfigRepo(db);
-    const pins = defaultConfig().pins;
+    // What the home page shows (UI v2: the tree migration pinned the services after the sites).
+    const pins = (await repo.snapshot(LEGACY_ADMIN_ID)).config.pins;
     const results = await Promise.all(pins.map((appId, i) => repo.apply(LEGACY_ADMIN_ID, `batch-${i}`, 'client', [{ type: 'pin.remove', appId } satisfies Op], { admin: true })));
     expect(results.every((r) => r.changed)).toBe(true);
     expect(results.map((r) => r.snapshot.revision).sort((a, b) => a - b)).toEqual(pins.map((_, i) => i + 2));

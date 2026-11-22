@@ -69,6 +69,8 @@ export async function buildTestApp(
     /** ADR-019 §2.5: the central status check against the fake provider's admin API. */
     centralCheck?: boolean;
     sseRecheckMs?: number;
+    /** UI v2 (N3): new accounts start with the starter sites, as in the server (default off here). */
+    starterSites?: boolean;
   } = {},
 ): Promise<TestApp> {
   const dir = mkdtempSync(join(tmpdir(), 'nexus-app-'));
@@ -101,7 +103,7 @@ export async function buildTestApp(
   const auth = new Auth(db, 30, now);
   await auth.ensurePassword({ hash: null, plain: PASSWORD });
   const itemUsers = new Users(db, now);
-  const repo = new ConfigRepo(db, undefined, async (id) => ((await itemUsers.get(id))?.isAdmin ? null : (opts.quotas ?? DEFAULT_QUOTAS).items), now);
+  const repo = new ConfigRepo(db, undefined, async (id) => ((await itemUsers.get(id))?.isAdmin ? null : (opts.quotas ?? DEFAULT_QUOTAS).items), now, { starterSites: !!opts.starterSites });
   const health = new HealthChecker(db, repo, { allowPrivate: false, allowLoopback: false }, async () => ({ reached: true, status: 200, latencyMs: 5, message: 'HTTP 200' }), LEGACY_ADMIN_ID);
   const users = new Users(db, now);
   const quota = new Quota(db, { wallpapers: join(dir, 'wallpapers'), icons: join(dir, 'icons') }, async (id) => ((await users.get(id))?.isAdmin ? null : (opts.quotas ?? env.quotas ?? null)));
