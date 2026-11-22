@@ -86,8 +86,8 @@ test('L02: the popup saves the current page into this extension, and says so onc
   const popup = await context.newPage();
   await popup.goto(`chrome-extension://${extId}/popup.html?tab=${tabId}`);
   await popup.getByLabel('标题').fill('Popup 保存的页面');
-  await popup.getByRole('button', { name: '保存到此扩展' }).click();
-  await expect(popup.getByRole('status')).toHaveText('已保存到此扩展');
+  await popup.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(popup.getByRole('status')).toHaveText('已保存到此扩展的本地收藏');
   expect(await localItems()).toContainEqual({ title: 'Popup 保存的页面', url });
   // The same page again: shown as already saved, and saving updates it — no second copy.
   await popup.reload();

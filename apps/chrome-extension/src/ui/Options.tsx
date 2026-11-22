@@ -13,6 +13,7 @@ import { clearCache, disconnect, sync, useExt, type SyncOutcome } from '../lib/s
 import { canSave } from '../lib/storage';
 import { ConnectForm } from './Connect';
 import { ext } from '../lib/ext';
+import { saveTarget } from '../lib/where';
 
 const SYNC_MESSAGE: Record<SyncOutcome, { msg: string; tone: 'ok' | 'info' | 'warn' | 'error' }> = {
   updated: { msg: '已同步最新导航', tone: 'ok' },
@@ -125,7 +126,7 @@ function Connected() {
       )}
       {canSave(server) && server.account && (
         <Group title="收藏网页">
-          <Row label={`保存到 ${server.account.label}`} sub="点工具栏的 Nexus 按钮，或在网页、链接上右键选择「收藏到 Nexus」。离线时先保存在本机，联网后自动同步。" />
+          <Row label={saveTarget('account', server.account.label)} sub="点工具栏的 Nexus 按钮，或在网页、链接上右键选择「收藏到 Nexus」。离线时先保存在本机，联网后自动同步。" />
         </Group>
       )}
 

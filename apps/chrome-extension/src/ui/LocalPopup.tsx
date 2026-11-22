@@ -8,6 +8,7 @@ import { extLocal, newLocalOpId, storeLocalSave, type LocalSaveCommand, type Loc
 import { queueCommand } from '../lib/queue-client';
 import { idbQueueStore } from '../lib/queue-store';
 import { ext } from '../lib/ext';
+import { SAVED, saveTarget } from '../lib/where';
 
 /**
  * 收藏当前页面 into this extension's own collection (v0.5 · U1, 03-DESIGN-SPEC §5): title, folder,
@@ -123,11 +124,11 @@ export function LocalPopup() {
       <header className="flex items-center gap-2">
         <span className="size-2 rounded-full bg-amber" />
         <h1 className="m-0 flex-1 text-[15px] font-medium">收藏当前页面</h1>
-        <span className="flex items-center gap-1 text-[12px] text-ink/56" title="收藏保存在这个浏览器扩展里，不需要账号">
-          <HardDrive className="size-3.5" />
-          保存到此扩展
-        </span>
       </header>
+      <p className="m-0 -mt-1.5 flex items-center gap-1.5 text-[12px] text-ink/56" title="收藏保存在这个浏览器扩展里，不需要账号，也不会上传">
+        <HardDrive className="size-3.5 flex-none" />
+        {saveTarget('local')}
+      </p>
       {phase === 'loading' && <p className="m-0 text-[13px] text-ink/60">正在读取当前页面…</p>}
       {phase !== 'loading' && !pageOk && <p role="alert" className="m-0 text-[13px] leading-[1.6] text-ink/70">这个页面不能收藏：只支持 http/https 网页（浏览器内部页面、本地文件、扩展页面不行）。可以在新标签页的「收藏 › 新增」里手动添加网址。</p>}
       {pageOk && (phase === 'ready' || phase === 'saving') && (
@@ -171,7 +172,7 @@ export function LocalPopup() {
             <Pin className="size-3.5" /> 同时固定到首页
           </label>
           <button type="submit" disabled={phase === 'saving'} className="h-10 rounded-xl border-0 bg-amber text-[14px] font-semibold text-on-amber disabled:opacity-50">
-            {phase === 'saving' ? '正在保存…' : existing ? '更新这条收藏' : '保存到此扩展'}
+            {phase === 'saving' ? '正在保存…' : existing ? '更新这条收藏' : '保存'}
           </button>
         </form>
       )}
@@ -179,7 +180,7 @@ export function LocalPopup() {
         <div className="flex flex-col gap-2.5">
           <p role="status" className="m-0 flex items-center gap-2 text-[13px] text-ok">
             {done.undone ? <Undo2 className="size-4 flex-none" /> : <Check className="size-4 flex-none" />}
-            {done.undone ? '已撤销，这条没有保存' : done.result.result === 'updated' ? '已更新此扩展里的收藏' : '已保存到此扩展'}
+            {done.undone ? SAVED.local.undone : done.result.result === 'updated' ? SAVED.local.updated : SAVED.local.saved}
           </p>
           {notice && !done.undone && (
             <p className="m-0 flex items-center gap-2 text-[12.5px] text-warn">

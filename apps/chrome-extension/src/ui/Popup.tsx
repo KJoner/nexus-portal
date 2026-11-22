@@ -1,5 +1,5 @@
 import { canonicalUrl, hostOf, ITEM_LIMITS, LOCKED_CATEGORY, type Item } from '@nexus/shared';
-import { Check, CloudOff, ExternalLink, LibraryBig, Pin, TriangleAlert } from 'lucide-react';
+import { Check, Cloud, CloudOff, ExternalLink, LibraryBig, Pin, TriangleAlert } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { ApiError, deviceApi } from '../lib/api';
 import { adoptable, readQueue, type QueueEntry } from '../lib/collect';
@@ -8,6 +8,7 @@ import { idbQueueStore } from '../lib/queue-store';
 import { canSave, KEYS, readServer, type Area, type ServerRecord } from '../lib/storage';
 import { readSpace, type ExtSpace } from '../lib/local';
 import { ext } from '../lib/ext';
+import { SAVED, saveTarget } from '../lib/where';
 import { LocalPopup } from './LocalPopup';
 
 /**
@@ -29,11 +30,11 @@ const askFlush = () => queueCommand({ type: 'flush' });
 
 function Status({ entry }: { entry: QueueEntry }) {
   const map: Record<QueueEntry['state'], { icon: typeof Check; text: string; tone: string }> = {
-    saved: { icon: Check, text: entry.message ? `已同步到收藏库；${entry.message}` : '已同步到收藏库', tone: entry.message ? 'text-warn' : 'text-ok' },
-    pending: { icon: CloudOff, text: '已保存在此设备，联网后同步', tone: 'text-warn' },
-    duplicate: { icon: LibraryBig, text: '这个网址已在收藏库中', tone: 'text-ink/80' },
+    saved: { icon: Check, text: entry.message ? `${SAVED.account.saved}；${entry.message}` : SAVED.account.saved, tone: entry.message ? 'text-warn' : 'text-ok' },
+    pending: { icon: CloudOff, text: SAVED.account.pending, tone: 'text-warn' },
+    duplicate: { icon: LibraryBig, text: SAVED.account.duplicate, tone: 'text-ink/80' },
     held: { icon: TriangleAlert, text: entry.message ?? '没有保存', tone: 'text-danger-ink' },
-    draft: { icon: TriangleAlert, text: '已存为草稿：授权后再保存', tone: 'text-warn' },
+    draft: { icon: TriangleAlert, text: SAVED.account.draft, tone: 'text-warn' },
   };
   const s = map[entry.state];
   return (
@@ -133,6 +134,12 @@ function AccountPopup() {
           </a>
         )}
       </header>
+      {server && (
+        <p className="m-0 -mt-1.5 flex min-w-0 items-center gap-1.5 text-[12px] text-ink/56" title="收藏保存到这个 Nexus 账号，登录同一账号的设备都能看到">
+          <Cloud className="size-3.5 flex-none" />
+          <span className="truncate">{saveTarget('account', server.account?.label)}</span>
+        </p>
+      )}
       {children}
     </main>
   );
@@ -198,7 +205,7 @@ function AccountPopup() {
           )}
           {!canSave(server) && <p className="m-0 text-[12.5px] leading-[1.6] text-warn">这个扩展目前只有读取导航的授权。保存会先存成草稿，请在设置里「授权收藏」后再提交。</p>}
           <button type="submit" disabled={phase === 'saving'} className="h-10 rounded-xl border-0 bg-amber text-[14px] font-semibold text-on-amber disabled:opacity-50">
-            {phase === 'saving' ? '正在保存…' : canSave(server) ? '保存到收藏库' : '存为草稿'}
+            {phase === 'saving' ? '正在保存…' : canSave(server) ? '保存' : '存为草稿'}
           </button>
         </form>
       )}

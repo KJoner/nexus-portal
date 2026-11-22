@@ -7,6 +7,7 @@ import { markRevoked, REVOKED_HINT } from './lib/revoke';
 import { canSave, KEYS, readServer, type Area } from './lib/storage';
 import { ext, removeAllMenus } from './lib/ext';
 import { newLocalOpId, readSpace, storeLocalSave, type LocalSaveCommand } from './lib/local';
+import { SAVED } from './lib/where';
 
 /**
  * Background work, all of it event-driven (the service worker may be stopped at any moment):
@@ -38,13 +39,15 @@ const unsent = (s: string) => s === 'pending' || s === 'draft' || s === 'held';
 /**
  * The toolbar badge: how many saves are not on the server yet (a draft, waiting, or over a limit).
  * A revoked device says so at once — badge 「!」 and the button's title — not at the next new tab.
+ * `note` is what the button's title says meanwhile (after a menu save: where it went, U2b); it lasts
+ * as long as the flash, or until the next update when there is none.
  */
-async function badge(flash?: string) {
+async function badge(flash?: string, note?: string) {
   await ready();
   const s = await server();
   const waiting = (await readQueue(queue)).filter((e) => unsent(e.state)).length;
   const revoked = !!s?.revoked;
-  await ext.action.setTitle({ title: revoked ? `${REVOKED_HINT}（${waiting ? `${waiting} 条收藏仍保存在扩展里` : '收藏到 Nexus'}）` : '收藏到 Nexus' });
+  await ext.action.setTitle({ title: note ?? (revoked ? `${REVOKED_HINT}（${waiting ? `${waiting} 条收藏仍保存在扩展里` : '收藏到 Nexus'}）` : '收藏到 Nexus') });
   await ext.action.setBadgeBackgroundColor({ color: flash === '✓' ? '#3f8f5f' : revoked ? '#b3412e' : '#b07a2a' });
   await ext.action.setBadgeText({ text: flash ?? (revoked ? '!' : waiting ? String(waiting) : '') });
   if (flash) setTimeout(() => void badge(), 2500);
@@ -99,15 +102,16 @@ async function saveFromMenu(info: { menuItemId: string | number; linkUrl?: strin
   if ((await readSpace(area)) === 'local') {
     const r = await storeLocalSave({ opId: newLocalOpId(), source: 'extension', item: { kind: 'page', title: c.title, url: c.url, tags: [] }, pinToHome: false, duplicatePolicy: 'prompt' });
     const state = r.ok ? 'saved' : r.code === 'DUPLICATE' ? 'duplicate' : 'failed';
-    await ext.action.setTitle({ title: state === 'saved' ? '已收藏到此扩展' : state === 'duplicate' ? '这个网址已经在收藏里' : `没有保存：${r.ok ? '' : r.message}` });
-    await badge(state === 'saved' ? '✓' : state === 'duplicate' ? '=' : '!');
+    await badge(state === 'saved' ? '✓' : state === 'duplicate' ? '=' : '!', state === 'saved' ? SAVED.local.saved : state === 'duplicate' ? SAVED.local.duplicate : `没有保存：${r.ok ? '' : r.message}`);
     return { ok: r.ok || state === 'duplicate', persisted: r.ok || state === 'duplicate', state, url: c.url, ...(r.ok ? {} : { message: r.message }) };
   }
   const r = await save(c);
   // Kept as a draft (not connected, read-only, or just revoked): the person connects / authorizes
   // first — the options page says why — then confirms the account.
   if (r.entry?.state === 'draft') await ext.runtime.openOptionsPage();
-  await badge(r.entry?.state === 'saved' ? '✓' : undefined);
+  const s = r.entry?.state;
+  const note = s === 'saved' ? SAVED.account.saved : s === 'pending' ? SAVED.account.pending : s === 'draft' ? SAVED.account.draft : s === 'duplicate' ? SAVED.account.duplicate : s === 'held' ? (r.entry?.message ?? '没有保存') : undefined;
+  await badge(s === 'saved' ? '✓' : s === 'duplicate' ? '=' : undefined, note);
   return { ...r, state: r.entry?.state, url: c.url };
 }
 

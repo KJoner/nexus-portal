@@ -275,7 +275,7 @@ export function uiaListing(b: Browser): Promise<string> {
       writeFileSync(file, String(out));
       const keep = String(out)
         .split(/\r?\n/)
-        .filter((l) => /收藏到 Nexus|保存到收藏库|正在读取|这个页面不能收藏|存为草稿|没有连接/.test(l));
+        .filter((l) => /收藏到 Nexus|保存到：|正在读取|这个页面不能收藏|存为草稿|没有连接/.test(l));
       r(`(full listing: ${file})\n${keep.slice(0, 40).join('\n')}`);
     }),
   );
@@ -303,7 +303,7 @@ export async function pair(b: Browser, a: Account, opts: { switching?: boolean; 
   await prompt;
   const approved = await a.api.post(`/api/devices/pairing/${code}`, { data: { approve: true } });
   if (!approved.ok()) throw new Error(`批准失败：${approved.status()}`);
-  await options.waitForFunction((label) => document.body.innerText.includes(`保存到 ${label}`), a.email, { timeout: 30_000 });
+  await options.waitForFunction((label) => document.body.innerText.includes(`保存到：账号「${label}」`), a.email, { timeout: 30_000 });
 }
 
 /** The save queue as stored (IndexedDB nexus-queue / saves), read from an extension page. */
@@ -421,13 +421,13 @@ export async function openPopup(b: Browser, page: Page, waitFor: string): Promis
 
 /** Saves the active tab through the toolbar popup (the real popup, opened by its button), driven through UIA. */
 export async function popupSave(b: Browser, page: Page, fields: { title?: string; tags?: string } = {}): Promise<UiaResult> {
-  const ready = await openPopup(b, page, '^保存到收藏库$');
+  const ready = await openPopup(b, page, '^保存$');
   if (!ready.ok) return ready;
   if (fields.title !== undefined) await uia(b, ['标题'], { type: 'Edit', action: 'SetValue', value: fields.title });
   if (fields.tags !== undefined) await uia(b, ['标签'], { type: 'Edit', action: 'SetValue', value: fields.tags });
-  const saved = await uia(b, ['保存到收藏库'], { type: 'Button' });
+  const saved = await uia(b, ['^保存$'], { type: 'Button' });
   if (!saved.ok) return saved;
-  return uia(b, ['^已同步到收藏库', '^已保存在此设备', '^这个网址已在收藏库中', '^已存为草稿', '没有保存'], { action: 'WaitText', timeoutMs: 20_000 });
+  return uia(b, ['^已同步到账号的收藏库', '^已保存在此设备', '^这个网址已在账号的收藏库中', '^已存为草稿', '没有保存'], { action: 'WaitText', timeoutMs: 20_000 });
 }
 
 export const pause = wait;
