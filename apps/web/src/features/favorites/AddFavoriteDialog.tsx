@@ -356,7 +356,9 @@ function AddForm({ req, onClose }: { req: AddRequest; onClose(): void }) {
 
   return (
     <Modal open onClose={requestClose} title="添加收藏" eyebrow="把喜欢的，留在手边" width={Math.min(1120, w - 48)} phone={false} label="添加收藏">
-      <div className="grid min-h-0 flex-1 grid-cols-[390px_minmax(0,1fr)]" style={{ maxHeight: 'min(720px, calc(100dvh - 160px))' }}>
+      {/* A definite height and a minmax(0,1fr) row: with only max-height the auto row grows to the store list's
+          height and the left column's footer (the one primary action) is clipped below the dialog. */}
+      <div className="grid min-h-0 flex-1 grid-cols-[390px_minmax(0,1fr)] grid-rows-[minmax(0,1fr)]" style={{ height: 'min(720px, calc(100dvh - 160px))' }}>
         <section aria-label={storeMode ? '将要添加的网站' : '添加网址'} className="flex min-h-0 flex-col border-r border-ink/8">
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-7 pt-5 pb-4">
             {!storeMode && (

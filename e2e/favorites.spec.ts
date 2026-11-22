@@ -101,6 +101,38 @@ test('C02/C03/C04: 应用商店 inside 添加收藏 — 已添加, one primary a
   for (const q of ['知乎', '豆瓣']) for (const i of await items(page, q)) await page.request.delete(`/api/v2/items/${i.id}?opId=e2e-clean-${i.id}-${Date.now()}&baseVersion=${i.version}`, { headers: H });
 });
 
+/**
+ * The one primary action is really on screen, not just in the DOM: Playwright scrolls clipped elements
+ * into view before clicking, so a footer pushed under the dialog's edge still "clicks" in a test while a
+ * person cannot reach it (seen at 1440×960 before the fix). Hit-test the button's centre instead.
+ */
+async function reachable(page: Page, name: string) {
+  const button = page.getByRole('dialog', { name: '添加收藏' }).getByRole('button', { name, exact: true });
+  await expect(button).toBeAttached();
+  return button.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const dialog = el.closest('[role="dialog"]')!.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return !!hit && el.contains(hit) && r.top >= 0 && r.bottom <= innerHeight && r.bottom <= dialog.bottom + 1;
+  });
+}
+
+test('C02: 添加收藏 keeps its one primary action on screen — manual and with sites picked, laptop heights too', async ({ home: page, isMobile }) => {
+  const sizes = isMobile ? [null] : [{ width: 1440, height: 960 }, { width: 1280, height: 720 }];
+  for (const size of sizes) {
+    if (size) await page.setViewportSize(size);
+    await page.goto('/settings/favorites?add=manual');
+    await expect(page.getByRole('dialog', { name: '添加收藏' })).toBeVisible();
+    expect(await reachable(page, '添加这个收藏'), `添加这个收藏 at ${size ? `${size.width}×${size.height}` : 'phone'}`).toBe(true);
+    const dialog = page.getByRole('dialog', { name: '添加收藏' });
+    if (isMobile) await dialog.getByRole('tab', { name: /应用商店/ }).click();
+    await dialog.getByRole('textbox', { name: '搜索应用商店' }).fill('知乎');
+    await dialog.getByRole('button', { name: '选择 知乎' }).click();
+    expect(await reachable(page, '添加 1 个网站'), `添加 1 个网站 at ${size ? `${size.width}×${size.height}` : 'phone'}`).toBe(true);
+    await page.keyboard.press('Escape');
+  }
+});
+
 test('C01/C05: manual add — group, pin, back where it was; the same address asks first', async ({ home: page, isMobile }) => {
   test.skip(isMobile, 'covered on desktop; the phone sheet is in the screenshots');
   const url = `https://manual.example.org/${Date.now()}`;
