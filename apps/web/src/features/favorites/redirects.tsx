@@ -14,7 +14,7 @@ export function LegacyLibraryRedirect() {
   useEffect(() => {
     const old = new URLSearchParams(search);
     const next = new URLSearchParams();
-    for (const k of ['edit', 'q', 'view']) if (old.get(k)) next.set(k, old.get(k)!);
+    for (const k of ['edit', 'q', 'view', 'import']) if (old.get(k)) next.set(k, old.get(k)!);
     if (old.get('folder')) next.set('view', `group:${old.get('folder')}`);
     navigate(`/settings/favorites${next.size ? `?${next}` : ''}`, { replace: true });
   }, [navigate, search]);

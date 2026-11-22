@@ -513,9 +513,9 @@ export class ItemStore {
         if (!row) throw new OpError('not_found', '这条收藏不存在，无法恢复');
         // Already back (restored elsewhere, or a retry of this one): nothing to do.
         if (row.deleted_at === null) continue;
-        if (!(await this.restorable(owner, row.id, op.baseVersion))) throw gone(row, `「${row.title}」在你删除之后已被恢复过、又被再次删除，所以没有自动恢复；需要时请到收藏库的回收站恢复`, 'stale');
+        if (!(await this.restorable(owner, row.id, op.baseVersion))) throw gone(row, `「${row.title}」在你删除之后已被恢复过、又被再次删除，所以没有自动恢复；需要时请到「我的收藏」的回收站恢复`, 'stale');
         const app = toApp(row);
-        if (!app) throw new OpError('invalid', `「${row.title}」不能显示在首页，请在收藏库中恢复`);
+        if (!app) throw new OpError('invalid', `「${row.title}」不能显示在首页，请在「我的收藏」中恢复`);
         restores.add(row.id);
         // The server's own copy comes back, not the (possibly older) one the client remembers.
         op = { ...op, app };

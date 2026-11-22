@@ -11,7 +11,7 @@ import { HttpError, MemoryTransport } from './transport';
  */
 let server: MemoryTransport;
 const state = () => useConfigStore.getState();
-const quota = () => new HttpError(409, 'QUOTA_EXCEEDED', '收藏库最多 500 个应用，请先删除一些', false, null, { kind: 'apps', limit: 500, used: 500 });
+const quota = () => new HttpError(409, 'QUOTA_EXCEEDED', '「我的收藏」最多 500 个应用，请先删除一些', false, null, { kind: 'apps', limit: 500, used: 500 });
 
 beforeEach(() => {
   localStorage.clear();

@@ -169,7 +169,7 @@ export function registerItemsApi(app: Hono<{ Variables: Vars }>, deps: ItemsApiD
     const limit = deps.itemLimit(c.get('user'));
     if (limit === null) return;
     const used = await store.countLive(owner(c));
-    if (used + n > limit) throw new ApiError(409, 'QUOTA_EXCEEDED', `收藏库最多 ${limit} 条，请先删除一些`, { kind: 'items', limit, used });
+    if (used + n > limit) throw new ApiError(409, 'QUOTA_EXCEEDED', `「我的收藏」最多 ${limit} 条，请先删除一些`, { kind: 'items', limit, used });
   };
   const result = (item: Item, r: ItemWriteResult['result']): ItemWriteResult => ({ item, result: r, ownerRevision: 0 });
   /**
@@ -303,7 +303,7 @@ export function registerItemsApi(app: Hono<{ Variables: Vars }>, deps: ItemsApiD
         const ownerId = owner(c);
         const input = req.item;
         const existing = await store.findByUrl(ownerId, input.url);
-        if (existing && req.duplicatePolicy === 'prompt') throw new ApiError(409, 'DUPLICATE', '这个网址已经在收藏库里', { item: existing });
+        if (existing && req.duplicatePolicy === 'prompt') throw new ApiError(409, 'DUPLICATE', '这个网址已经在「我的收藏」里', { item: existing });
         if (existing && req.duplicatePolicy === 'update') {
           const updated = await store.update(ownerId, existing.id, { title: input.title, folderId: await folderOf(ownerId, input.folderId), tags: input.tags, note: input.note || existing.note });
           const pin = req.pinToHome ? await pinIfRoom(ownerId, updated.id) : undefined;
@@ -647,7 +647,7 @@ export function registerItemsApi(app: Hono<{ Variables: Vars }>, deps: ItemsApiD
   });
   const backupOf = (raw: unknown): CollectionFile => {
     const v = (raw as { version?: unknown } | null)?.version;
-    if ((raw as { format?: unknown } | null)?.format !== COLLECTION_FORMAT) throw new ApiError(422, 'VALIDATION', '不是 Nexus 收藏库导出的文件');
+    if ((raw as { format?: unknown } | null)?.format !== COLLECTION_FORMAT) throw new ApiError(422, 'VALIDATION', '不是 Nexus「我的收藏」导出的文件');
     if (typeof v === 'number' && v > COLLECTION_VERSION) throw new ApiError(422, 'UNSUPPORTED_VERSION', `这个文件来自更新版本的 Nexus（格式第 ${v} 版），请先升级再恢复`, { version: v, supported: COLLECTION_VERSION });
     const r = CollectionFileSchema.safeParse(raw);
     if (!r.success) {
@@ -673,7 +673,7 @@ export function registerItemsApi(app: Hono<{ Variables: Vars }>, deps: ItemsApiD
       }
       return await write(c, req.opId, ['restore-collection', req], async () => {
         const revision = (await repo.version(ownerId)).revision;
-        if (req.basis !== undefined && req.basis !== revision) throw new ApiError(409, 'PLAN_STALE', '收藏库在预览之后有了变化，请重新预览后再恢复', { basis: revision });
+        if (req.basis !== undefined && req.basis !== revision) throw new ApiError(409, 'PLAN_STALE', '「我的收藏」在预览之后有了变化，请重新预览后再恢复', { basis: revision });
         const basis = await basisOf(c);
         const plan = planRestore(file, basis, req.duplicates);
         await admitItems(c, plan.create.length);

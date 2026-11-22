@@ -23,7 +23,7 @@ beforeEach(() => {
       const body = JSON.parse(String(init.body)) as Sent;
       sent.push(body);
       if (!body.dryRun && failApply === 'network') throw new TypeError('Failed to fetch');
-      if (!body.dryRun && failApply === 'stale') return new Response(JSON.stringify({ code: 'PLAN_STALE', message: '收藏库在预览之后有了变化', retryable: false, details: { basis: 9 } }), { status: 409, headers: { 'content-type': 'application/json' } });
+      if (!body.dryRun && failApply === 'stale') return new Response(JSON.stringify({ code: 'PLAN_STALE', message: '「我的收藏」在预览之后有了变化', retryable: false, details: { basis: 9 } }), { status: 409, headers: { 'content-type': 'application/json' } });
       const summary = { folders: { create: [], map: [], overLimit: 0 }, items: { create: 2, update: 0, skip: 0, repeated: 0, unsupported: 0, kinds: { app: 0, page: 2 } }, duplicates: [], duplicateCount: 0, pins: { restore: 1, notPinned: 0, limit: 36 }, icons: { upload: 0, missing: 0 } };
       return new Response(JSON.stringify(body.dryRun ? { dryRun: true, importId: null, summary, basis: 7 } : { importId: `imp-${body.opId.slice(-16)}`, summary, undo: { folders: [], pins: [] }, ownerRevision: 8 }), { status: 200, headers: { 'content-type': 'application/json' } });
     }),

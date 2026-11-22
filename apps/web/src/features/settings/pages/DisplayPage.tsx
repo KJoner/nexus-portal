@@ -64,7 +64,7 @@ export function DisplayPage() {
           <>
             {toggle('Nexus 标志', undefined, d.brand, (v) => setD({ brand: v }))}
             {toggle('「首页」导航', undefined, d.navHome, (v) => setD({ navHome: v }))}
-            {toggle('「收藏库」与「应用目录」导航', undefined, d.navApps, (v) => setD({ navApps: v }))}
+            {toggle('「我的收藏」导航', undefined, d.navApps, (v) => setD({ navApps: v }))}
             {admin && toggle('「运行概览」导航', undefined, d.navOverview, (v) => setD({ navOverview: v }))}
           </>
         )}

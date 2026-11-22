@@ -124,8 +124,8 @@ describe('the save queue (EX-03)', () => {
     await enqueue(store, server(), { title: '超限', url: 'https://full.example.org/' });
     const api = {
       createItem: async (_t: string, b: { opId: string; item: { url: string } }) => {
-        if (b.item.url.includes('dup')) throw new ApiError('server', '这个网址已经在收藏库里', 409, 'DUPLICATE', { item: { id: 'it-old', title: '原来的', folderId: 'work' } });
-        throw new ApiError('server', '收藏库最多 5000 条，请先删除一些', 409, 'QUOTA_EXCEEDED', { kind: 'items', limit: 5000, used: 5000 });
+        if (b.item.url.includes('dup')) throw new ApiError('server', '这个网址已经在「我的收藏」里', 409, 'DUPLICATE', { item: { id: 'it-old', title: '原来的', folderId: 'work' } });
+        throw new ApiError('server', '「我的收藏」最多 5000 条，请先删除一些', 409, 'QUOTA_EXCEEDED', { kind: 'items', limit: 5000, used: 5000 });
       },
     };
     await flushQueue(store, server(), api);

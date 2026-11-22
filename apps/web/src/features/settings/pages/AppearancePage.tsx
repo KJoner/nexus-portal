@@ -1,4 +1,4 @@
-import { pinnedSites, shownServices, wallpaperFile, type Settings } from '@nexus/shared';
+import { pinnedSites, wallpaperFile, type Settings } from '@nexus/shared';
 import { Check, CircleAlert, Heart, Trash2, Upload, X } from 'lucide-react';
 import { useState, type DragEvent } from 'react';
 import { deleteWallpaper, uploadWallpaper, useConfig } from '../../../data/config-store';
@@ -25,7 +25,7 @@ function Preview({ look, entry, device, onFocal }: { look: Look; entry: Wallpape
   const compact = useCompact();
   const now = new Date();
   const time = formatClock(now, look.clock, look.showSeconds);
-  const tiles = [...pinnedSites(config).slice(0, config.settings.home.dockSize), ...shownServices(config)];
+  const tiles = pinnedSites(config).slice(0, config.settings.home.dockSize);
   const scaled: Look = { ...look, blur: Math.round(look.blur * 0.3 * 10) / 10 };
   const focal = look.focal[device];
   const size = ({ s: [17, 21], m: [20, 24], l: [23, 27] } as const)[look.iconSize];

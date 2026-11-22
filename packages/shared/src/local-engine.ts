@@ -470,9 +470,9 @@ function prepare(s: LocalState, view: Config, ops: readonly Op[]): { config: Con
       const row = id ? s.rows[id] : undefined;
       if (!row) throw new OpError('not_found', '这条收藏不存在，无法恢复');
       if (row.deletedAt === null) continue;
-      if (!restorable(s, row.id, op.baseVersion)) throw gone(row, `「${row.title}」在你删除之后已被恢复过、又被再次删除，所以没有自动恢复；需要时请到收藏库的回收站恢复`, 'stale');
+      if (!restorable(s, row.id, op.baseVersion)) throw gone(row, `「${row.title}」在你删除之后已被恢复过、又被再次删除，所以没有自动恢复；需要时请到「我的收藏」的回收站恢复`, 'stale');
       const app = rowToApp(row);
-      if (!app) throw new OpError('invalid', `「${row.title}」不能显示在首页，请在收藏库中恢复`);
+      if (!app) throw new OpError('invalid', `「${row.title}」不能显示在首页，请在「我的收藏」中恢复`);
       restores.add(row.id);
       op = { ...op, app };
     } else if (op.type === 'config.replace') {

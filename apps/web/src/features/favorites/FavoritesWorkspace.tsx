@@ -145,17 +145,20 @@ export function FavoritesWorkspace() {
     setTreeSheet(false);
   };
 
-  // Old links and 快速打开: ?edit=<id> opens the editor, ?add=manual|store the add dialog (prefilled).
+  // Old links and 快速打开: ?edit=<id> opens the editor, ?add=manual|store the add dialog (prefilled),
+  // ?import=1 (数据与备份 › 导入收藏或浏览器书签, old /library?import=1) the import dialog.
   useEffect(() => {
     const edit = params.get('edit');
     const add = params.get('add');
-    if (!edit && add === null) return;
-    if (edit) openEditFavorite(edit);
+    const imp = params.get('import') === '1';
+    if (!edit && add === null && !imp) return;
+    if (imp) setImporting(true);
+    else if (edit) openEditFavorite(edit);
     else openAddFavorite({ tab: add === 'store' ? 'store' : 'manual', q: params.get('sq') ?? '', title: params.get('title') ?? '', url: params.get('url') ?? '', ...(view.kind === 'group' ? { folderId: view.id } : {}) });
     setParams(
       (p) => {
         const n = new URLSearchParams(p);
-        for (const k of ['edit', 'add', 'sq', 'title', 'url']) n.delete(k);
+        for (const k of ['edit', 'add', 'sq', 'title', 'url', 'import']) n.delete(k);
         return n;
       },
       { replace: true },

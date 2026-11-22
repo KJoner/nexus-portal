@@ -1,7 +1,7 @@
 import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS as DndCSS } from '@dnd-kit/utilities';
-import { DOCK_SIZE_MAX, DOCK_SIZE_MIN, hostOf, MAX_PINS, pinnedSites, shownServices, type AppEntry, type Settings } from '@nexus/shared';
+import { DOCK_SIZE_MAX, DOCK_SIZE_MIN, hostOf, MAX_PINS, pinnedSites, type AppEntry, type Settings } from '@nexus/shared';
 import { ChevronDown, ChevronUp, GripVertical, Minus, Plus } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
@@ -22,11 +22,11 @@ function whereOf(n: number, desktop: number, mobile: number, mobilePage: number,
   if (pc && mob) return { label: n <= desktop && n <= mobile ? '桌面 · 手机' : `桌面${pc} · 手机${mob}`, tone: 'both' };
   if (pc) return { label: '仅桌面', tone: 'one' };
   if (mob) return { label: '仅手机', tone: 'one' };
-  return { label: '仅在收藏库中', tone: 'none' };
+  return { label: '仅在「我的收藏」中', tone: 'none' };
 }
 
 const MODE_SUB: Record<Shortcuts['mode'], string> = {
-  single: '首页只显示第一排，其余固定的网站在「收藏库」中',
+  single: '首页只显示第一排，其余固定的网站在「我的收藏」中',
   expand: '其余固定的网站收在面板底部，桌面上鼠标移到首排时临时展开，点击底部箭头固定展开',
   double: '扩展区始终展开显示',
 };
@@ -167,19 +167,18 @@ function AddShortcut() {
 function Preview({ device }: { device: 'pc' | 'mobile' }) {
   const config = useConfig();
   const { home } = config.settings;
+  // UI v2: services are favorites like any other: pinned ones share the one order, no separate strip.
   const pins = pinnedSites(config);
-  const services = shownServices(config);
-  const mobileCap = Math.max(0, home.mobileRows * 4 - services.length);
+  const mobileCap = home.mobileRows * 4;
   const rest = home.shortcuts.mode === 'single' ? [] : pins.slice(home.dockSize);
   if (device === 'pc') {
-    const items = [...pins.slice(0, home.dockSize).map((a) => ({ a, sep: false })), ...services.map((a) => ({ a, sep: false }))];
+    const items = pins.slice(0, home.dockSize).map((a) => ({ a, sep: false }));
     return (
       <div className="box-border w-[416px] rounded-2xl px-3 pt-3.5 pb-3" style={{ background: 'rgb(var(--nx-s1-rgb)/0.6)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.07)' }}>
         <div className="flex h-[30px] items-center border-b border-ink/8 px-1.5 text-[11px] text-ink/46">搜索、输入网址，或打开应用</div>
         <div className="flex justify-center gap-[3px] pt-3.5">
           {items.map(({ a }, i) => (
             <span key={a.id} className="flex items-start">
-              {i === Math.min(pins.length, home.dockSize) && services.length > 0 && <span className="mx-[3px] mt-1 h-[22px] w-px bg-ink/16" />}
               <span className="flex w-9 flex-col items-center gap-[5px]">
                 <AppTile target={{ kind: 'app', app: a }} size={30} />
                 {home.labels.desktop && <span className="max-w-9 truncate text-[8.5px] text-ink/70">{a.name}</span>}
@@ -189,7 +188,7 @@ function Preview({ device }: { device: 'pc' | 'mobile' }) {
           <span className="mx-[3px] mt-1 h-[22px] w-px bg-ink/16" />
           <span className="flex w-9 flex-col items-center gap-[5px]">
             <AppTile target={{ kind: 'all' }} size={30} />
-            {home.labels.desktop && <span className="text-[8.5px] text-ink/70">收藏库</span>}
+            {home.labels.desktop && <span className="text-[8.5px] text-ink/70">快速打开</span>}
           </span>
         </div>
         {rest.length > 0 &&
@@ -205,7 +204,7 @@ function Preview({ device }: { device: 'pc' | 'mobile' }) {
       </div>
     );
   }
-  const grid = [...pins.slice(0, mobileCap), ...services].slice(0, home.mobileRows * 4);
+  const grid = pins.slice(0, mobileCap);
   const empty = home.mobileRows * 4 - grid.length;
   return (
     <div className="box-border w-[208px] rounded-[22px] px-2.5 py-3" style={{ background: 'rgb(var(--nx-s1-rgb)/0.6)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.07)' }}>
@@ -234,8 +233,7 @@ export function HomeLayoutPage() {
   const { home } = config.settings;
   const [device, setDevice] = useState<'pc' | 'mobile'>('pc');
   const pins = pinnedSites(config);
-  const services = shownServices(config);
-  const mobileCap = Math.max(0, home.mobileRows * 4 - services.length);
+  const mobileCap = home.mobileRows * 4;
   const hidden = config.apps.filter((a) => a.hidden);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const { shortcuts } = home;
@@ -333,7 +331,7 @@ export function HomeLayoutPage() {
             </div>
           </Row>
         )}
-        <Row label={compact ? '首页行数' : '手机首页行数'} sub={`${home.mobileRows * 4} 个位置，其中 ${services.length} 个给服务；3 行时仍在屏幕下 45% 内`} stacked>
+        <Row label={compact ? '首页行数' : '手机首页行数'} sub={`${home.mobileRows * 4} 个位置；3 行时仍在屏幕下 45% 内`} stacked>
           <Segmented
             label="手机首页行数"
             value={home.mobileRows}
@@ -343,9 +341,6 @@ export function HomeLayoutPage() {
             ]}
             onChange={(v) => patch('home', { mobileRows: v })}
           />
-        </Row>
-        <Row label="显示我的服务" sub="在 Dock 与手机首页显示自托管服务及其状态角标">
-          <Switch label="显示我的服务" checked={home.showServices} onChange={(v) => patch('home', { showServices: v })} />
         </Row>
         <Row label="桌面显示图标名称" sub="关闭后只显示图标，悬停时显示名称">
           <Switch label="桌面显示图标名称" checked={home.labels.desktop} onChange={(v) => patch('home', { labels: { ...home.labels, desktop: v } })} />
@@ -398,7 +393,7 @@ export function HomeLayoutPage() {
         </div>
         <span className="text-[12px] leading-[1.6] text-ink/46">
           {device === 'pc'
-            ? `首排：前 ${home.dockSize} 个网站${home.showServices ? ` + ${services.length} 个服务` : ''} + 收藏库${rest.length ? ` · 扩展区 ${rest.length} 个` : ''}`
+            ? `首排：前 ${home.dockSize} 个收藏 + 快速打开${rest.length ? ` · 扩展区 ${rest.length} 个` : ''}`
             : `手机首页：${home.mobileRows} 行 × 4 列${pins.length > mobileCap && home.shortcuts.mode !== 'single' ? `，其余 ${pins.length - mobileCap} 个左右滑动或上拉查看` : '；不足时显示空位，点按可添加'}`}
         </span>
       </aside>

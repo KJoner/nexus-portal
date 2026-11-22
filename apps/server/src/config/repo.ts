@@ -192,7 +192,7 @@ export class ConfigRepo {
           const limit = await this.itemLimit(ownerId);
           if (limit === null) return;
           const used = await this.items.countLive(ownerId);
-          if (used + fresh > limit) throw new OpError('quota_exceeded', `收藏库最多 ${limit} 条，请先删除一些`, { kind: 'items', limit, used });
+          if (used + fresh > limit) throw new OpError('quota_exceeded', `「我的收藏」最多 ${limit} 条，请先删除一些`, { kind: 'items', limit, used });
         },
         plan,
       );

@@ -178,9 +178,9 @@ export function DataPage() {
           </Button>
         </Row>
         <Row label="导入收藏或浏览器书签" sub="恢复 Nexus 收藏备份（先预览新增与重复），或导入浏览器导出的书签文件">
-          <Button onClick={() => navigate('/library?import=1')}>
+          <Button onClick={() => navigate('/settings/favorites?import=1')}>
             <Upload className="size-[15px]" />
-            去收藏库导入
+            去「我的收藏」导入
           </Button>
         </Row>
       </Group>
