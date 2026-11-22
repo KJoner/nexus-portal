@@ -33,12 +33,12 @@ async function signInWithButton(page: Page, name: string) {
   await expect.poll(() => me(page)).toMatchObject({ product: 'nexus', session: 'oidc' });
 }
 
-/** 设置 › 账号与同步 › 退出此设备（动作 A）：回到此浏览器自己的本地收藏。 */
+/** 设置 › 账号与同步 › 退出此设备（动作 A）：回到此浏览器自己的本地收藏（UI v2：顶栏状态写「仅此设备」）。 */
 async function signOutHere(page: Page) {
   await page.goto(`${NEXUS}/settings/account`);
   await page.getByRole('button', { name: '退出', exact: true }).first().click();
   await page.getByRole('dialog').getByRole('button', { name: '退出', exact: true }).click();
-  await expect(page.getByText('仅保存在此浏览器')).toBeVisible();
+  await expect(page.getByText('仅此设备').first()).toBeVisible();
 }
 
 test('新版：Service Worker 接管后，旧管理员绑定、退出重登、注册与回调都由服务端处理', async ({ page }) => {
@@ -70,10 +70,11 @@ test('新版：Service Worker 接管后，旧管理员绑定、退出重登、�
     await signInWithButton(page, 'owner');
     expect(await me(page)).toMatchObject({ role: 'admin', session: 'oidc' });
 
-    // 注册：一个新身份第一次进入（开放注册）得到自己的空账号
+    // 注册：一个新身份第一次进入（开放注册）得到自己的账号。UI v2（v12.0.3 N3）起新账号在创建时放入 8 个常用网站，
+    // 所以不再是空收藏（onboarding 为 ready）；收藏条数在 apps/server 的 favorites.test.ts 里逐项核对。
     await signOutHere(page);
     await signInWithButton(page, 'newcomer');
-    expect(await me(page)).toMatchObject({ role: 'user', session: 'oidc', onboarding: { state: 'empty_collection' } });
+    expect(await me(page)).toMatchObject({ role: 'user', session: 'oidc', onboarding: { state: 'ready' } });
 
     // 回调地址被重放：intent 已经用过，服务端拒绝（应用壳不可能回答这个结果）
     await page.goto(`${NEXUS}/auth/callback?code=replayed&state=replayed`);
@@ -92,9 +93,10 @@ test('离线或服务端不可达：认证明确不可用，普通页面的离�
     await underServiceWorker(page);
     await signInWithButton(page, 'traveller');
     await page.goto(`${NEXUS}/library`);
-    await expect(page.getByRole('heading', { name: '收藏库' })).toBeVisible();
+    // UI v2：/library 是旧链接，落到「我的收藏」
+    await expect(page.getByRole('heading', { name: '我的收藏' }).first()).toBeVisible();
 
-    // 服务端停了：认证导航得到「暂时无法登录」（503），不是应用壳；收藏库仍从离线壳打开
+    // 服务端停了：认证导航得到「暂时无法登录」（503），不是应用壳；我的收藏仍从离线壳打开
     await nexus.close();
     for (const path of ['/auth/login?returnTo=%2F', '/auth/callback?code=x&state=y', '/auth/link/start']) {
       const res = await page.goto(`${NEXUS}${path}`);
