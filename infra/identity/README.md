@@ -218,7 +218,9 @@ docker compose exec -T postgres pg_dump -U postgres -Fc nexus    > nexus-$(date 
   - 做不到的（不 fork React 应用就改不了）：个人资料页的「已验证」标记与头像卡片、页面里的提示框、登录与安全把账号密码和已登录的浏览器放在同一页、页头里的深浅色切换按钮；账号菜单显示的是 Keycloak 的用户名。两个产品打开账号中心时带 `?referrer=<client>`，页头的「返回 LiteSync / Nexus」由 Keycloak 生成（client 名来自 realm 的 client `name`；v12.0.3 起模板里 nexus-web 叫「Nexus」，已部署的 realm 用 kcadm 改 `clients/<id>` 的 `name`）。
 - `accounts/email`：验证邮箱、重设账号密码等邮件的外壳和中文标题。
 
-新部署导入模板即生效；已部署的 realm：`docker compose up -d`（让新挂载生效）后 `./configure.sh theme on`，回退 `./configure.sh theme off`。主题只改展示，不改认证流程、注册开关、会话和退出行为；`theme off` 不会撤回下一节的用户资料改动。
+新部署导入模板即生效；已部署的 realm：`docker compose up -d`（让新挂载生效）后 `./configure.sh theme on`，回退 `./configure.sh theme off`。
+
+**更新主题文件后要重建 Keycloak 容器**：`docker compose up -d --force-recreate keycloak`，不要只 `docker restart`。生产模式的 Keycloak 会把压缩过的主题资源存进容器里的磁盘缓存 `/opt/keycloak/data/tmp/kc-gzip-cache/`，重启时这个目录还在，浏览器（都带 `Accept-Encoding: gzip`）会继续拿到旧文件；用 curl 不带 gzip 请求却是新的，很容易误判。v12.0.3 预发布实测时，账号控制台的 `content.json` 一直是 Keycloak 自带的那份，就是这个原因。重建容器只清这个缓存，realm 数据在数据库里、主题与导入目录是挂载的，不受影响。改了带版本目录（`ui-v2-*`）里的文件时，同时按上一节换目录名。主题只改展示，不改认证流程、注册开关、会话和退出行为；`theme off` 不会撤回下一节的用户资料改动。
 
 ## 用户名、昵称与邮箱（v12.0.3 I1）
 
