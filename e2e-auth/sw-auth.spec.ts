@@ -63,7 +63,7 @@ test('新版：Service Worker 接管后，旧管理员绑定、退出重登、�
     await page.getByRole('dialog').getByRole('button', { name: '前往账号中心' }).click();
     await signInAtIdp(page, 'owner');
     await expect(page).toHaveURL(`${NEXUS}/settings/account?linked=1`);
-    expect(await me(page)).toMatchObject({ role: 'admin', session: 'oidc', identityLinked: true, account: { id: 'legacy-admin' } });
+    expect(await me(page)).toMatchObject({ role: 'admin', session: 'oidc', identityLinked: true, account: { id: 'legacy-admin', username: 'owner' } });
 
     // 退出此设备 → 用统一账号重新登录：仍是管理员
     await signOutHere(page);
@@ -74,7 +74,16 @@ test('新版：Service Worker 接管后，旧管理员绑定、退出重登、�
     // 所以不再是空收藏（onboarding 为 ready）；收藏条数在 apps/server 的 favorites.test.ts 里逐项核对。
     await signOutHere(page);
     await signInWithButton(page, 'newcomer');
-    expect(await me(page)).toMatchObject({ role: 'user', session: 'oidc', onboarding: { state: 'ready' } });
+    expect(await me(page)).toMatchObject({ role: 'user', session: 'oidc', onboarding: { state: 'ready' }, account: { email: 'newcomer@example.test', username: 'newcomer' } });
+    // UI v2 I1：账号与同步显示身份服务给的登录用户名（只读）；顶栏状态胶囊仍然不写邮箱、昵称或用户名（C11）
+    await page.goto(`${NEXUS}/settings/account`);
+    await expect(page.getByText('登录用户名')).toBeVisible();
+    await expect(page.getByText('newcomer', { exact: true })).toBeVisible();
+    await page.goto(`${NEXUS}/`);
+    const pill = page.getByRole('link', { name: /^保存状态：/ });
+    await expect(pill).toBeVisible();
+    const words = `${await pill.textContent()} ${await pill.getAttribute('aria-label')} ${await pill.getAttribute('title')}`;
+    expect(words).not.toContain('newcomer');
 
     // 回调地址被重放：intent 已经用过，服务端拒绝（应用壳不可能回答这个结果）
     await page.goto(`${NEXUS}/auth/callback?code=replayed&state=replayed`);

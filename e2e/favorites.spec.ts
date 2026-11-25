@@ -505,7 +505,8 @@ test('A04/C11: phone widths do not scroll sideways; the status pill never names 
   await page.goto('/');
   const pill = page.getByRole('link', { name: /^保存状态：/ });
   await expect(pill).toBeVisible();
-  const me = (await (await page.request.get('/api/v2/me', { headers: H })).json()) as { account?: { email?: string; name?: string } };
+  const me = (await (await page.request.get('/api/v2/me', { headers: H })).json()) as { account?: { email?: string; displayName?: string; username?: string } };
+  expect(me.account?.displayName).toBeTruthy();
   const words = `${await pill.textContent()} ${await pill.getAttribute('aria-label')} ${await pill.getAttribute('title')}`;
-  for (const v of [me.account?.email, me.account?.name]) if (v) expect(words).not.toContain(v);
+  for (const v of [me.account?.email, me.account?.displayName, me.account?.username]) if (v) expect(words).not.toContain(v);
 });

@@ -1,15 +1,17 @@
-import type { Item, PairingRequest } from '@nexus/shared';
+import type { Item, MeResponse, PairingRequest } from '@nexus/shared';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useToastStore } from '../../../components/toast-store';
 import { refresh, resetSync, useConfigStore } from '../../../data/config-store';
+import { useIdentity } from '../../../data/identity';
 import { useLibrary } from '../../../data/library';
-import { MemoryTransport } from '../../../data/transport';
+import { httpTransport, MemoryTransport } from '../../../data/transport';
 import { useFavoriteDialogs } from '../../favorites/dialog-store';
 import { FavoriteEditor } from '../../favorites/FavoriteEditor';
 import { LoginPage } from '../../auth/LoginPage';
+import { AccountPage } from './AccountPage';
 import { AccountSection } from './AccountSection';
 import { AdminAccountsSection } from './AdminAccountsSection';
 import { DevicesSection } from './DevicesSection';
@@ -27,8 +29,8 @@ function open(element: React.ReactNode, path = '/settings/data') {
   return userEvent.setup();
 }
 
-async function signInAs(role: 'admin' | 'user', session: 'password' | 'oidc' = role === 'admin' ? 'password' : 'oidc') {
-  server.account = { id: role === 'admin' ? 'legacy-admin' : 'u-member', role, session, canLinkIdentity: role === 'admin' && session === 'password' && server.options.oidc };
+async function signInAs(role: 'admin' | 'user', session: 'password' | 'oidc' = role === 'admin' ? 'password' : 'oidc', profile: { email?: string; displayName?: string; username?: string } = {}) {
+  server.account = { id: role === 'admin' ? 'legacy-admin' : 'u-member', role, session, canLinkIdentity: role === 'admin' && session === 'password' && server.options.oidc, ...profile };
   resetSync(server, server.account.id);
   await refresh();
 }
@@ -219,5 +221,55 @@ describe('账号与登录', () => {
     open(<AccountSection />);
     expect(await screen.findByRole('button', { name: /全部退出/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /退出所有产品/ })).toBeNull();
+  });
+});
+
+describe('登录用户名 (UI v2 I1)', () => {
+  /** The row of a label: Row = <div><div><label/><sub/></div>{value}</div>. */
+  const rowOf = (label: HTMLElement) => label.closest('div')!.parentElement!;
+  afterEach(() => {
+    vi.restoreAllMocks();
+    useIdentity.setState({ status: 'unknown', me: null });
+    useConfigStore.setState({ space: 'account' });
+  });
+
+  it('the account page shows the login name, read-only, and the headline stays the e-mail', async () => {
+    await signInAs('user', 'oidc', { email: 'xiaoyu@example.test', displayName: '小雨', username: 'xiaoyu' });
+    open(<AccountSection />, '/settings/account');
+    const row = rowOf(await screen.findByText('登录用户名'));
+    expect(row).toHaveTextContent('xiaoyu');
+    expect(row).toHaveTextContent('在账号中心登录时使用');
+    // Nothing to type into or press: the identity service owns it.
+    expect(within(row).queryByRole('textbox')).toBeNull();
+    expect(within(row).queryByRole('button')).toBeNull();
+    expect(screen.getByText('xiaoyu@example.test')).toBeInTheDocument();
+  });
+
+  it('an older account whose login name is its e-mail shows exactly that', async () => {
+    await signInAs('user', 'oidc', { email: 'old@example.test', displayName: '旧 姓名', username: 'old@example.test' });
+    open(<AccountSection />, '/settings/account');
+    expect(rowOf(await screen.findByText('登录用户名'))).toHaveTextContent('old@example.test');
+  });
+
+  it('no login name from the server: no row, nothing made up from the nickname or the e-mail', async () => {
+    await signInAs('user', 'oidc', { email: 'n2@example.test', displayName: '小雨' });
+    open(<AccountSection />, '/settings/account');
+    await screen.findByText('n2@example.test');
+    expect(screen.queryByText('登录用户名')).toBeNull();
+    // The administrator signed in with the access password has none either.
+    cleanup();
+    await signInAs('admin', 'password');
+    open(<AccountSection />, '/settings/account');
+    await screen.findByText(/访问密码登录/);
+    expect(screen.queryByText('登录用户名')).toBeNull();
+  });
+
+  it('signed in while this browser keeps its local collection: the login name says which account 开启同步 would use', async () => {
+    const me: MeResponse = { account: { id: 'u-member', displayName: '小雨', email: 'xiaoyu@example.test', emailVerified: true, username: 'xiaoyu' }, product: 'nexus', role: 'user', permissions: [], onboarding: { state: 'ready' }, session: 'oidc', identityLinked: true, canLinkIdentity: false };
+    vi.spyOn(httpTransport, 'me').mockResolvedValue(me);
+    useConfigStore.setState({ space: 'local' });
+    open(<AccountPage />, '/settings/account');
+    expect(await screen.findByText(/已登录 xiaoyu@example.test/)).toBeInTheDocument();
+    expect(rowOf(screen.getByText('登录用户名'))).toHaveTextContent('xiaoyu');
   });
 });

@@ -186,15 +186,16 @@ describe('the status pill says where changes stand, never who is signed in (C11)
     render(<RouterProvider router={router} />);
     return screen.getByRole('link');
   };
-  it('account, all confirmed: 已同步 — and no e-mail or name anywhere', async () => {
-    server.account = { id: 'u-member', role: 'user', session: 'oidc', canLinkIdentity: false, email: 'someone@example.org', name: '小林' } as never;
+  it('account, all confirmed: 已同步 — and no e-mail, nickname or login name anywhere', async () => {
+    server.account = { id: 'u-member', role: 'user', session: 'oidc', canLinkIdentity: false, email: 'someone@example.test', displayName: '小林', username: 'xiaolin_login' };
     resetSync(server, 'u-member');
     await refresh();
+    // The account really carries all three (the page could show them), so their absence below means something.
+    expect(useConfigStore.getState().account?.account).toMatchObject({ email: 'someone@example.test', displayName: '小林', username: 'xiaolin_login' });
     const el = pill();
     expect(el.textContent).toBe('已同步');
     const all = `${el.textContent} ${el.getAttribute('aria-label')} ${el.getAttribute('title')}`;
-    expect(all).not.toContain('someone@example.org');
-    expect(all).not.toContain('小林');
+    for (const who of ['someone@example.test', '小林', 'xiaolin_login']) expect(all).not.toContain(who);
   });
   it('offline is 离线, never 已同步; changes waiting are 待同步', async () => {
     resetSync(server, 'u-member');

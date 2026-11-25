@@ -311,7 +311,8 @@ export class MemoryTransport implements Transport {
   /** 应用目录 served by this fake server (tests fill it in; the real file is not bundled here). */
   catalogData: CatalogResponse = { catalogVersion: 'test', categories: [], items: [], nextCursor: null };
   /** v0.4: whose session this fake server answers for. */
-  account: { id: string; role: 'admin' | 'user'; session: 'password' | 'oidc'; canLinkIdentity: boolean } = { id: 'legacy-admin', role: 'admin', session: 'password', canLinkIdentity: false };
+  /** Profile fields are optional: e-mail '' and the id as the display name unless a test sets them. */
+  account: { id: string; role: 'admin' | 'user'; session: 'password' | 'oidc'; canLinkIdentity: boolean; email?: string; displayName?: string; username?: string } = { id: 'legacy-admin', role: 'admin', session: 'password', canLinkIdentity: false };
   options: AuthOptions = { oidc: false, legacyPassword: true, registration: 'closed', accountUrl: null };
   loggedOutAll = 0;
   revokedEverywhere = 0;
@@ -447,7 +448,7 @@ export class MemoryTransport implements Transport {
   async me(): Promise<MeResponse> {
     this.guard();
     const a = this.account;
-    return { account: { id: a.id, displayName: a.id === 'legacy-admin' ? '管理员' : a.id, email: '', emailVerified: false }, product: 'nexus', role: a.role, permissions: [], onboarding: { state: this.config.apps.length ? 'ready' : 'empty_collection' }, session: a.session, identityLinked: a.session === 'oidc', canLinkIdentity: a.canLinkIdentity };
+    return { account: { id: a.id, displayName: a.displayName ?? (a.id === 'legacy-admin' ? '管理员' : a.id), email: a.email ?? '', emailVerified: false, ...(a.username ? { username: a.username } : {}) }, product: 'nexus', role: a.role, permissions: [], onboarding: { state: this.config.apps.length ? 'ready' : 'empty_collection' }, session: a.session, identityLinked: a.session === 'oidc', canLinkIdentity: a.canLinkIdentity };
   }
   async logoutAll(): Promise<LogoutAllResponse> {
     this.guard();

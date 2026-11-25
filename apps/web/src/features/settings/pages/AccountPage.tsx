@@ -13,7 +13,7 @@ import { formatHm } from '../../../lib/time';
 import { SignInOptions } from '../../account/ConnectPage';
 import { RevocationResult } from '../../auth/RevocationResult';
 import { Button, Group, PageHeader, Row } from '../ui';
-import { AccountSection } from './AccountSection';
+import { AccountSection, UsernameRow } from './AccountSection';
 import { AdminAccountsSection } from './AdminAccountsSection';
 import { DevicesSection } from './DevicesSection';
 import { SyncStatus } from './SyncStatus';
@@ -135,6 +135,7 @@ function LocalAccount() {
                 </Button>
               </div>
             </Row>
+            <UsernameRow username={identity.me.account.username} />
             {pairing && <DevicesSection api={accountDevicesApi} />}
           </>
         ) : pairing && identity.status !== 'offline' ? (

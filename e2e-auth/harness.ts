@@ -49,7 +49,8 @@ export async function startIdp(): Promise<{ idp: FakeIdp; close(): Promise<void>
           const form = new URLSearchParams(body.toString('utf8'));
           const auth = new URL(`${ISSUER}/protocol/openid-connect/auth?${form.get('q') ?? ''}`);
           const sub = (form.get('username') ?? '').trim();
-          const code = idp.authorize(auth, { sub, email: `${sub}@example.test`, name: sub });
+          // preferred_username as Keycloak's profile scope sends it (the login name; UI v2 I1).
+          const code = idp.authorize(auth, { sub, email: `${sub}@example.test`, name: sub, preferredUsername: sub });
           const back = new URL(auth.searchParams.get('redirect_uri')!);
           back.searchParams.set('code', code);
           back.searchParams.set('state', auth.searchParams.get('state') ?? '');

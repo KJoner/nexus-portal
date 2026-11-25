@@ -61,6 +61,20 @@ function RevocationHistory({ status, onChange }: { status: RevocationStatusRespo
 }
 
 /**
+ * 登录用户名 (UI v2 I1): the identity service's login name, read-only, shown only when the server has
+ * one (it comes from the last sign-in; never guessed from the nickname or e-mail). This page is the
+ * one place it appears: the status pill and every title or aria label elsewhere name no one (C11).
+ */
+export function UsernameRow({ username }: { username: string | undefined }) {
+  if (!username) return null;
+  return (
+    <Row label="登录用户名" sub="在账号中心登录时使用" stacked>
+      <span className="min-w-0 text-[14px] break-all text-ink/80 select-all">{username}</span>
+    </Row>
+  );
+}
+
+/**
  * 账号与登录: who is signed in, the identity service's account console, 旧管理员认领, and the three
  * ways out of ADR-019, each saying exactly what it ends:
  *  A 退出此设备 — this browser's Nexus session only;
@@ -125,6 +139,7 @@ export function AccountSection() {
           }
           sub={me ? `${how} · 会话保存在本浏览器，30 天内使用会自动续期` : undefined}
         />
+        <UsernameRow username={me?.account.username} />
         {oidc && accountUrl && (
           <Row label="管理统一账号" sub="在账号中心修改登录密码和邮箱，查看并退出各浏览器里的登录。那里不列已连接的浏览器扩展与 Obsidian：扩展在下面「浏览器扩展」里，Obsidian 在 LiteSync 里；要一次断开全部，用「退出所有产品与设备」">
             <a href={accountUrl} target="_blank" rel="noopener noreferrer" className="inline-flex h-9 items-center gap-2 rounded-[10px] bg-ink/9 px-3.5 text-[13px] text-ink no-underline hover:bg-ink/15">
