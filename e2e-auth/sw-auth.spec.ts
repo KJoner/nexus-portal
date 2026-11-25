@@ -78,7 +78,10 @@ test('新版：Service Worker 接管后，旧管理员绑定、退出重登、�
     // UI v2 I1：账号与同步显示身份服务给的登录用户名（只读）；顶栏状态胶囊仍然不写邮箱、昵称或用户名（C11）
     await page.goto(`${NEXUS}/settings/account`);
     await expect(page.getByText('登录用户名')).toBeVisible();
-    await expect(page.getByText('newcomer', { exact: true })).toBeVisible();
+    // The login name in its own row (this identity's nickname is also 「newcomer」, shown in the 昵称 row).
+    const row = (label: string) => page.getByText(label, { exact: true }).locator('xpath=ancestor::div[2]');
+    await expect(row('登录用户名')).toContainText('newcomer');
+    await expect(row('昵称')).toContainText('newcomer');
     await page.goto(`${NEXUS}/`);
     const pill = page.getByRole('link', { name: /^保存状态：/ });
     await expect(pill).toBeVisible();
