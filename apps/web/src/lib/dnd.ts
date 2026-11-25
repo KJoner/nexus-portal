@@ -18,3 +18,24 @@ const screenReaderInstructions: ScreenReaderInstructions = {
 };
 
 export const dndAccessibility = { announcements, screenReaderInstructions };
+
+/**
+ * The same words where a drop means more than a position in one list (我的收藏: onto a group of the
+ * tree, as its subgroup, before or after it). `describe` says where the dragged thing would go now
+ * (`over`) or went (`end`); null falls back to the plain position words above.
+ */
+export function dndAccessibilityWith(describe: (phase: 'over' | 'end', activeId: string, overId: string | null) => string | null) {
+  const own: Announcements = {
+    onDragStart: announcements.onDragStart,
+    onDragOver: (e) => {
+      const d = describe('over', String(e.active.id), e.over ? String(e.over.id) : null);
+      return d ? `${nameOf(e.active.id)}：${d}。` : announcements.onDragOver(e);
+    },
+    onDragEnd: (e) => {
+      const d = describe('end', String(e.active.id), e.over ? String(e.over.id) : null);
+      return d ? `已放下 ${nameOf(e.active.id)}：${d}。` : announcements.onDragEnd(e);
+    },
+    onDragCancel: announcements.onDragCancel,
+  };
+  return { announcements: own, screenReaderInstructions };
+}

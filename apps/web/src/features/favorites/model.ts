@@ -1,4 +1,4 @@
-import { descendantIds, groupPath, hostOf, LOCKED_CATEGORY, matchApp, UNFILED, type AppEntry, type Category, type Item, type PinyinFn } from '@nexus/shared';
+import { descendantIds, groupPath, heightOf, hostOf, LOCKED_CATEGORY, matchApp, parentProblem, siblingNameTaken, UNFILED, type AppEntry, type Category, type Item, type PinyinFn } from '@nexus/shared';
 
 /**
  * 我的收藏的视图 (UI v2 · spec 02 N2, 03 §4–§5): which favorites a view shows, how many, in which
@@ -118,3 +118,55 @@ export function sortItems(list: Item[], mode: SortMode, ctx: { pins: readonly st
 
 /** Manual ordering is possible where the order belongs to one group (spec 03 §5). */
 export const canReorder = (v: View, mode: SortMode, query: string, withSub: boolean) => mode === 'manual' && !query.trim() && (v.kind === 'unfiled' || (v.kind === 'group' && !withSub));
+
+/**
+ * The favorite a dragged block lands right after (null: first) — the `afterId` of moveItems, the
+ * same anchor 上移 / 下移 use. `ids` is the order on screen, `moving` what is dragged (the row, or
+ * every selected row when the row is one of them), `from` / `to` the dragged row's index and the
+ * index of the row it was dropped on. Downwards it goes after that row, upwards before it; rows
+ * that move along are never their own anchor.
+ */
+export function dropAnchor(ids: readonly string[], moving: ReadonlySet<string>, from: number, to: number): string | null {
+  for (let k = from < to ? to : to - 1; k >= 0; k--) if (!moving.has(ids[k]!)) return ids[k]!;
+  return null;
+}
+
+/**
+ * 分组树拖动 (spec 02 N4): where on a row the pointer is. The top and bottom quarters place the
+ * dragged group before / after that row (same level); the middle makes it a subgroup of the row.
+ */
+export type TreeZone = 'before' | 'inside' | 'after';
+export function treeZone(y: number, top: number, height: number, canHoldChildren = true): TreeZone {
+  const r = (y - top) / Math.max(1, height);
+  if (!canHoldChildren) return r < 0.5 ? 'before' : 'after';
+  return r < 0.28 ? 'before' : r > 0.72 ? 'after' : 'inside';
+}
+
+/**
+ * The `group.move` a drop on the tree asks for (null: dropped on itself). Inside a row: its last
+ * subgroup. Below an open row that has subgroups: its first subgroup (that is where the line is
+ * drawn). Before / after a row: that position among the row's siblings.
+ */
+export function treeDropMove(categories: readonly Category[], groupId: string, targetId: string, zone: TreeZone, targetOpen: boolean): { parentId: string | null; index?: number } | null {
+  if (groupId === targetId) return null;
+  const target = categories.find((c) => c.id === targetId);
+  if (!target) return null;
+  const hasKids = categories.some((c) => c.id !== UNFILED && (c.parentId ?? null) === targetId);
+  if (zone === 'inside') return { parentId: targetId };
+  if (zone === 'after' && hasKids && targetOpen) return { parentId: targetId, index: 0 };
+  const parentId = target.parentId ?? null;
+  const siblings = categories.filter((c) => c.id !== UNFILED && (c.parentId ?? null) === parentId && c.id !== groupId);
+  const at = siblings.findIndex((c) => c.id === targetId);
+  return { parentId, index: zone === 'before' ? at : at + 1 };
+}
+
+/**
+ * Why that move is refused — the same rules, in the same words, as the shared group.move (which
+ * still decides: the drop is sent and its refusal is what the person reads). Shown while hovering.
+ */
+export function treeDropProblem(categories: readonly Category[], groupId: string, parentId: string | null): string | null {
+  const g = categories.find((c) => c.id === groupId);
+  if (!g) return '分组不存在';
+  if (g.locked) return `「${g.label}」不能移动`;
+  return parentProblem(categories, g.id, parentId, heightOf(categories, g.id)) ?? (siblingNameTaken(categories, parentId, g.label, g.id) ? `目标位置已经有「${g.label}」了` : null);
+}

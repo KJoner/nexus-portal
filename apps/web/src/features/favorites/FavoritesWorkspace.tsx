@@ -1,5 +1,24 @@
-import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
-import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import {
+  closestCenter,
+  DndContext,
+  DragOverlay,
+  getClientRect,
+  KeyboardSensor,
+  MeasuringStrategy,
+  PointerSensor,
+  pointerWithin,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type CollisionDetection,
+  type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
+  type KeyboardCoordinateGetter,
+  type Modifier,
+} from '@dnd-kit/core';
+import { rectSortingStrategy, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { groupTree, hostOf, itemUrlKey, MAX_PINS, UNFILED, type Category, type GroupNode, type Item } from '@nexus/shared';
 import {
@@ -32,7 +51,8 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router';
 import { ActionSheet, type SheetState } from '../../components/ActionSheet';
 import { ContextMenu, type MenuItem, type MenuState } from '../../components/ContextMenu';
@@ -41,7 +61,7 @@ import { currentTransport, useConfig, useConfigStore, useSaveState } from '../..
 import { libraryApi, loadLibrary, loadTrash, pinNotice, useLibrary, type WriteOutcome } from '../../data/library';
 import { AppTile } from '../../icons/AppTile';
 import { cn } from '../../lib/cn';
-import { dndAccessibility } from '../../lib/dnd';
+import { dndAccessibilityWith } from '../../lib/dnd';
 import { host } from '../../lib/host';
 import { openApp } from '../../lib/open';
 import { usePinyin } from '../../lib/pinyin';
@@ -52,7 +72,7 @@ import { openAddFavorite, openEditFavorite } from './dialog-store';
 import FavoriteDialogs from './FavoriteDialogs';
 import { GroupDialog, type GroupTask } from './GroupDialogs';
 import { ConflictLine, ImportDialog } from './ImportDialog';
-import { asApp, byPosition, canReorder, groupCounts, inView, isService, matches, parseView, pathLabel, SORT_LABEL, sortItems, viewKey, type SortMode, type View } from './model';
+import { asApp, byPosition, canReorder, dropAnchor, groupCounts, inView, isService, matches, parseView, pathLabel, SORT_LABEL, sortItems, treeDropMove, treeDropProblem, treeZone, viewKey, type SortMode, type TreeZone, type View } from './model';
 import { GroupSelect } from './parts';
 
 /**
@@ -60,9 +80,11 @@ import { GroupSelect } from './parts';
  * page and from 设置, the same page either way (/settings/favorites). A group tree with the system
  * views, a toolbar (search the whole collection with full group paths, view order, list / grid,
  * 添加收藏, 更多), rows that show name, group and pin, and one editor for every property. Three
- * orders stay apart: groups among siblings (tree menu), favorites inside a group (drag or
- * 上移 / 下移 / 移动到 — no long press needed), and the home page's pins (首页快捷方式 view, or
- * 首页与外观 › 快捷方式). Sorting by name or date only changes the view.
+ * orders stay apart: groups among siblings (drag in the tree, or its menu), favorites inside a
+ * group (drag in the list or the grid, or 上移 / 下移 / 移动到 — no long press needed), and the
+ * home page's pins (首页快捷方式 view, or 首页与外观 › 快捷方式). Sorting by name or date only
+ * changes the view. On a desktop favorites can also be dragged onto a group of the tree (the
+ * selected ones with them); every drag has a menu path, and a phone uses only those.
  */
 const MODE_KEY = 'nexus.favorites.mode.v1';
 const VIEW_LABEL: Record<Exclude<View['kind'], 'group'>, string> = { all: '全部收藏', pinned: '首页快捷方式', services: '服务', unfiled: '未分组', trash: '回收站' };
@@ -251,17 +273,31 @@ export function FavoritesWorkspace() {
     setSelected(new Set());
     toast(refused ? { msg: `${done} 个已${on ? '固定' : '取消固定'}；${refused} 个没有固定（首页最多 ${MAX_PINS} 个，或是隐藏的收藏）`, tone: 'warn' } : { msg: on ? `已固定 ${done} 个到首页` : `已取消固定 ${done} 个`, tone: 'ok' });
   };
-  const onDragEnd = (e: DragEndEvent) => {
-    const { active, over } = e;
-    if (!over || active.id === over.id || !groupIdOfView) return;
-    const list = shown;
-    const from = list.findIndex((x) => x.id === active.id);
-    const to = list.findIndex((x) => x.id === over.id);
+  /** What a drag of this favorite carries: every selected one when it is one of them, else itself. */
+  const carried = (id: string): Item[] => {
+    const one = byId[id];
+    if (!one) return [];
+    return selected.has(id) && chosen.length > 1 && chosen.some((x) => x.id === id) ? chosen : [one];
+  };
+  /** Dropped on a row of the list or the grid: the same anchor as 上移 / 下移 (moveItems afterId). */
+  const dropOnRow = (activeId: string, overId: string) => {
+    if (activeId === overId || !groupIdOfView || !reorder) return;
+    const ids = shown.map((x) => x.id);
+    const from = ids.indexOf(activeId);
+    const to = ids.indexOf(overId);
     if (from < 0 || to < 0) return;
-    const others = list.filter((x) => x.id !== active.id);
-    const afterId = to === 0 ? null : from < to ? list[to]!.id : others[to - 1]!.id;
+    const moving = carried(activeId);
+    const set = new Set(moving.map((x) => x.id));
+    const afterId = dropAnchor(ids, set, from, to);
+    const block = shown.filter((x) => set.has(x.id));
     // Said out loud as well (a status toast), like the moves from the ⋯ menu.
-    void libraryApi.moveItems([list[from]!], groupIdOfView, afterId).then((r) => report(r, `已移动「${list[from]!.title}」`));
+    void libraryApi.moveItems(block, groupIdOfView, afterId).then((r) => report(r, block.length === 1 ? `已移动「${block[0]!.title}」` : `已移动 ${block.length} 个收藏`));
+  };
+  /** Dropped on a group of the tree (or 未分组): what 移动到分组… does, with the same words. */
+  const dropOnGroup = (activeId: string, folderId: string) => {
+    const moving = carried(activeId).filter((x) => (x.folderId || UNFILED) !== folderId);
+    if (!moving.length) return toast({ msg: `已经在「${pathLabel(categories, folderId)}」里`, tone: 'info' });
+    void moveInto(moving, folderId);
   };
 
   const actions = (i: Item): { label: string; icon: LucideIcon; onSelect(): void; disabled?: boolean; danger?: boolean }[] => {
@@ -329,9 +365,123 @@ export function FavoritesWorkspace() {
   /** Sibling order of groups (its own order: favorites and pins are untouched); with 撤销. */
   const dispatchMove = (g: GroupNode, index: number) => apply({ type: 'group.move', groupId: g.id, parentId: g.parentId, index }, `已调整「${g.label}」的位置`);
 
+  // ── drag (desktop): groups in the tree, favorites in the list / grid and onto the tree ────────
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const [drag, setDrag] = useState<DragData | null>(null);
+  const [hint, setHint] = useState<DropHint | null>(null);
+  const hintRef = useRef<DropHint | null>(null);
+  const lastHint = useRef<DropHint | null>(null);
+  const pointer = useRef<{ x: number; y: number } | null>(null);
+  const treeBox = useRef<HTMLElement | null>(null);
+  const expand = useRef<{ id: string; timer: ReturnType<typeof setTimeout> } | null>(null);
+  const dnd = !compact && !readOnly;
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: rowsOnlyKeyboard }));
+  const collide = useMemo(() => treeAwareCollisions(treeBox), []);
+
+  const showHint = (h: DropHint | null) => {
+    hintRef.current = h;
+    setHint((was) => (was?.key === h?.key ? was : h));
+  };
+  /** Where the drag would land now, said in words (the tree draws it; screen readers hear it). */
+  const hintFor = (active: DragData, over: DragOverEvent['over']): DropHint | null => {
+    const data = over?.data.current as DropData | undefined;
+    if (!over || data?.kind !== 'tree') return null;
+    if (active.kind === 'item') {
+      const moving = carried(active.id).filter((x) => (x.folderId || UNFILED) !== data.groupId);
+      const where = pathLabel(categories, data.groupId);
+      if (!moving.length) return { key: `i:${data.groupId}:same`, target: data.groupId, zone: null, ok: false, neutral: true, text: `已经在「${where}」里` };
+      return { key: `i:${data.groupId}:${moving.length}`, target: data.groupId, zone: null, ok: true, text: moving.length === 1 ? `把「${moving[0]!.title}」移到「${where}」` : `把 ${moving.length} 个收藏移到「${where}」` };
+    }
+    const g = categories.find((c) => c.id === active.id);
+    const target = categories.find((c) => c.id === data.groupId);
+    if (!g || !target) return null;
+    if (g.id === target.id) return { key: `g:${g.id}:self`, target: g.id, zone: null, ok: false, neutral: true, text: '放回原处' };
+    const y = pointer.current?.y ?? over.rect.top + over.rect.height / 2;
+    const zone = treeZone(y, over.rect.top, over.rect.height, !target.locked);
+    const open = !collapsed.has(target.id);
+    const move = treeDropMove(categories, g.id, target.id, zone, open);
+    if (!move) return null;
+    const firstChild = zone === 'after' && move.parentId === target.id;
+    const key = `g:${target.id}:${zone}:${firstChild}`;
+    // Where it already is (group.move would change nothing): said so, and nothing is sent.
+    const now = categories.filter((c) => c.id !== UNFILED && (c.parentId ?? null) === (g.parentId ?? null));
+    const at = move.index ?? categories.filter((c) => c.id !== UNFILED && c.id !== g.id && (c.parentId ?? null) === move.parentId).length;
+    if ((g.parentId ?? null) === move.parentId && now.indexOf(g) === at) return { key: `${key}:same`, target: target.id, zone, firstChild, ok: false, neutral: true, text: '位置不变' };
+    const problem = treeDropProblem(categories, g.id, move.parentId);
+    if (problem) return { key, target: target.id, zone, firstChild, ok: false, text: `不能放在这里：${problem}`, move };
+    const level = move.parentId ? `「${pathLabel(categories, move.parentId)}」里` : '顶层';
+    const text = zone === 'inside' ? `把「${g.label}」放进「${target.label}」，作为子分组` : firstChild ? `把「${g.label}」放进「${target.label}」，作为第一个子分组` : `把「${g.label}」放到「${target.label}」${zone === 'before' ? '前面' : '后面'}（${level}）`;
+    return { key, target: target.id, zone, firstChild, ok: true, text, move };
+  };
+  /** A collapsed group under the pointer opens after a moment, so its subgroups can be reached. */
+  const expandLater = (id: string | null) => {
+    if (expand.current?.id === id) return;
+    if (expand.current) clearTimeout(expand.current.timer);
+    expand.current = id && collapsed.has(id) && categories.some((c) => (c.parentId ?? null) === id) ? { id, timer: setTimeout(() => setCollapsed((s) => toggleSet(s, id, false)), 700) } : null;
+  };
+  // One function for the whole page life: the listener added when a drag starts is the one removed.
+  const trackPointer = useMemo(
+    () => (e: PointerEvent) => {
+      pointer.current = { x: e.clientX, y: e.clientY };
+    },
+    [],
+  );
+  const endDrag = () => {
+    window.removeEventListener('pointermove', trackPointer, true);
+    expandLater(null);
+    pointer.current = null;
+    setDrag(null);
+    showHint(null);
+  };
+  const onDragStart = (e: DragStartEvent) => {
+    const data = e.active.data.current as DragData | undefined;
+    if (!data) return;
+    const start = e.activatorEvent as PointerEvent | KeyboardEvent;
+    if ('clientY' in start) pointer.current = { x: start.clientX, y: start.clientY };
+    window.addEventListener('pointermove', trackPointer, true);
+    setDrag(data.kind === 'item' ? { ...data, count: carried(data.id).length } : data);
+    lastHint.current = null;
+  };
+  const onDragOver = (e: DragOverEvent) => {
+    const data = e.active.data.current as DragData | undefined;
+    if (!data) return;
+    const h = hintFor(data, e.over);
+    showHint(h);
+    expandLater(h ? h.target : null);
+  };
+  const onDragEnd = (e: DragEndEvent) => {
+    const data = e.active.data.current as DragData | undefined;
+    const h = data ? hintFor(data, e.over) : null;
+    lastHint.current = h;
+    endDrag();
+    if (!data || !e.over) return;
+    const over = e.over.data.current as DropData | undefined;
+    if (data.kind === 'item') {
+      if (over?.kind === 'tree') dropOnGroup(data.id, over.groupId);
+      else if (over?.kind === 'item') dropOnRow(data.id, over.id);
+      return;
+    }
+    // A group: always through group.move — its rules decide, and its refusal is what is said.
+    if (over?.kind !== 'tree' || !h?.move) return;
+    const g = categories.find((c) => c.id === data.id)!;
+    const moved = (g.parentId ?? null) !== h.move.parentId;
+    const newPath = [...(h.move.parentId ? [pathLabel(categories, h.move.parentId)] : []), g.label].join(' / ');
+    apply({ type: 'group.move', groupId: g.id, parentId: h.move.parentId, ...(h.move.index !== undefined ? { index: h.move.index } : {}) }, moved ? `已把「${g.label}」移到「${newPath}」` : `已调整「${g.label}」的位置`);
+  };
+  const accessibility = dndAccessibilityWith((phase) => (phase === 'over' ? hintRef.current : lastHint.current)?.text ?? null);
+  useEffect(() => () => window.removeEventListener('pointermove', trackPointer, true), [trackPointer]);
+
   const treeView = (
     <GroupTreePanel
       tree={tree}
+      collapsed={collapsed}
+      onCollapse={setCollapsed}
+      dnd={dnd}
+      drag={drag}
+      hint={hint}
+      boxRef={(el) => {
+        treeBox.current = el;
+      }}
       view={effective}
       counts={counts}
       total={live.length}
@@ -357,7 +507,12 @@ export function FavoritesWorkspace() {
   const trashUnknown = effective.kind === 'trash' && !searching && trashState !== 'ready';
   const empty = status === 'ready' && shown.length === 0 && !trashUnknown;
 
+  const dragItem = drag?.kind === 'item' ? byId[drag.id] : undefined;
+  const dragGroup = drag?.kind === 'group' ? categories.find((c) => c.id === drag.id) : undefined;
+  const canDrag = dnd && effective.kind !== 'trash';
+
   return (
+    <DndContext accessibility={accessibility} sensors={sensors} collisionDetection={collide} measuring={MEASURING} onDragStart={onDragStart} onDragMove={onDragOver} onDragOver={onDragOver} onDragEnd={onDragEnd} onDragCancel={endDrag}>
     <div className={cn('flex min-h-0 flex-col', compact ? 'gap-4' : 'gap-6')}>
       {!compact && (
         <div className="flex items-end gap-4">
@@ -486,7 +641,7 @@ export function FavoritesWorkspace() {
             )}
             {!compact && <span className="flex-1" />}
             {!compact && effective.kind !== 'trash' && !searching && (
-              <span className="text-[12px] text-ink/46">{reorder ? '拖动左侧把手，或用「…」里的上移 / 下移排序' : sort === 'manual' ? '进入具体分组可手动排序' : '按名称或时间排序只改变显示'}</span>
+              <span className="text-[12px] text-ink/46">{reorder ? (canDrag ? '拖动把手排序，或拖到左侧分组；也可用「…」里的上移 / 下移' : '用「…」里的上移 / 下移排序') : sort === 'manual' ? (canDrag ? '进入具体分组可手动排序；拖动名称到左侧分组可移动' : '进入具体分组可手动排序') : '按名称或时间排序只改变显示'}</span>
             )}
           </div>
 
@@ -556,9 +711,11 @@ export function FavoritesWorkspace() {
             )}
             {status === 'ready' && shown.length > 0 && (mode === 'grid' && !compact ? (
               <ul aria-label={`${title}，${shown.length} 项`} className="m-0 grid grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-3 p-5">
-                {shown.slice(0, GRID_MAX).map((i) => (
-                  <Card key={i.id} item={i} pinned={pinSet.has(i.id)} path={pathLabel(categories, i.folderId)} selected={selected.has(i.id)} onSelect={(v) => setSelected((s) => toggleSet(s, i.id, v))} onPin={() => void pinToggle(i)} onMore={(el) => openActions(i, el)} readOnly={readOnly} />
-                ))}
+                <SortableContext items={canDrag ? shown.slice(0, GRID_MAX).map((i) => i.id) : []} strategy={rectSortingStrategy}>
+                  {shown.slice(0, GRID_MAX).map((i) => (
+                    <Card key={i.id} item={i} pinned={pinSet.has(i.id)} path={pathLabel(categories, i.folderId)} selected={selected.has(i.id)} reorder={reorder && canDrag} draggable={canDrag} onSelect={(v) => setSelected((s) => toggleSet(s, i.id, v))} onPin={() => void pinToggle(i)} onMore={(el) => openActions(i, el)} readOnly={readOnly} />
+                  ))}
+                </SortableContext>
                 {/* Never a silent cut: the rest is one click away. */}
                 {shown.length > GRID_MAX && (
                   <li className="col-span-full flex list-none flex-wrap items-center gap-3 rounded-xl px-4 py-3 text-[13px] text-ink/66" style={{ background: 'rgb(var(--nx-ink-rgb)/0.04)' }}>
@@ -577,6 +734,7 @@ export function FavoritesWorkspace() {
                 categories={categories}
                 selected={selected}
                 reorder={reorder && !readOnly}
+                draggable={canDrag}
                 readOnly={readOnly}
                 showPath={effective.kind !== 'group' || withSub || searching}
                 label={title}
@@ -597,7 +755,6 @@ export function FavoritesWorkspace() {
                 onPin={(i) => void pinToggle(i)}
                 onMore={openActions}
                 onRestore={(i) => void restore(i)}
-                onDragEnd={onDragEnd}
               />
             ))}
           </div>
@@ -647,6 +804,14 @@ export function FavoritesWorkspace() {
       <ActionSheet sheet={sheet} onClose={() => setSheet(null)} />
       <FavoriteDialogs />
     </div>
+    {typeof document !== 'undefined' &&
+      createPortal(
+        <DragOverlay dropAnimation={null} modifiers={[besidePointer]}>
+          {drag ? <DragChip drag={drag} item={dragItem} group={dragGroup} hint={hint} /> : null}
+        </DragOverlay>,
+        document.body,
+      )}
+    </DndContext>
   );
 }
 
@@ -702,7 +867,62 @@ function MoreMenu({ items, onClose }: { items: { label: string; icon: LucideIcon
   );
 }
 
-function GroupTreePanel(props: {
+type DragData = { kind: 'group'; id: string } | { kind: 'item'; id: string; count?: number };
+/** Droppables: a row of the tree (a group, or 未分组 for favorites), or a row / card of the list. */
+type DropData = { kind: 'tree'; groupId: string } | { kind: 'item'; id: string };
+interface DropHint {
+  /** Changes only when what is said changes (the tree re-renders on it, not on every pointer move). */
+  key: string;
+  target: string;
+  zone: TreeZone | null;
+  /** Dropped below an open group that has subgroups: its first subgroup. */
+  firstChild?: boolean;
+  ok: boolean;
+  /** Nothing would change (its own place, already in that group): said plainly, not as a refusal. */
+  neutral?: boolean;
+  text: string;
+  move?: { parentId: string | null; index?: number };
+}
+
+/**
+ * Over the tree: the row under the pointer (pointerWithin — the gaps between rows are no target);
+ * a group never drops on 未分组 or on a favorite. Elsewhere: the nearest row of the list or the grid
+ * (closestCenter), as the list sorted before. A keyboard drag only ever sorts the list.
+ */
+function treeAwareCollisions(treeBox: { current: HTMLElement | null }): CollisionDetection {
+  return (args) => {
+    const kind = (args.active.data.current as DragData | undefined)?.kind;
+    const of = (k: DropData['kind']) => args.droppableContainers.filter((c) => (c.data.current as DropData | undefined)?.kind === k);
+    const tree = of('tree').filter((c) => kind === 'item' || (c.data.current as { groupId: string }).groupId !== UNFILED);
+    const rows = kind === 'item' ? of('item') : [];
+    const p = args.pointerCoordinates;
+    const box = treeBox.current?.getBoundingClientRect();
+    if (p && box && p.x >= box.left && p.x <= box.right && p.y >= box.top && p.y <= box.bottom) return pointerWithin({ ...args, droppableContainers: tree });
+    return rows.length ? closestCenter({ ...args, droppableContainers: rows }) : [];
+  };
+}
+
+/**
+ * Droppables are measured all along (the tree and the list scroll while dragging). The overlay is
+ * measured where the dragged row is, not where it is drawn: it is drawn beside the pointer (so the
+ * row it is over stays visible), while sorting the list still compares the row's own position.
+ */
+const MEASURING = { droppable: { strategy: MeasuringStrategy.Always }, dragOverlay: { measure: (el: HTMLElement) => getClientRect(el, { ignoreTransform: true }) } };
+/** The overlay's corner just below-right of the pointer (a keyboard drag keeps it on the row). */
+const besidePointer: Modifier = ({ transform, activatorEvent, activeNodeRect }) => {
+  if (!activeNodeRect || !activatorEvent || !('clientX' in activatorEvent)) return transform;
+  const e = activatorEvent as PointerEvent;
+  return { ...transform, x: transform.x + e.clientX - activeNodeRect.left + 14, y: transform.y + e.clientY - activeNodeRect.top + 12 };
+};
+
+/** Arrow keys move a picked-up favorite among the rows / cards only (never onto the tree beside them). */
+const rowsOnlyKeyboard: KeyboardCoordinateGetter = (event, args) => {
+  const all = args.context.droppableContainers;
+  const rows = { getEnabled: () => all.getEnabled().filter((c) => (c.data.current as DropData | undefined)?.kind === 'item'), get: (id: string | number) => all.get(id) } as unknown as typeof all;
+  return sortableKeyboardCoordinates(event, { ...args, context: { ...args.context, droppableContainers: rows } });
+};
+
+type TreeProps = {
   tree: GroupNode[];
   view: View;
   counts: { direct: Map<string, number>; total: Map<string, number> };
@@ -713,12 +933,20 @@ function GroupTreePanel(props: {
   trash: number;
   compact: boolean;
   readOnly: boolean;
+  collapsed: ReadonlySet<string>;
+  onCollapse(s: ReadonlySet<string>): void;
+  /** Dragging is on (a desktop that may change things). */
+  dnd: boolean;
+  drag: DragData | null;
+  hint: DropHint | null;
+  boxRef(el: HTMLElement | null): void;
   onView(v: View): void;
   onNewGroup(): void;
   onGroupMenu(g: GroupNode, el: HTMLElement): void;
-}) {
-  const { tree, view, counts, compact } = props;
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+};
+
+function GroupTreePanel(props: TreeProps) {
+  const { tree, view, compact, drag, hint } = props;
   const rowH = compact ? 'min-h-12' : 'min-h-[38px]';
   const sys = (v: View, label: string, Icon: LucideIcon, count: number) => {
     const on = viewKey(view) === viewKey(v);
@@ -730,47 +958,10 @@ function GroupTreePanel(props: {
       </button>
     );
   };
-  const node = (g: GroupNode): ReactNode => {
-    const on = view.kind === 'group' && view.id === g.id;
-    const kids = g.children.length > 0;
-    const open = !collapsed.has(g.id);
-    const direct = counts.direct.get(g.id) ?? 0;
-    const total = counts.total.get(g.id) ?? 0;
-    return (
-      <li key={g.id} className="list-none">
-        <div className={cn('group/row flex items-center rounded-lg', on ? 'bg-amber/14' : 'hover:bg-ink/6')} style={{ paddingLeft: (g.depth - 1) * 14 }}>
-          {kids ? (
-            <button type="button" aria-label={`${open ? '收起' : '展开'}「${g.label}」`} aria-expanded={open} onClick={() => setCollapsed((s) => toggleSet(s, g.id, open))} className={cn('grid flex-none place-items-center rounded border-0 bg-transparent text-ink/50 hover:text-ink', compact ? 'size-11' : 'size-6')}>
-              <ChevronRight className={cn('size-3.5 transition-transform duration-120', open && 'rotate-90')} />
-            </button>
-          ) : (
-            <span className={cn('flex-none', compact ? 'w-11' : 'w-6')} />
-          )}
-          <button
-            type="button"
-            aria-current={on ? 'page' : undefined}
-            aria-label={`${g.path.join(' / ')}，直属 ${direct} 个${kids ? `，含子分组共 ${total} 个` : ''}`}
-            onClick={() => props.onView({ kind: 'group', id: g.id })}
-            className={cn('flex min-w-0 flex-1 items-center gap-2 border-0 bg-transparent pr-1 text-left', rowH, compact ? 'text-[15px]' : 'text-[13px]', on ? 'text-ink' : 'text-ink/76')}
-          >
-            <Folder className={cn('size-4 flex-none', on ? 'text-amber' : 'text-ink/48')} />
-            <span className="min-w-0 flex-1 truncate">{g.label}</span>
-            <span className="text-[11.5px] text-ink/46 tabular-nums" title={kids ? `直属 ${direct} · 含子分组 ${total}` : `直属 ${direct}`}>
-              {direct}
-            </span>
-          </button>
-          {!props.readOnly && (
-            <button type="button" aria-label={`「${g.label}」的操作`} onClick={(e) => props.onGroupMenu(g, e.currentTarget)} className={cn('grid flex-none place-items-center rounded-md border-0 bg-transparent text-ink/50 hover:bg-ink/10 hover:text-ink', compact ? 'size-11' : 'size-7 opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100', on && !compact && 'opacity-100')}>
-              <MoreHorizontal className="size-4" />
-            </button>
-          )}
-        </div>
-        {kids && open && <ul className="m-0 p-0">{g.children.map(node)}</ul>}
-      </li>
-    );
-  };
+  const node = (g: GroupNode) => <TreeRow key={g.id} {...props} g={g} rowH={rowH} renderChild={node} />;
+  const idle = drag ? (drag.kind === 'group' ? '拖到分组的上部或下部：排在它前面或后面；拖到中间：成为它的子分组' : '拖到左侧的分组或「未分组」上，移到那里') : null;
   return (
-    <nav aria-label="收藏分组" className={cn('flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto', compact ? '' : 'p-2.5')}>
+    <nav ref={props.boxRef} aria-label="收藏分组" className={cn('flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto', compact ? '' : 'p-2.5')}>
       {sys({ kind: 'all' }, VIEW_LABEL.all, Bookmark, props.total)}
       {sys({ kind: 'pinned' }, VIEW_LABEL.pinned, Pin, props.pinned)}
       {props.services > 0 && sys({ kind: 'services' }, VIEW_LABEL.services, Server, props.services)}
@@ -783,11 +974,106 @@ function GroupTreePanel(props: {
         )}
       </div>
       <ul className="m-0 p-0">{tree.map(node)}</ul>
-      {sys({ kind: 'unfiled' }, VIEW_LABEL.unfiled, Folder, props.unfiled)}
+      <UnfiledRow {...props} rowH={rowH} />
       <div className="mx-2.5 my-2 h-px bg-ink/8" />
       {sys({ kind: 'trash' }, VIEW_LABEL.trash, Trash2, props.trash)}
-      <span className="mt-auto px-2.5 pt-3 text-[11.5px] leading-[1.6] text-ink/42">分组旁的数字是直属收藏数；分组可以有子分组。</span>
+      {drag ? (
+        // Where it lands, in words (dnd-kit says the same to a screen reader).
+        <p data-testid="drop-hint" className={cn('sticky bottom-0 mt-auto mb-0 rounded-lg px-2.5 py-2 text-[12px] leading-[1.55]', hint && !hint.ok && !hint.neutral ? 'text-danger-ink' : 'text-ink/80')} style={{ background: hint?.ok ? 'rgb(var(--nx-amber-rgb)/0.16)' : hint && !hint.neutral ? 'rgb(var(--nx-error-rgb)/0.14)' : 'rgb(var(--nx-s3-rgb)/0.98)' }}>
+          {hint ? (hint.ok ? `松开后：${hint.text}` : hint.text) : idle}
+        </p>
+      ) : (
+        <span className="mt-auto px-2.5 pt-3 text-[11.5px] leading-[1.6] text-ink/42">
+          分组旁的数字是直属收藏数；分组可以有子分组。{props.dnd ? '分组和收藏都可以拖动。' : ''}
+        </span>
+      )}
     </nav>
+  );
+}
+
+/** 未分组 in the tree: a view, never a parent — but a favorite dropped on it goes to 未分组. */
+function UnfiledRow(props: TreeProps & { rowH: string }) {
+  const { view, compact, drag, hint, rowH } = props;
+  const d = useDroppable({ id: 'tree:unfiled', data: { kind: 'tree', groupId: UNFILED } satisfies DropData, disabled: !props.dnd || drag?.kind !== 'item' });
+  const on = view.kind === 'unfiled';
+  const target = hint?.target === UNFILED && drag?.kind === 'item';
+  return (
+    <div ref={d.setNodeRef} data-dnd-id="tree:unfiled" data-dnd-name="未分组" className="rounded-lg" style={target ? { boxShadow: `inset 0 0 0 2px ${hint!.ok ? 'var(--color-amber)' : 'rgb(var(--nx-ink-rgb)/0.3)'}` } : undefined}>
+      <button type="button" aria-current={on ? 'page' : undefined} onClick={() => props.onView({ kind: 'unfiled' })} className={cn('flex w-full items-center gap-2.5 rounded-lg border-0 px-2.5 text-left', rowH, compact ? 'text-[15px]' : 'text-[13px]', on ? 'bg-amber/14 text-ink' : 'bg-transparent text-ink/72 hover:bg-ink/6')}>
+        <Folder className={cn('size-4 flex-none', on ? 'text-amber' : 'text-ink/50')} />
+        <span className="min-w-0 flex-1 truncate">{VIEW_LABEL.unfiled}</span>
+        <span className="text-[11.5px] text-ink/46 tabular-nums">{props.unfiled}</span>
+      </button>
+    </div>
+  );
+}
+
+/**
+ * One group of the tree. On a desktop the row itself is dragged (a click still opens it: the drag
+ * starts after 6 px); only the pointer drags here — the keyboard uses the row's ⋯ menu (上移 / 下移
+ * / 移到最前 / 移到最后 / 移动到…), which stays. A locked group is neither dragged nor a parent.
+ */
+function TreeRow(props: TreeProps & { g: GroupNode; rowH: string; renderChild(g: GroupNode): React.ReactNode }) {
+  const { g, view, counts, compact, collapsed, drag, hint, rowH } = props;
+  const on = view.kind === 'group' && view.id === g.id;
+  const kids = g.children.length > 0;
+  const open = !collapsed.has(g.id);
+  const direct = counts.direct.get(g.id) ?? 0;
+  const total = counts.total.get(g.id) ?? 0;
+  const drop = useDroppable({ id: `tree:${g.id}`, data: { kind: 'tree', groupId: g.id } satisfies DropData, disabled: !props.dnd });
+  const dragger = useDraggable({ id: `group:${g.id}`, data: { kind: 'group', id: g.id } satisfies DragData, disabled: !props.dnd || g.locked });
+  const mine = hint && hint.target === g.id && drag && !(drag.kind === 'group' && drag.id === g.id) ? hint : null;
+  const tone = mine ? (mine.ok ? 'var(--color-amber)' : mine.neutral ? 'rgb(var(--nx-ink-rgb)/0.3)' : 'rgb(var(--nx-error-rgb)/0.85)') : '';
+  const line = mine && (mine.zone === 'before' || mine.zone === 'after') ? mine.zone : null;
+  const indent = (g.depth - 1) * 14 + (mine?.firstChild ? 14 : 0);
+  const ring = mine && (mine.zone === 'inside' || !mine.zone) ? { boxShadow: `inset 0 0 0 2px ${tone}`, background: mine.ok ? 'rgb(var(--nx-amber-rgb)/0.1)' : mine.neutral ? undefined : 'rgb(var(--nx-error-rgb)/0.08)' } : {};
+  return (
+    <li className="list-none">
+      <div
+        ref={(el) => {
+          drop.setNodeRef(el);
+          dragger.setNodeRef(el);
+        }}
+        data-dnd-id={`tree:${g.id}`}
+        data-dnd-name={`分组「${g.path.join(' / ')}」`}
+        data-drop={mine ? `${mine.zone ?? 'into'}${mine.ok ? '' : mine.neutral ? '-same' : '-refused'}` : undefined}
+        className={cn('group/row relative flex items-center rounded-lg', on ? 'bg-amber/14' : 'hover:bg-ink/6', dragger.isDragging && 'opacity-45')}
+        style={{ paddingLeft: (g.depth - 1) * 14, ...ring }}
+      >
+        {line && <span aria-hidden className="pointer-events-none absolute right-1 h-[3px] rounded-full" style={{ left: indent + 6, background: tone, ...(line === 'before' ? { top: -2 } : { bottom: -2 }) }} />}
+        {kids ? (
+          <button type="button" aria-label={`${open ? '收起' : '展开'}「${g.label}」`} aria-expanded={open} onClick={() => props.onCollapse(toggleSet(collapsed, g.id, open))} className={cn('grid flex-none place-items-center rounded border-0 bg-transparent text-ink/50 hover:text-ink', compact ? 'size-11' : 'size-6')}>
+            <ChevronRight className={cn('size-3.5 transition-transform duration-120', open && 'rotate-90')} />
+          </button>
+        ) : (
+          <span className={cn('flex-none', compact ? 'w-11' : 'w-6')} />
+        )}
+        <button
+          type="button"
+          ref={dragger.setActivatorNodeRef}
+          // Pointer only: Enter / Space keep opening the group (the ⋯ menu has the keyboard moves).
+          onPointerDown={pointerOnly(dragger.listeners)}
+          data-dnd-id={`group:${g.id}`}
+          data-dnd-name={`分组「${g.label}」`}
+          aria-current={on ? 'page' : undefined}
+          aria-label={`${g.path.join(' / ')}，直属 ${direct} 个${kids ? `，含子分组共 ${total} 个` : ''}`}
+          onClick={() => props.onView({ kind: 'group', id: g.id })}
+          className={cn('flex min-w-0 flex-1 items-center gap-2 border-0 bg-transparent pr-1 text-left', rowH, compact ? 'text-[15px]' : 'text-[13px]', on ? 'text-ink' : 'text-ink/76')}
+        >
+          <Folder className={cn('size-4 flex-none', on ? 'text-amber' : 'text-ink/48')} />
+          <span className="min-w-0 flex-1 truncate">{g.label}</span>
+          <span className="text-[11.5px] text-ink/46 tabular-nums" title={kids ? `直属 ${direct} · 含子分组 ${total}` : `直属 ${direct}`}>
+            {direct}
+          </span>
+        </button>
+        {!props.readOnly && (
+          <button type="button" aria-label={`「${g.label}」的操作`} onClick={(e) => props.onGroupMenu(g, e.currentTarget)} className={cn('grid flex-none place-items-center rounded-md border-0 bg-transparent text-ink/50 hover:bg-ink/10 hover:text-ink', compact ? 'size-11' : 'size-7 opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100', on && !compact && 'opacity-100')}>
+            <MoreHorizontal className="size-4" />
+          </button>
+        )}
+      </div>
+      {kids && open && <ul className="m-0 p-0">{g.children.map(props.renderChild)}</ul>}
+    </li>
   );
 }
 
@@ -808,7 +1094,7 @@ function PinButton({ pinned, title, onPin, compact, disabled }: { pinned: boolea
 
 /** The grid shows at most this many cards (the list, windowed, shows any number). */
 const GRID_MAX = 300;
-/** Above this many rows the list is windowed (only what is on screen is in the document) and dragging is off. */
+/** Above this many rows the list is windowed (only what is on screen is in the document) and dragging is off (see ItemList). */
 const WINDOW_AT = 120;
 const ROW_H = { desk: 52, phone: 68 } as const;
 
@@ -854,7 +1140,10 @@ type ListProps = {
   pinSet: ReadonlySet<string>;
   categories: readonly Category[];
   selected: ReadonlySet<string>;
+  /** Manual order of one group: rows sort by drag (grip, pointer or keyboard) and by the menu. */
   reorder: boolean;
+  /** Rows can be dragged onto the tree (a desktop that may change things; never in 回收站). */
+  draggable: boolean;
   readOnly: boolean;
   showPath: boolean;
   onSelect(id: string, on: boolean, range: boolean): void;
@@ -862,12 +1151,21 @@ type ListProps = {
   onPin(i: Item): void;
   onMore(i: Item, el: HTMLElement): void;
   onRestore(i: Item): void;
-  onDragEnd(e: DragEndEvent): void;
 };
 
+/** The first column: a checkbox, or (manual order) the grip and the checkbox. */
+const COLS = { plain: 'grid-cols-[36px_minmax(0,1fr)_minmax(0,0.6fr)_56px_40px]', grip: 'grid-cols-[62px_minmax(0,1fr)_minmax(0,0.6fr)_56px_40px]' } as const;
+
+/**
+ * Dragging stays off in a windowed list (more than WINDOW_AT rows), for sorting and for dropping on
+ * the tree alike: dnd-kit only knows the rows that are mounted — the sorting strategy reads the
+ * measured rect at each index, so with most rows unmounted (and rows mounting / unmounting as the
+ * list auto-scrolls under the pointer) the gap it opens and the index the drop resolves to can jump,
+ * and a drop could land somewhere other than where it was shown. Long moves there use 移到分组最前 /
+ * 最后, 移动到分组… and the batch bar, which name their target exactly.
+ */
 function ItemList(props: ListProps) {
   const { items, compact } = props;
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const liveCount = items.filter((i) => i.deletedAt === null).length;
   const allOn = liveCount > 0 && items.every((i) => i.deletedAt !== null || props.selected.has(i.id));
   const windowed = items.length > WINDOW_AT;
@@ -876,6 +1174,8 @@ function ItemList(props: ListProps) {
   const { start, end } = useWindowRange(items.length, rowH, listRef, windowed);
   const [active, setActive] = useState(-1);
   const reorder = props.reorder && !windowed;
+  const draggable = props.draggable && !windowed;
+  const cols = reorder && !compact ? COLS.grip : COLS.plain;
   useEffect(() => setActive((a) => Math.min(a, items.length - 1)), [items.length]);
   /** ↑ / ↓ / Home / End move through the rows (scrolling the window), Space selects, Enter edits. */
   const onKey = (e: React.KeyboardEvent<HTMLUListElement>) => {
@@ -919,7 +1219,7 @@ function ItemList(props: ListProps) {
     >
       {windowed && start > 0 && <li aria-hidden className="list-none" style={{ height: start * rowH }} />}
       {visible.map((i, k) => (
-        <Row key={i.id} item={i} index={start + k} active={start + k === active} rowH={rowH} windowed={windowed} {...props} reorder={reorder} />
+        <Row key={i.id} item={i} index={start + k} active={start + k === active} rowH={rowH} windowed={windowed} cols={cols} {...props} reorder={reorder} draggable={draggable && i.deletedAt === null} />
       ))}
       {windowed && end < items.length && <li aria-hidden className="list-none" style={{ height: (items.length - end) * rowH }} />}
     </ul>
@@ -927,20 +1227,18 @@ function ItemList(props: ListProps) {
   return (
     <div className="flex flex-col">
       {!compact && (
-        <div className="sticky top-0 z-[1] grid grid-cols-[36px_minmax(0,1fr)_minmax(0,0.6fr)_56px_40px] items-center gap-2 border-b border-ink/8 px-6 py-2 text-[12px] text-ink/50" style={{ background: 'rgb(var(--nx-s2-rgb)/0.96)' }}>
-          {!props.readOnly && liveCount > 0 ? <input type="checkbox" aria-label="全选" className="size-4 accent-[var(--color-amber)]" checked={allOn} onChange={(e) => props.onSelectAll(e.target.checked)} /> : <span />}
+        <div className={cn('sticky top-0 z-[1] grid items-center gap-2 border-b border-ink/8 px-6 py-2 text-[12px] text-ink/50', cols)} style={{ background: 'rgb(var(--nx-s2-rgb)/0.96)' }}>
+          {!props.readOnly && liveCount > 0 ? <input type="checkbox" aria-label="全选" className={cn('size-4 accent-[var(--color-amber)]', reorder && 'ml-[38px]')} checked={allOn} onChange={(e) => props.onSelectAll(e.target.checked)} /> : <span />}
           <span>名称</span>
           <span>分组</span>
           <span className="text-center">首页</span>
           <span />
         </div>
       )}
-      {reorder ? (
-        <DndContext accessibility={dndAccessibility} sensors={sensors} collisionDetection={closestCenter} onDragEnd={props.onDragEnd}>
-          <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
-            {rows}
-          </SortableContext>
-        </DndContext>
+      {draggable ? (
+        <SortableContext items={visible.map((i) => i.id)} strategy={verticalListSortingStrategy}>
+          {rows}
+        </SortableContext>
       ) : (
         rows
       )}
@@ -948,8 +1246,16 @@ function ItemList(props: ListProps) {
   );
 }
 
-function Row({ item: i, index, active, rowH, compact, pinSet, categories, selected, reorder, readOnly, showPath, onSelect, onPin, onMore, onRestore }: ListProps & { item: Item; index: number; active: boolean; rowH: number; windowed: boolean }) {
-  const s = useSortable({ id: i.id, disabled: !reorder });
+/** Only the pointer half of a drag source's listeners (its keyboard half would take Enter / Space). */
+const pointerOnly = (l: Record<string, unknown> | undefined) => l?.onPointerDown as React.PointerEventHandler<HTMLElement> | undefined;
+
+/** A row / card as a drag source and (manual order) a place to drop; inert where dragging is off. */
+function useRowDrag(id: string, reorder: boolean, draggable: boolean) {
+  return useSortable({ id, data: { kind: 'item', id } satisfies DropData, disabled: { draggable: !draggable, droppable: !reorder || !draggable } });
+}
+
+function Row({ item: i, index, active, rowH, cols, compact, pinSet, categories, selected, reorder, draggable, readOnly, showPath, onSelect, onPin, onMore, onRestore }: ListProps & { item: Item; index: number; active: boolean; rowH: number; windowed: boolean; cols: string }) {
+  const s = useRowDrag(i.id, reorder, draggable && !compact);
   const trashed = i.deletedAt !== null;
   const app = asApp(i);
   const on = selected.has(i.id);
@@ -974,7 +1280,7 @@ function Row({ item: i, index, active, rowH, compact, pinSet, categories, select
   if (compact)
     return (
       <li ref={s.setNodeRef} id={`fav-row-${i.id}`} role="option" aria-selected={on} aria-posinset={index + 1} style={style} className="list-none pb-1">
-        <div className={cn('flex h-full items-center gap-3 rounded-xl px-2', s.isDragging ? 'bg-ink/12' : on ? 'bg-amber/10' : 'bg-ink/[0.04]')} style={ring}>
+        <div className={cn('flex h-full items-center gap-3 rounded-xl px-2', on ? 'bg-amber/10' : 'bg-ink/[0.04]')} style={ring}>
           {check('size-5 flex-none accent-[var(--color-amber)]')}
           <button type="button" onClick={(e) => (trashed ? onMore(i, e.currentTarget) : openEditFavorite(i.id))} className="flex min-w-0 flex-1 items-center gap-3 border-0 bg-transparent py-1 text-left text-ink" aria-label={`${i.title}，${path}${trashed ? '，在回收站' : '，编辑'}`}>
             <AppTile target={{ kind: 'app', app }} size={36} lazy />
@@ -1003,18 +1309,19 @@ function Row({ item: i, index, active, rowH, compact, pinSet, categories, select
         </div>
       </li>
     );
+  // Outside a manual order the name drags (pointer only: a click still edits, the drag starts after 6 px).
+  const nameDrag = draggable && !reorder && !trashed ? { ref: s.setActivatorNodeRef, onPointerDown: pointerOnly(s.listeners), 'data-dnd-id': i.id, 'data-dnd-name': i.title } : {};
   return (
-    <li ref={s.setNodeRef} id={`fav-row-${i.id}`} role="option" aria-selected={on} aria-posinset={index + 1} style={{ ...style, ...ring }} className={cn('grid list-none grid-cols-[36px_minmax(0,1fr)_minmax(0,0.6fr)_56px_40px] items-center gap-2 rounded-lg px-3', s.isDragging ? 'z-10 bg-ink/12 shadow-lg' : 'hover:bg-ink/[0.045]', on && 'bg-amber/8')}>
-      <span className="flex items-center gap-0.5">
-        {reorder ? (
-          <button type="button" {...s.attributes} {...s.listeners} data-dnd-id={i.id} data-dnd-name={i.title} aria-label={`拖动以排序「${i.title}」（也可用空格键拿起后按方向键）`} className="grid size-7 cursor-grab place-items-center rounded border-0 bg-transparent text-ink/38 hover:text-ink/70 active:cursor-grabbing">
+    <li ref={s.setNodeRef} id={`fav-row-${i.id}`} role="option" aria-selected={on} aria-posinset={index + 1} style={{ ...style, ...ring }} className={cn('grid list-none items-center gap-2 rounded-lg px-3', cols, s.isDragging ? 'bg-amber/8 opacity-50' : 'hover:bg-ink/[0.045]', on && 'bg-amber/8')}>
+      <span className="flex items-center gap-1.5">
+        {reorder && draggable && (
+          <button type="button" {...s.attributes} {...s.listeners} data-dnd-id={i.id} data-dnd-name={i.title} aria-label={`拖动以排序「${i.title}」（也可用空格键拿起后按方向键）`} className="grid size-7 flex-none cursor-grab place-items-center rounded border-0 bg-transparent text-ink/38 hover:text-ink/70 active:cursor-grabbing">
             <GripVertical className="size-4" />
           </button>
-        ) : (
-          check('ml-1 size-4 accent-[var(--color-amber)]')
         )}
+        {check('ml-1 size-4 accent-[var(--color-amber)]')}
       </span>
-      <button type="button" onClick={() => (trashed ? undefined : openEditFavorite(i.id))} disabled={trashed} className="flex min-w-0 items-center gap-3 border-0 bg-transparent p-0 text-left text-ink disabled:cursor-default" title={i.title} aria-label={trashed ? i.title : `编辑「${i.title}」`}>
+      <button type="button" {...nameDrag} onClick={() => (trashed ? undefined : openEditFavorite(i.id))} disabled={trashed} className="flex min-w-0 items-center gap-3 border-0 bg-transparent p-0 text-left text-ink disabled:cursor-default" title={i.title} aria-label={trashed ? i.title : `编辑「${i.title}」`}>
         <AppTile target={{ kind: 'app', app }} size={34} lazy />
         <span className="flex min-w-0 flex-col gap-0.5">
           <span className="flex min-w-0 items-center gap-2">
@@ -1044,16 +1351,32 @@ function Row({ item: i, index, active, rowH, compact, pinSet, categories, select
   );
 }
 
-function Card({ item: i, pinned, path, selected, onSelect, onPin, onMore, readOnly }: { item: Item; pinned: boolean; path: string; selected: boolean; onSelect(v: boolean): void; onPin(): void; onMore(el: HTMLElement): void; readOnly: boolean }) {
+/**
+ * A card of the grid. Manual order: the grip sorts (pointer, or Space then the arrow keys — the
+ * same moveItems anchors as the list); everywhere else the name drags onto the tree (pointer only).
+ */
+function Card({ item: i, pinned, path, selected, reorder, draggable, onSelect, onPin, onMore, readOnly }: { item: Item; pinned: boolean; path: string; selected: boolean; reorder: boolean; draggable: boolean; onSelect(v: boolean): void; onPin(): void; onMore(el: HTMLElement): void; readOnly: boolean }) {
   const trashed = i.deletedAt !== null;
+  const s = useRowDrag(i.id, reorder, draggable && !trashed);
+  const nameDrag = draggable && !reorder && !trashed ? { ref: s.setActivatorNodeRef, onPointerDown: pointerOnly(s.listeners), 'data-dnd-id': i.id, 'data-dnd-name': i.title } : {};
   return (
-    <li className={cn('relative flex list-none flex-col gap-2.5 rounded-xl p-3.5', selected ? 'bg-amber/10' : 'bg-ink/[0.045] hover:bg-ink/[0.07]')} style={{ boxShadow: 'inset 0 0 0 1px rgb(var(--nx-ink-rgb)/0.07)' }}>
+    <li
+      ref={s.setNodeRef}
+      data-card={i.id}
+      className={cn('relative flex list-none flex-col gap-2.5 rounded-xl p-3.5', s.isDragging ? 'opacity-50' : selected ? 'bg-amber/10' : 'bg-ink/[0.045] hover:bg-ink/[0.07]')}
+      style={{ boxShadow: 'inset 0 0 0 1px rgb(var(--nx-ink-rgb)/0.07)', transform: CSS.Translate.toString(s.transform), transition: s.transition }}
+    >
       <div className="flex items-start gap-2">
         <AppTile target={{ kind: 'app', app: asApp(i) }} size={40} lazy />
         <span className="flex-1" />
+        {reorder && draggable && !trashed && (
+          <button type="button" {...s.attributes} {...s.listeners} data-dnd-id={i.id} data-dnd-name={i.title} aria-label={`拖动以排序「${i.title}」（也可用空格键拿起后按方向键）`} className="-mt-1 grid size-7 cursor-grab place-items-center rounded border-0 bg-transparent text-ink/38 hover:text-ink/70 active:cursor-grabbing">
+            <GripVertical className="size-4" />
+          </button>
+        )}
         {!readOnly && !trashed && <input type="checkbox" aria-label={`选择 ${i.title}`} className="size-4 accent-[var(--color-amber)]" checked={selected} onChange={(e) => onSelect(e.target.checked)} />}
       </div>
-      <button type="button" onClick={() => !trashed && openEditFavorite(i.id)} className="flex min-w-0 flex-col gap-0.5 border-0 bg-transparent p-0 text-left text-ink" title={i.title}>
+      <button type="button" {...nameDrag} onClick={() => !trashed && openEditFavorite(i.id)} className="flex min-w-0 flex-col gap-0.5 border-0 bg-transparent p-0 text-left text-ink" title={i.title}>
         <span className="truncate text-[14px]">{i.title}</span>
         <span className="truncate text-[12px] text-ink/48">{hostOf(i.url)}</span>
         <span className="truncate text-[12px] text-ink/48">{path}</span>
@@ -1068,6 +1391,20 @@ function Card({ item: i, pinned, path, selected, onSelect, onPin, onMore, readOn
         </div>
       )}
     </li>
+  );
+}
+
+/** What follows the pointer: the favorite (with how many go along), or the group. */
+function DragChip({ drag, item, group, hint }: { drag: DragData; item?: Item; group?: GroupNode | Category; hint: DropHint | null }) {
+  return (
+    <div aria-hidden className="flex w-max max-w-[320px] flex-col gap-1 rounded-xl px-3 py-2 text-[13px] text-ink" style={{ background: 'var(--color-menu)', boxShadow: `0 14px 34px rgba(0,0,0,0.35), inset 0 0 0 1px ${hint && !hint.ok && !hint.neutral ? 'rgb(var(--nx-error-rgb)/0.7)' : 'rgb(var(--nx-amber-rgb)/0.55)'}` }}>
+      <span className="flex min-w-0 items-center gap-2.5">
+        {drag.kind === 'item' && item ? <AppTile target={{ kind: 'app', app: asApp(item) }} size={24} /> : <Folder className="size-4 flex-none text-amber" />}
+        <span className="min-w-0 flex-1 truncate">{drag.kind === 'item' ? (item?.title ?? '') : (group?.label ?? '')}</span>
+        {drag.kind === 'item' && (drag.count ?? 1) > 1 && <span className="flex-none rounded-md bg-amber/20 px-1.5 text-[11.5px] text-ink tabular-nums">共 {drag.count} 个</span>}
+      </span>
+      {hint && <span className={cn('text-[12px] leading-[1.5]', hint.ok || hint.neutral ? 'text-ink/70' : 'text-danger-ink')}>{hint.ok ? `→ ${hint.text}` : hint.text}</span>}
+    </div>
   );
 }
 
