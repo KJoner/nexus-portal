@@ -89,13 +89,17 @@ test.describe('desktop', () => {
     await ops(api, [{ type: 'settings.patch', section: 'look', patch: { rotation: { ...look.rotation, mode: 'daily' } } }]);
     await page.reload();
     const bar = page.getByRole('group', { name: '壁纸操作' }).locator('..');
-    // The page first shows this browser's cached settings (no rotation yet); read the picture only once
-    // the server's daily rotation is in effect (its 锁定 button), or 换一张 may land on the cached one.
+    // The page first shows the default settings (no rotation yet); read the picture only once the
+    // server's daily rotation is in effect (its 锁定 button), or 换一张 may land on the one shown before.
     await expect(page.getByRole('button', { name: '锁定当前壁纸' })).toHaveCount(1);
-    const before = await bar.innerText();
+    // Which picture, not its name: other specs share this server and leave uploads that are all called
+    // 「copy」, so stepping from one to the next can keep the same text.
+    const shownId = () => page.evaluate(() => localStorage.getItem('nexus.wallpaper.last'));
+    await expect.poll(shownId).not.toBeNull();
+    const before = await shownId();
     const rev = await revision(api);
     await page.getByRole('button', { name: '换一张' }).click();
-    await expect.poll(() => bar.innerText()).not.toBe(before);
+    await expect.poll(shownId).not.toBe(before);
     expect(await revision(api)).toBe(rev);
     // Locking keeps the picture now on screen and stops rotating (a synced change).
     await bar.hover();
