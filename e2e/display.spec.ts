@@ -89,6 +89,9 @@ test.describe('desktop', () => {
     await ops(api, [{ type: 'settings.patch', section: 'look', patch: { rotation: { ...look.rotation, mode: 'daily' } } }]);
     await page.reload();
     const bar = page.getByRole('group', { name: '壁纸操作' }).locator('..');
+    // The page first shows this browser's cached settings (no rotation yet); read the picture only once
+    // the server's daily rotation is in effect (its 锁定 button), or 换一张 may land on the cached one.
+    await expect(page.getByRole('button', { name: '锁定当前壁纸' })).toHaveCount(1);
     const before = await bar.innerText();
     const rev = await revision(api);
     await page.getByRole('button', { name: '换一张' }).click();
