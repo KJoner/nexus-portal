@@ -39,6 +39,7 @@ import {
   type UploadedWallpaper,
   type WallpaperSourcesResponse,
   type ChangesResponse,
+  type Item,
   type ItemInput,
   type ItemPatch,
   type ItemWriteResult,
@@ -150,6 +151,8 @@ export interface ItemsTransport {
   /** baseVersion (NEX-04): the version the client saw; a delete of what was changed since, or a restore of a deletion undone since, is REVISION_CONFLICT. */
   remove(id: string, opId: string, baseVersion?: number): Promise<ItemWriteResult>;
   restore(id: string, opId: string, baseVersion?: number): Promise<ItemWriteResult>;
+  /** 回收站: every deleted favorite of this space (the snapshot holds live ones only). */
+  trash?(): Promise<Item[]>;
   pin(id: string, opId: string, position?: number): Promise<{ pins: string[] }>;
   unpin(id: string, opId: string): Promise<{ pins: string[] }>;
   /** A bookmark file (UI v2 N2: `folderMode: 'tree'` keeps its folders as nested groups). */
@@ -258,6 +261,16 @@ export const httpTransport: Transport = {
     patch: (id, body) => request(`/api/v2/items/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) }),
     remove: (id, opId, baseVersion) => request(`/api/v2/items/${encodeURIComponent(id)}?opId=${encodeURIComponent(opId)}${baseVersion === undefined ? '' : `&baseVersion=${baseVersion}`}`, { method: 'DELETE' }),
     restore: (id, opId, baseVersion) => request(`/api/v2/items/${encodeURIComponent(id)}/restore`, { method: 'POST', body: JSON.stringify(baseVersion === undefined ? { opId } : { opId, baseVersion }) }),
+    async trash() {
+      const out: Item[] = [];
+      let cursor: string | null = null;
+      do {
+        const page: { items: Item[]; nextCursor: string | null } = await request(`/api/v2/items?deleted=1&limit=200${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`, {}, 20_000);
+        out.push(...page.items);
+        cursor = page.nextCursor;
+      } while (cursor && out.length < 50_000);
+      return out;
+    },
     pin: (id, opId, position) => request(`/api/v2/pins/${encodeURIComponent(id)}`, { method: 'POST', body: JSON.stringify(position === undefined ? { opId } : { opId, position }) }),
     unpin: (id, opId) => request(`/api/v2/pins/${encodeURIComponent(id)}?opId=${encodeURIComponent(opId)}`, { method: 'DELETE' }),
     importItems: (body) => request('/api/v2/import', { method: 'POST', body: JSON.stringify(body) }, 60_000),

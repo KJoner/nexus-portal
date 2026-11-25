@@ -428,10 +428,21 @@ test('A08: one set of names — 我的收藏, 添加收藏, 应用商店, 分组
   expect(await text()).not.toMatch(OLD);
 });
 
-test('A09: empty, no result and offline each say what they are', async ({ home: page, context, isMobile }) => {
+test('A09: empty, no result and offline each say what they are', async ({ home: page, context, browser, isMobile }, info) => {
   test.skip(isMobile, 'desktop');
+  // 回收站 is read from the server, and this one keeps what earlier tests deleted: the empty state is
+  // a fresh browser's own collection (never shown while 回收站 is still being read).
+  const fresh = await browser.newContext({ baseURL: info.project.use.baseURL, locale: 'zh-CN', serviceWorkers: 'block' });
+  const local = await fresh.newPage();
+  await local.goto('/settings/favorites?view=trash');
+  await expect(local.getByText('回收站是空的')).toBeVisible();
+  await fresh.close();
+  // The account's 回收站 after a reload lists what was deleted before it (not only this page's deletions).
+  const gone = (await (await page.request.post('/api/v2/items', { headers: H, data: { opId: `e2e-a09-${Date.now()}`, item: { title: 'A09 已删除', url: `https://a09-${Date.now()}.example.test/` } } })).json()).item as { id: string };
+  await page.request.delete(`/api/v2/items/${gone.id}?opId=e2e-a09-del-${Date.now()}`, { headers: H });
   await page.goto('/settings/favorites?view=trash');
-  await expect(page.getByText('回收站是空的')).toBeVisible();
+  await expect(page.getByRole('listbox', { name: /^回收站（\d+ 条）$/ }).getByRole('option').filter({ hasText: 'A09 已删除' })).toBeVisible();
+  await expect(page.getByText('回收站是空的')).toHaveCount(0);
   await page.goto('/settings/favorites?view=unfiled');
   await expect(page.getByText('这里还没有收藏')).toBeVisible();
   await page.goto(`/settings/favorites?q=${encodeURIComponent('没有这种收藏 zzz')}`);

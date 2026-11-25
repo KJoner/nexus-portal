@@ -1,7 +1,7 @@
 import { AppSchema, localCounts } from '@nexus/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { dispatch, flush, resetLocal, useConfigStore, useIsAdmin, useSaveState, workspaceOwner } from './config-store';
-import { libraryApi, loadLibrary, useLibrary } from './library';
+import { libraryApi, loadLibrary, loadTrash, useLibrary } from './library';
 import { memoryLocalStore } from './local/store';
 import { localTransport, type LocalTransport } from './local/transport';
 import { renderHook } from '@testing-library/react';
@@ -79,5 +79,21 @@ describe('local collection in the portal', () => {
     await t.items.create({ opId: 'popup-000000001', item: { title: '从别处保存', url: 'https://elsewhere.example.com' }, pinToHome: true });
     await (await import('./config-store')).refresh();
     expect(useConfigStore.getState().snapshot.config.apps.map((a) => a.name)).toEqual(['从别处保存']);
+  });
+
+  it('回收站 after reopening still lists what was deleted before (the snapshot has live favorites only)', async () => {
+    await loadLibrary();
+    const made = await libraryApi.create({ title: '旧文章', url: 'https://old.example.test/a' });
+    if (!made.ok || !made.item) throw new Error('not saved');
+    expect((await libraryApi.remove(made.item)).ok).toBe(true);
+    // Opened again: nothing deleted in the snapshot…
+    useLibrary.setState({ status: 'idle', owner: null, items: {} });
+    await loadLibrary();
+    expect(useLibrary.getState().trash).toBe('idle');
+    expect(Object.values(useLibrary.getState().items).filter((i) => i.deletedAt !== null)).toEqual([]);
+    // …and 回收站, read on its own, has it back.
+    await loadTrash();
+    expect(useLibrary.getState().trash).toBe('ready');
+    expect(Object.values(useLibrary.getState().items).filter((i) => i.deletedAt !== null).map((i) => i.title)).toEqual(['旧文章']);
   });
 });

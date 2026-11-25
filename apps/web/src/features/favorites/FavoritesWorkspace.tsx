@@ -38,7 +38,7 @@ import { ActionSheet, type SheetState } from '../../components/ActionSheet';
 import { ContextMenu, type MenuItem, type MenuState } from '../../components/ContextMenu';
 import { toast } from '../../components/toast-store';
 import { currentTransport, useConfig, useConfigStore, useSaveState } from '../../data/config-store';
-import { libraryApi, loadLibrary, pinNotice, useLibrary, type WriteOutcome } from '../../data/library';
+import { libraryApi, loadLibrary, loadTrash, pinNotice, useLibrary, type WriteOutcome } from '../../data/library';
 import { AppTile } from '../../icons/AppTile';
 import { cn } from '../../lib/cn';
 import { dndAccessibility } from '../../lib/dnd';
@@ -105,6 +105,7 @@ export function FavoritesWorkspace() {
   const byId = useLibrary((s) => s.items);
   const pins = useLibrary((s) => s.pins);
   const conflicts = useLibrary((s) => s.conflicts);
+  const trashState = useLibrary((s) => s.trash);
   const pinyin = usePinyin((s) => s.fn);
   const compact = useCompact();
   const [params, setParams] = useSearchParams();
@@ -218,7 +219,11 @@ export function FavoritesWorkspace() {
     setSelected(new Set());
     if (done.length) toast({ msg: done.length === 1 ? `已把「${done[0]!.title}」移到回收站` : `已把 ${done.length} 个收藏移到回收站`, tone: 'info', action: { label: '撤销', run: () => void Promise.all(done.map((i) => libraryApi.restore(i))).then(() => toast({ msg: '已恢复', tone: 'ok' })) } });
   };
-  const restore = async (i: Item) => report(await libraryApi.restore(i), `已恢复「${i.title}」到「${pathLabel(categories, i.folderId)}」`);
+  /** Said with where it really went: the server's answer (a group deleted since files it under the nearest one left). */
+  const restore = async (i: Item) => {
+    const r = await libraryApi.restore(i);
+    return report(r, `已恢复「${i.title}」到「${pathLabel(categories, (r.ok && r.item?.folderId) || i.folderId)}」`);
+  };
   /** One step inside its group's own order (the anchor is a neighbour; no drag needed). */
   const step = async (i: Item, to: 'up' | 'down' | 'first' | 'last') => {
     const siblings = live.filter((x) => (x.folderId || UNFILED) === (i.folderId || UNFILED)).sort(byPosition);
@@ -343,7 +348,14 @@ export function FavoritesWorkspace() {
   );
 
   const syncLine = <SyncLine />;
-  const empty = status === 'ready' && shown.length === 0;
+  // 回收站 holds what was deleted before this page was opened too (the snapshot has live favorites
+  // only): read when 回收站 is opened — it can be thousands (an undone import), so not on every visit.
+  useEffect(() => {
+    if (status === 'ready' && trashState === 'idle' && effective.kind === 'trash') void loadTrash();
+  }, [status, trashState, effective.kind]);
+  // 回收站 not read yet (or not readable now): never called empty while that is unknown.
+  const trashUnknown = effective.kind === 'trash' && !searching && trashState !== 'ready';
+  const empty = status === 'ready' && shown.length === 0 && !trashUnknown;
 
   return (
     <div className={cn('flex min-h-0 flex-col', compact ? 'gap-4' : 'gap-6')}>
@@ -514,6 +526,17 @@ export function FavoritesWorkspace() {
               <div role="alert" className="m-5 flex flex-col items-start gap-3 rounded-xl p-4" style={{ background: 'rgb(var(--nx-error-rgb)/0.1)' }}>
                 <span className="text-[13.5px]">没有读到我的收藏：{error || '加载失败'}</span>
                 <Button onClick={() => void loadLibrary()}>重试</Button>
+              </div>
+            )}
+            {status === 'ready' && trashUnknown && trashState !== 'error' && shown.length === 0 && (
+              <p role="status" className="m-0 flex items-center gap-2 px-5 py-6 text-[13.5px] text-ink/60">
+                <Spinner /> 正在读取回收站…
+              </p>
+            )}
+            {status === 'ready' && trashUnknown && trashState === 'error' && (
+              <div role="alert" className={cn('flex flex-col items-start gap-3 rounded-xl p-4', compact ? 'my-2' : 'm-5')} style={{ background: 'rgb(var(--nx-error-rgb)/0.1)' }}>
+                <span className="text-[13.5px] leading-[1.6]">没有读到更早移到回收站的收藏（可能是离线）。这里只列出这次打开页面之后删除的。</span>
+                <Button onClick={() => void loadTrash()}>重试</Button>
               </div>
             )}
             {empty && (

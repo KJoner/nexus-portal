@@ -112,6 +112,7 @@ export function localTransport(opts: LocalTransportOptions): LocalTransport {
     patch: (id, body) => run((s) => localItems.patch(s, id, body, now())),
     remove: (id, opId, baseVersion) => run((s) => localItems.remove(s, id, opId, baseVersion, now())),
     restore: (id, opId, baseVersion) => run((s) => localItems.restore(s, id, opId, baseVersion, now())),
+    trash: async () => localItems.trash(await read()),
     pin: (id, opId, position) => run((s) => localItems.pin(s, id, opId, position, now())),
     unpin: (id, opId) => run((s) => localItems.unpin(s, id, opId, now())),
     importItems: (body) => run((s) => localItems.importItems(s, body, now())),

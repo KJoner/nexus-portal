@@ -1,4 +1,4 @@
-import type { BookmarkImportRequest, CreateFavoritesAnswer, CreateFavoritesRequest, FavoritePatch, Item, ItemInput, ItemPatch, ItemWriteResult, MoveItemsAnswer, SaveFavoriteAnswer, SnapshotResponse } from '@nexus/shared';
+import { survivingAncestor, type BookmarkImportRequest, type Category, type CreateFavoritesAnswer, type CreateFavoritesRequest, type FavoritePatch, type Item, type ItemInput, type ItemPatch, type ItemWriteResult, type MoveItemsAnswer, type SaveFavoriteAnswer, type SnapshotResponse } from '@nexus/shared';
 import { create } from 'zustand';
 import { toast } from '../components/toast-store';
 import { storage } from '../lib/storage';
@@ -52,9 +52,11 @@ interface LibraryState {
   conflicts: LibraryConflict[];
   /** UI v2 (N3): 1 when this space was created with the eight starter sites (the snapshot's word); undefined until loaded. */
   starterVersion?: number;
+  /** 回收站 read from the server (or the local store) since this space was loaded: not yet, under way, done, failed. */
+  trash?: 'idle' | 'loading' | 'ready' | 'error';
 }
 
-const initial = (): LibraryState => ({ status: 'idle', error: '', owner: null, items: {}, pins: [], folders: [], cursor: null, queued: 0, conflicts: [] });
+const initial = (): LibraryState => ({ status: 'idle', error: '', owner: null, items: {}, pins: [], folders: [], cursor: null, queued: 0, conflicts: [], trash: 'idle' });
 export const useLibrary = create<LibraryState>(() => initial());
 
 const queueKey = (owner: string) => `nexus.library.queue.v1:${owner}`;
@@ -119,7 +121,8 @@ export async function loadLibrary(): Promise<void> {
       items.push(...page.items);
     }
     if (ownerNow() !== owner) return;
-    useLibrary.setState({ items: Object.fromEntries(items.map((i) => [i.id, i])), pins: first.pins, folders: first.folders, cursor: first.cursor, status: 'ready', starterVersion: first.starterVersion ?? 0 });
+    // Live favorites only: 回收站 is read again after this (loadTrash).
+    useLibrary.setState({ items: Object.fromEntries(items.map((i) => [i.id, i])), pins: first.pins, folders: first.folders, cursor: first.cursor, status: 'ready', starterVersion: first.starterVersion ?? 0, trash: 'idle' });
     // Pages and changes share the snapshot's watermark: what changed while paging comes next.
     await pullLibrary();
     await flushLibrary();
@@ -127,6 +130,54 @@ export async function loadLibrary(): Promise<void> {
     if (ownerNow() !== owner) return;
     useLibrary.setState({ status: 'error', error: e instanceof NetworkError ? '无法连接 Nexus 服务端' : e instanceof Error ? e.message : '加载失败' });
   }
+}
+
+/**
+ * 回收站 (UI v2 N2, B09): the snapshot holds live favorites only, so what was deleted before this
+ * page was opened is read on its own — otherwise a favorite moved to 回收站 yesterday (one by one,
+ * or with 连同内容删除) could not be found there to restore. Older transports without it: the
+ * trash shows what this page has seen.
+ */
+let trashLoading: Promise<void> | null = null;
+export function loadTrash(): Promise<void> {
+  trashLoading ??= (async () => {
+    const owner = useLibrary.getState().owner;
+    const t = currentTransport().items;
+    if (!owner || owner !== ownerNow()) return;
+    if (!t.trash) return void useLibrary.setState({ trash: 'ready' });
+    useLibrary.setState({ trash: 'loading' });
+    try {
+      const list = await t.trash();
+      if (useLibrary.getState().owner !== owner) return;
+      put(list);
+      useLibrary.setState({ trash: 'ready' });
+    } catch {
+      // Not now (offline, a passing error): 回收站 says so and offers to ask again; what this page knows stays.
+      if (useLibrary.getState().owner === owner) useLibrary.setState({ trash: 'error' });
+    }
+  })().finally(() => {
+    trashLoading = null;
+  });
+  return trashLoading;
+}
+
+/**
+ * Groups deleted from this page: their favorites in 回收站 are filed under the nearest group that
+ * is left — what the server and the local engine do with the tombstones (quietly, no new version,
+ * so no change comes back for them). A restore then says, and shows, where they really go.
+ */
+export function refileTrashed(before: readonly Category[], after: readonly Category[]) {
+  const kept = new Set(after.map((c) => c.id));
+  const gone = new Set(before.filter((c) => !kept.has(c.id)).map((c) => c.id));
+  if (!gone.size) return;
+  const items = useLibrary.getState().items;
+  let next: Record<string, Item> | null = null;
+  for (const i of Object.values(items)) {
+    if (i.deletedAt === null || !gone.has(i.folderId)) continue;
+    next ??= { ...items };
+    next[i.id] = { ...i, folderId: survivingAncestor(before, i.folderId, kept) };
+  }
+  if (next) useLibrary.setState({ items: next });
 }
 
 let pulling: Promise<void> | null = null;
