@@ -84,8 +84,13 @@ export type SignInResult = { ok: true; user: User; created: boolean } | { ok: fa
 
 export type LinkResult = 'linked' | 'already_linked' | 'identity_taken' | 'account_linked_elsewhere';
 
-/** Profile snapshots are clipped alike (display name, login name). */
+/** The display name snapshot is clipped to what the pages show. */
 const clip = (s: string | undefined) => s?.slice(0, 80);
+/**
+ * The login name is kept whole up to Keycloak's own limit (255, as LiteSync does): a clipped one would
+ * show a login name that does not work (an old account's long e-mail address is its login name).
+ */
+const clipLogin = (s: string | undefined) => s?.slice(0, 255);
 
 /**
  * Local accounts. The stable key of a person is the identity provider's `(issuer, subject)`; e-mail,
@@ -136,7 +141,7 @@ export class Users {
         if (known.disabled) return { ok: false, reason: 'disabled' } as const;
         // A verified sign-in also proves the identity service still has the account enabled. A claim
         // the token does not carry keeps the snapshot it had (display name and login name alike).
-        await this.db.run('update users set email = ?, email_verified = ?, display_name = ?, username = ?, last_login_at = ?, identity_checked_at = ? where id = ?', [claims.email ?? known.email, claims.emailVerified ?? known.emailVerified, clip(claims.name) ?? known.displayName, clip(claims.username) ?? known.username, t, t, known.id]);
+        await this.db.run('update users set email = ?, email_verified = ?, display_name = ?, username = ?, last_login_at = ?, identity_checked_at = ? where id = ?', [claims.email ?? known.email, claims.emailVerified ?? known.emailVerified, clip(claims.name) ?? known.displayName, clipLogin(claims.username) ?? known.username, t, t, known.id]);
         return { ok: true, user: (await this.get(known.id))!, created: false } as const;
       }
       if (mode === 'closed') return { ok: false, reason: 'registration_closed' } as const;
@@ -146,7 +151,7 @@ export class Users {
         if (!used.changes) return { ok: false, reason: 'invite_invalid' } as const;
       }
       const id = `u-${randomBytes(12).toString('hex')}`;
-      await this.db.run('insert into users (id, issuer, subject, email, email_verified, display_name, username, is_admin, disabled, created_via, created_at, last_login_at, identity_checked_at) values (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?)', [id, claims.issuer, claims.subject, claims.email ?? '', claims.emailVerified ?? false, clip(claims.name) ?? '', clip(claims.username) ?? '', 'oidc', t, t, t]);
+      await this.db.run('insert into users (id, issuer, subject, email, email_verified, display_name, username, is_admin, disabled, created_via, created_at, last_login_at, identity_checked_at) values (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?)', [id, claims.issuer, claims.subject, claims.email ?? '', claims.emailVerified ?? false, clip(claims.name) ?? '', clipLogin(claims.username) ?? '', 'oidc', t, t, t]);
       return { ok: true, user: (await this.get(id))!, created: true } as const;
     });
   }
@@ -165,7 +170,7 @@ export class Users {
       if (user.issuer || user.subject) return 'account_linked_elsewhere';
       // Conditional: of two claims racing for the same account, exactly one binds it. Display and
       // login name only fill in what the token carries (the old values stay otherwise).
-      const { changes } = await this.db.run('update users set issuer = ?, subject = ?, email = ?, email_verified = ?, display_name = coalesce(nullif(?, \'\'), display_name), username = coalesce(nullif(?, \'\'), username), last_login_at = ?, identity_checked_at = ? where id = ? and issuer is null and subject is null', [claims.issuer, claims.subject, claims.email ?? '', claims.emailVerified ?? false, clip(claims.name) ?? '', clip(claims.username) ?? '', this.now(), this.now(), userId]);
+      const { changes } = await this.db.run('update users set issuer = ?, subject = ?, email = ?, email_verified = ?, display_name = coalesce(nullif(?, \'\'), display_name), username = coalesce(nullif(?, \'\'), username), last_login_at = ?, identity_checked_at = ? where id = ? and issuer is null and subject is null', [claims.issuer, claims.subject, claims.email ?? '', claims.emailVerified ?? false, clip(claims.name) ?? '', clipLogin(claims.username) ?? '', this.now(), this.now(), userId]);
       return changes ? 'linked' : 'account_linked_elsewhere';
     });
   }

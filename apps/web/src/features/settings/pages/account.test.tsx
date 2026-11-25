@@ -243,6 +243,18 @@ describe('登录用户名 (UI v2 I1)', () => {
     expect(within(row).queryByRole('textbox')).toBeNull();
     expect(within(row).queryByRole('button')).toBeNull();
     expect(screen.getByText('xiaoyu@example.test')).toBeInTheDocument();
+    // The nickname has its own row (the headline is the e-mail), read-only as well.
+    const nick = rowOf(screen.getByText('昵称'));
+    expect(nick).toHaveTextContent('小雨');
+    expect(within(nick).queryByRole('textbox')).toBeNull();
+  });
+
+  it('no e-mail: the nickname is the headline, not repeated in a row of its own', async () => {
+    await signInAs('user', 'oidc', { email: '', displayName: '小雨', username: 'xiaoyu' });
+    open(<AccountSection />, '/settings/account');
+    await screen.findByText('小雨');
+    expect(screen.queryByText('昵称')).toBeNull();
+    expect(rowOf(screen.getByText('登录用户名'))).toHaveTextContent('xiaoyu');
   });
 
   it('an older account whose login name is its e-mail shows exactly that', async () => {

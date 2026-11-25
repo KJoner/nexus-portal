@@ -193,10 +193,13 @@ describe('unified sign-in (OIDC, ADR-011)', () => {
       }
     });
 
-    it('is clipped like the display name (80 characters)', async () => {
+    it('keeps a long login name whole (an old account e-mail address), up to the Keycloak limit of 255', async () => {
       const { t } = await setup({ dialect });
-      const a = await account((await t.loginOidc({ sub: 'long', preferredUsername: `${'x'.repeat(100)}@example.test` })).cookie);
-      expect(a.username).toBe('x'.repeat(80));
+      const long = `${'x'.repeat(100)}@example.test`;
+      const a = await account((await t.loginOidc({ sub: 'long', preferredUsername: long })).cookie);
+      expect(a.username).toBe(long);
+      const huge = await account((await t.loginOidc({ sub: 'huge', preferredUsername: 'y'.repeat(300) })).cookie);
+      expect(huge.username).toBe('y'.repeat(255));
     });
   });
 

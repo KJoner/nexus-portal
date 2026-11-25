@@ -1,4 +1,4 @@
-import type { AuthOptions, RevocationEventInfo, RevocationStatusResponse } from '@nexus/shared';
+import type { AuthOptions, MeResponse, RevocationEventInfo, RevocationStatusResponse } from '@nexus/shared';
 import { ExternalLink, KeyRound, LogOut, MonitorX, ShieldOff } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from '../../../components/toast-store';
@@ -75,6 +75,27 @@ export function UsernameRow({ username }: { username: string | undefined }) {
 }
 
 /**
+ * 昵称 and 登录用户名 under the account's headline (spec 07: the account page names the account in
+ * full — nickname, login name, e-mail — for its owner). The headline is the e-mail when there is one,
+ * so the nickname gets its own row then; changed in the account console, it shows after the next sign-in.
+ */
+export function ProfileRows({ me }: { me: MeResponse | null | undefined }) {
+  if (!me) return null;
+  const { email, displayName, username } = me.account;
+  const nickname = email && displayName && displayName !== email ? displayName : '';
+  return (
+    <>
+      {nickname && (
+        <Row label="昵称" sub="在 Nexus 与 LiteSync 里显示的名字，在账号中心修改" stacked>
+          <span className="min-w-0 text-[14px] break-all text-ink/80">{nickname}</span>
+        </Row>
+      )}
+      <UsernameRow username={username} />
+    </>
+  );
+}
+
+/**
  * 账号与登录: who is signed in, the identity service's account console, 旧管理员认领, and the three
  * ways out of ADR-019, each saying exactly what it ends:
  *  A 退出此设备 — this browser's Nexus session only;
@@ -139,7 +160,7 @@ export function AccountSection() {
           }
           sub={me ? `${how} · 会话保存在本浏览器，30 天内使用会自动续期` : undefined}
         />
-        <UsernameRow username={me?.account.username} />
+        <ProfileRows me={me} />
         {oidc && accountUrl && (
           <Row label="管理统一账号" sub="在账号中心修改登录密码和邮箱，查看并退出各浏览器里的登录。那里不列已连接的浏览器扩展与 Obsidian：扩展在下面「浏览器扩展」里，Obsidian 在 LiteSync 里；要一次断开全部，用「退出所有产品与设备」">
             <a href={accountUrl} target="_blank" rel="noopener noreferrer" className="inline-flex h-9 items-center gap-2 rounded-[10px] bg-ink/9 px-3.5 text-[13px] text-ink no-underline hover:bg-ink/15">
