@@ -245,8 +245,9 @@ export const ConfigSchema = z.object({
   /** Array order is the order of the category groups. */
   categories: z.array(CategorySchema).max(CONFIG_LIMITS.categories),
   /**
-   * Ordered ids of pinned sites. The Dock shows the first `dockSize`, mobile the first
-   * `rows × 4 − services`; the rest fill the extension pages. Independent of `apps` order.
+   * Ordered ids of pinned sites. The desktop first row shows as many as fill it (older clients:
+   * the first `dockSize`), mobile the first `rows × 4`; the rest fill the extension pages.
+   * Independent of `apps` order.
    */
   pins: z.array(Id).max(MAX_PINS),
   engines: z.array(EngineSchema).max(CONFIG_LIMITS.engines),

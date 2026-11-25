@@ -90,9 +90,9 @@ describe('home shortcut layout', () => {
 
   it('keeps the first row stable and sends the rest to the extension', () => {
     const c = withPins(16);
-    const d = desktopShortcuts(c);
-    expect(d.first.map((a) => a.id)).toEqual(c.pins.slice(0, 5));
-    expect(d.extra.map((a) => a.id)).toEqual(c.pins.slice(5));
+    const d = desktopShortcuts(c, 8);
+    expect(d.first.map((a) => a.id)).toEqual(c.pins.slice(0, 8));
+    expect(d.extra.map((a) => a.id)).toEqual(c.pins.slice(8));
     // Mobile: 2 rows × 4. UI v2: no separate services strip takes room any more.
     const m = mobileShortcuts(c);
     expect(m.first).toHaveLength(8);
@@ -110,7 +110,7 @@ describe('home shortcut layout', () => {
   });
 
   it('single-row mode has no extension', () => {
-    expect(desktopShortcuts(withPins(16, 'single')).extra).toEqual([]);
+    expect(desktopShortcuts(withPins(16, 'single'), 8).extra).toEqual([]);
     expect(mobileShortcuts(withPins(16, 'single')).extra).toEqual([]);
   });
 

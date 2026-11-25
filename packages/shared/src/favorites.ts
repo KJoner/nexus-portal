@@ -447,9 +447,11 @@ export function starterApp(site: StarterSite): AppEntry {
 }
 
 /**
- * 首页 of a new space (UI v2 N3): the eight starter sites all visible — four in the Dock and one
- * always-open row of four below (4×2; a phone shows two rows of four). Existing spaces keep the
- * layout they have; MAX_PINS stays the limit of what can be pinned at all.
+ * 首页 of a new space (UI v2 N3): the eight starter sites all visible — on a desktop the first row
+ * fills the row, so at the default width they all sit in it, and whatever does not fit is in an
+ * always-open row below; a phone shows two rows of four. `dockSize: 4` is what older clients read
+ * (their 4×2). Existing spaces keep the layout they have; MAX_PINS stays the limit of what can be
+ * pinned at all.
  */
 export function starterHome(home: Config['settings']['home']): Config['settings']['home'] {
   return { ...home, dockSize: 4, mobileRows: 2, showServices: false, shortcuts: { ...home.shortcuts, mode: 'double', pageRows: 1 } };

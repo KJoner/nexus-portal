@@ -20,19 +20,19 @@ export function pinnedSites(c: Config): AppEntry[] {
   return c.pins.map((id) => byId.get(id)).filter((a): a is AppEntry => !!a && !a.hidden);
 }
 
-/** One order, two capacities: how many pinned favorites each surface shows on its first page. */
-export function homeCapacity(c: Config): { desktop: number; mobile: number } {
-  return {
-    desktop: c.settings.home.dockSize,
-    mobile: Math.max(0, c.settings.home.mobileRows * 4),
-  };
+/**
+ * How many pinned favorites the phone's first page shows. The desktop first row has no fixed size
+ * any more: it fills the row, so its capacity depends on the window (web: firstRowCapacity), and
+ * `home.dockSize` is only read by older clients.
+ */
+export function homeCapacity(c: Config): { mobile: number } {
+  return { mobile: Math.max(0, c.settings.home.mobileRows * 4) };
 }
 
-/** Desktop home: the Dock's first row, and the pinned sites left for the extension pages. */
-export function desktopShortcuts(c: Config): { first: AppEntry[]; extra: AppEntry[] } {
+/** Desktop home: the first `capacity` pins in the Dock's first row, the rest for the extension pages. */
+export function desktopShortcuts(c: Config, capacity: number): { first: AppEntry[]; extra: AppEntry[] } {
   const pinned = pinnedSites(c);
-  const { dockSize, shortcuts } = c.settings.home;
-  return { first: pinned.slice(0, dockSize), extra: shortcuts.mode === 'single' ? [] : pinned.slice(dockSize) };
+  return { first: pinned.slice(0, capacity), extra: c.settings.home.shortcuts.mode === 'single' ? [] : pinned.slice(capacity) };
 }
 
 /** Mobile home: the favorites on the first page, and the rest for later pages. */

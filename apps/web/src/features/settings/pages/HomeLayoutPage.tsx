@@ -1,14 +1,16 @@
 import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS as DndCSS } from '@dnd-kit/utilities';
-import { DOCK_SIZE_MAX, DOCK_SIZE_MIN, hostOf, MAX_PINS, pinnedSites, type AppEntry, type Settings } from '@nexus/shared';
-import { ChevronDown, ChevronUp, GripVertical, Minus, Plus } from 'lucide-react';
+import { hostOf, MAX_PINS, pinnedSites, type AppEntry, type Settings } from '@nexus/shared';
+import { ChevronDown, ChevronUp, GripVertical, Plus } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useConfig } from '../../../data/config-store';
 import { AppTile } from '../../../icons/AppTile';
 import { cn } from '../../../lib/cn';
 import { dndAccessibility } from '../../../lib/dnd';
+import { useViewport } from '../../../lib/hooks';
+import { desktopFirstRow } from '../../home/desktop/geometry';
 import { apply, patch } from '../model';
 import { Button, Group, PageHeader, Row, Segmented, Switch, useCompact } from '../ui';
 
@@ -164,38 +166,39 @@ function AddShortcut() {
   );
 }
 
-function Preview({ device }: { device: 'pc' | 'mobile' }) {
+function Preview({ device, first }: { device: 'pc' | 'mobile'; first: number }) {
   const config = useConfig();
   const { home } = config.settings;
   // UI v2: services are favorites like any other: pinned ones share the one order, no separate strip.
   const pins = pinnedSites(config);
   const mobileCap = home.mobileRows * 4;
-  const rest = home.shortcuts.mode === 'single' ? [] : pins.slice(home.dockSize);
+  const rest = home.shortcuts.mode === 'single' ? [] : pins.slice(first);
   if (device === 'pc') {
-    const items = pins.slice(0, home.dockSize).map((a) => ({ a, sep: false }));
+    // As on the home page: one grid, the first row's pins in every column but the last (快速打开).
+    const cols = first + 1;
+    const cell = Math.floor(392 / cols);
+    const tile = Math.min(30, cell - 6);
     return (
       <div className="box-border w-[416px] rounded-2xl px-3 pt-3.5 pb-3" style={{ background: 'rgb(var(--nx-s1-rgb)/0.6)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.07)' }}>
         <div className="flex h-[30px] items-center border-b border-ink/8 px-1.5 text-[11px] text-ink/46">搜索、输入网址，或打开应用</div>
-        <div className="flex justify-center gap-[3px] pt-3.5">
-          {items.map(({ a }, i) => (
-            <span key={a.id} className="flex items-start">
-              <span className="flex w-9 flex-col items-center gap-[5px]">
-                <AppTile target={{ kind: 'app', app: a }} size={30} />
-                {home.labels.desktop && <span className="max-w-9 truncate text-[8.5px] text-ink/70">{a.name}</span>}
-              </span>
+        <div className="flex justify-center pt-3.5">
+          {pins.slice(0, first).map((a) => (
+            <span key={a.id} className="flex flex-none flex-col items-center gap-[5px]" style={{ width: cell }}>
+              <AppTile target={{ kind: 'app', app: a }} size={tile} />
+              {home.labels.desktop && <span className="max-w-full truncate text-[8.5px] text-ink/70">{a.name}</span>}
             </span>
           ))}
-          <span className="mx-[3px] mt-1 h-[22px] w-px bg-ink/16" />
-          <span className="flex w-9 flex-col items-center gap-[5px]">
-            <AppTile target={{ kind: 'all' }} size={30} />
-            {home.labels.desktop && <span className="text-[8.5px] text-ink/70">快速打开</span>}
+          <span className="relative flex flex-none flex-col items-center gap-[5px]" style={{ width: cell }}>
+            <span aria-hidden className="absolute top-1 -left-px h-[22px] w-px bg-ink/16" />
+            <AppTile target={{ kind: 'all' }} size={tile} />
+            {home.labels.desktop && <span className="text-[8.5px] whitespace-nowrap text-ink/70">快速打开</span>}
           </span>
         </div>
         {rest.length > 0 &&
           (home.shortcuts.mode === 'double' ? (
-            <div className="grid grid-cols-9 justify-items-center gap-y-2 pt-3">
-              {rest.slice(0, 9 * home.shortcuts.pageRows).map((a) => (
-                <AppTile key={a.id} target={{ kind: 'app', app: a }} size={26} />
+            <div className="grid justify-center justify-items-center gap-y-2 pt-3" style={{ gridTemplateColumns: `repeat(${cols}, ${cell}px)` }}>
+              {rest.slice(0, cols * home.shortcuts.pageRows).map((a) => (
+                <AppTile key={a.id} target={{ kind: 'app', app: a }} size={tile} />
               ))}
             </div>
           ) : (
@@ -232,13 +235,16 @@ export function HomeLayoutPage() {
   const compact = useCompact();
   const { home } = config.settings;
   const [device, setDevice] = useState<'pc' | 'mobile'>('pc');
+  const { w } = useViewport();
+  // The desktop first row fills the row: how many that is follows the panel width and icon size.
+  const first = desktopFirstRow(config.settings, w);
   const pins = pinnedSites(config);
   const mobileCap = home.mobileRows * 4;
   const hidden = config.apps.filter((a) => a.hidden);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const { shortcuts } = home;
   const single = shortcuts.mode === 'single';
-  const rest = single ? [] : pins.slice(home.dockSize);
+  const rest = single ? [] : pins.slice(first);
   const setShortcuts = (v: Partial<Shortcuts>) => patch('home', { shortcuts: { ...shortcuts, ...v } });
 
   const onDragEnd = (e: DragEndEvent) => {
@@ -250,7 +256,7 @@ export function HomeLayoutPage() {
     <div className="flex min-w-0 flex-col gap-7">
       <PageHeader
         title="快捷方式"
-        sub={`桌面与手机共用同一个顺序：桌面首排显示前 ${home.dockSize} 个，手机首页显示前 ${mobileCap} 个${single ? '' : '，其余在桌面扩展区和手机后续页面'}。改动即时保存。`}
+        sub={`桌面与手机共用同一个顺序：桌面首排占满一行（这个窗口显示前 ${first} 个），手机首页显示前 ${mobileCap} 个${single ? '' : '，其余在桌面扩展区和手机后续页面'}。改动即时保存。`}
       />
       <Group
         title={compact ? `首页网站 · 手机显示前 ${mobileCap} 个` : '固定的网站'}
@@ -267,7 +273,7 @@ export function HomeLayoutPage() {
         <DndContext accessibility={dndAccessibility} sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
           <SortableContext items={pins.map((a) => a.id)} strategy={verticalListSortingStrategy}>
             {pins.map((a, i) => (
-              <PinRow key={a.id} app={a} index={i} count={pins.length} where={whereOf(i + 1, home.dockSize, mobileCap, home.mobileRows * 4, single)} />
+              <PinRow key={a.id} app={a} index={i} count={pins.length} where={whereOf(i + 1, first, mobileCap, home.mobileRows * 4, single)} />
             ))}
           </SortableContext>
         </DndContext>
@@ -317,18 +323,10 @@ export function HomeLayoutPage() {
 
       <Group title={compact ? '布局' : '布局偏好'}>
         {!compact && (
-          <Row label="首排网站数量" sub={`桌面首排 ${DOCK_SIZE_MIN}–${DOCK_SIZE_MAX} 个；超过 ${DOCK_SIZE_MAX} 个会挤压搜索面板宽度`}>
-            <div className="flex items-center gap-0.5 rounded-[11px] bg-ink/6 p-[3px]">
-              <button type="button" aria-label="减少" disabled={home.dockSize <= DOCK_SIZE_MIN} onClick={() => patch('home', { dockSize: home.dockSize - 1 })} className="grid size-8 place-items-center rounded-[9px] border-0 bg-transparent text-ink hover:bg-ink/10 disabled:opacity-30">
-                <Minus className="size-3.5" />
-              </button>
-              <span aria-live="polite" className="w-8 text-center text-[14px] tabular-nums">
-                {home.dockSize}
-              </span>
-              <button type="button" aria-label="增加" disabled={home.dockSize >= DOCK_SIZE_MAX} onClick={() => patch('home', { dockSize: home.dockSize + 1 })} className="grid size-8 place-items-center rounded-[9px] border-0 bg-transparent text-ink hover:bg-ink/10 disabled:opacity-30">
-                <Plus className="size-3.5" />
-              </button>
-            </div>
+          <Row label="首排网站数量" sub="自动占满一行：搜索面板越宽、图标越小，放得越多；扩展区每行与首排对齐">
+            <span aria-live="polite" className="text-[14px] text-ink/70 tabular-nums">
+              {first} 个
+            </span>
           </Row>
         )}
         <Row label={compact ? '首页行数' : '手机首页行数'} sub={`${home.mobileRows * 4} 个位置；3 行时仍在屏幕下 45% 内`} stacked>
@@ -352,7 +350,7 @@ export function HomeLayoutPage() {
           <Switch label="搜索时显示最近使用" checked={home.showRecent} onChange={(v) => patch('home', { showRecent: v })} />
         </Row>
       </Group>
-      {compact && <p className="m-0 -mt-4 px-4 text-[12.5px] leading-[1.6] text-ink/46">桌面 Dock 数量在电脑上调整，两端共用同一顺序。</p>}
+      {compact && <p className="m-0 -mt-4 px-4 text-[12.5px] leading-[1.6] text-ink/46">桌面首排自动占满一行，两端共用同一顺序。</p>}
 
       <Group title="已隐藏的应用">
         {hidden.map((a) => (
@@ -389,11 +387,11 @@ export function HomeLayoutPage() {
           />
         </div>
         <div className="grid min-h-[400px] place-items-center rounded-[20px] py-6" style={{ background: 'rgba(0,0,0,0.18)' }}>
-          <Preview device={device} />
+          <Preview device={device} first={first} />
         </div>
         <span className="text-[12px] leading-[1.6] text-ink/46">
           {device === 'pc'
-            ? `首排：前 ${home.dockSize} 个收藏 + 快速打开${rest.length ? ` · 扩展区 ${rest.length} 个` : ''}`
+            ? `首排：前 ${first} 个收藏 + 快速打开，占满一行${rest.length ? ` · 扩展区 ${rest.length} 个` : ''}`
             : `手机首页：${home.mobileRows} 行 × 4 列${pins.length > mobileCap && home.shortcuts.mode !== 'single' ? `，其余 ${pins.length - mobileCap} 个左右滑动或上拉查看` : '；不足时显示空位，点按可添加'}`}
         </span>
       </aside>

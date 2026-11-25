@@ -20,12 +20,9 @@ function Harness({ extra, mode = 'expand', bare }: { extra: AppEntry[]; mode?: '
       <Dock
         sites={sites(5)}
         extra={extra}
-        services={[]}
-        dockSize={5}
         edit={false}
         iconSize={56}
         labels
-        showBadges={false}
         expanded={expanded}
         rows={1}
         showPager

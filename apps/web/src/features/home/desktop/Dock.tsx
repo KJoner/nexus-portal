@@ -5,20 +5,21 @@ import { hostOf, paginate } from '@nexus/shared';
 import type { AppEntry, StatusLevel } from '@nexus/shared';
 import { ChevronDown, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type RefObject } from 'react';
-import type { ServiceView } from '../../../data/status';
 import { AppTile } from '../../../icons/AppTile';
 import { cn } from '../../../lib/cn';
 import { dndAccessibility } from '../../../lib/dnd';
 import { appLinkProps, recordAppOpen } from '../../../lib/open';
+import { COL_GAP, extensionCols } from './geometry';
+
+export { extensionCols } from './geometry';
 
 export type MenuSource = 'dock' | 'drawer' | 'hosted';
 
 interface Props {
+  /** The first row: as many pins as fill it (firstRowCapacity), 快速打开 in the last column. */
   sites: AppEntry[];
   /** Pinned sites after the first row (v0.2 扩展区). */
   extra: AppEntry[];
-  services: ServiceView[];
-  dockSize: number;
   edit: boolean;
   iconSize: number;
   labels: boolean;
@@ -26,7 +27,6 @@ interface Props {
   labelsOnHover?: boolean;
   /** Outer width of the search slab (设置 · 搜索面板宽度). */
   slabWidth?: number;
-  showBadges: boolean;
   /** Extension visible. */
   expanded: boolean;
   /** Mouse over the rows (悬停展开); the wrapper is what useDockPeek watches. */
@@ -46,9 +46,6 @@ interface Props {
   onMoveTo(id: string, index: number): void;
 }
 
-const GAP = 3;
-const SEP = 13;
-const EXT_GAP_X = 12;
 const EXT_GAP_Y = 14;
 const EXT_TOP = 18;
 const PAGER_H = 34;
@@ -124,11 +121,6 @@ export function dockHeights(iconSize: number, labels: boolean, rows: number, pag
   const first = 22 + item + bottom;
   const grid = rows * item + (rows - 1) * EXT_GAP_Y;
   return { first, item, rowGap: EXT_GAP_Y, extension: EXT_TOP + grid + (pager ? PAGER_H : 0) + EXT_BOTTOM - bottom };
-}
-
-/** Extension columns: the natural Dock cell with a little more air, as many as fit the slab. */
-export function extensionCols(iconSize: number, slabWidth = 760): number {
-  return Math.max(5, Math.min(12, Math.floor((slabWidth - 48 + EXT_GAP_X) / (iconSize + 12 + EXT_GAP_X))));
 }
 
 const itemClass = 'group/tile flex flex-col items-center gap-[9px] text-ink no-underline transition-transform duration-140 ease-soft';
@@ -218,8 +210,9 @@ function AddTile({ cell, iconSize, labels, label, onClick }: { cell: number; ico
   );
 }
 
+/** Between the pins and 快速打开: a line in the middle of the column gap, taking no width of its own. */
 function Separator() {
-  return <span aria-hidden className="mx-1.5 mt-2 h-10 w-px flex-none bg-ink/14" />;
+  return <span aria-hidden className="absolute top-2 h-10 w-px bg-ink/14" style={{ left: -(COL_GAP + 1) / 2 }} />;
 }
 
 export type DockHandleState = 'closed' | 'peek' | 'pinned';
@@ -290,15 +283,14 @@ function useWheelPaging(el: HTMLElement | null, pages: number, go: (dir: number)
 }
 
 export function Dock(props: Props) {
-  const { sites, extra, services, dockSize, edit, iconSize, labels, labelsOnHover, showBadges, expanded, rows, showPager, slabWidth = 760, allRef } = props;
+  const { sites, extra, edit, iconSize, labels, labelsOnHover, expanded, rows, showPager, slabWidth = 760, allRef } = props;
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
-  const showAdd = edit && sites.length < dockSize;
-  const cells = sites.length + (showAdd ? 1 : 0) + services.length + 1;
-  const seps = services.length ? 2 : 1;
-  const natural = iconSize + 12;
-  const cell = Math.max(iconSize + 2, Math.min(natural, Math.floor((slabWidth - 48 - (cells - 1) * GAP - seps * SEP) / cells)));
-
+  // One grid for both rows: the first row holds every column but the last, which is 快速打开, so a
+  // full first row is exactly as wide as the extension under it and each pin sits on a column.
+  const cell = iconSize + 12;
   const cols = extensionCols(iconSize, slabWidth);
+  const capacity = cols - 1;
+  const showAdd = edit && sites.length < capacity;
   const pages = paginate(extra, cols * rows);
   const [page, setPage] = useState(0);
   const [dir, setDir] = useState<'next' | 'prev' | null>(null);
@@ -349,8 +341,6 @@ export function Dock(props: Props) {
 
   const shownExtra = pages[current] ?? [];
   const lastPage = current === pages.length - 1;
-  // One page that fits under the Dock row, with no services and no 添加 tile (a new space's 4×2).
-  const aligned = pages.length === 1 && !showAdd && services.length === 0 && !props.addToExtension && extra.length > 0 && extra.length <= sites.length && extra.length <= cols;
   const total = sites.length + extra.length;
 
   const onDragEnd = (e: DragEndEvent) => {
@@ -372,43 +362,27 @@ export function Dock(props: Props) {
   return (
     <DndContext accessibility={dndAccessibility} sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
       <div className="h-full" {...props.hover}>
-        <div data-dock-row="first" className="flex items-start justify-center px-6 pt-[22px]" style={{ gap: GAP }}>
+        <div data-dock-row="first" className="flex items-start justify-center px-6 pt-[22px]" style={{ gap: COL_GAP }}>
           <SortableContext items={sites.map((a) => a.id)} strategy={horizontalListSortingStrategy}>
             {sites.map((app, i) => (
               <DockSite key={app.id} app={app} index={i} cell={cell} {...siteProps} />
             ))}
           </SortableContext>
-          {showAdd && <AddTile cell={cell} iconSize={iconSize} labels={labels} label={`添加 ${sites.length}/${dockSize}`} onClick={props.onOpenDrawer} />}
-          {services.length > 0 && <Separator />}
-          {services.map((s) => (
-            <a
-              key={s.app.id}
-              {...appLinkProps(s.app)}
-              title={`${s.app.name} · ${s.levelLabel}：${s.message}`}
-              aria-label={showBadges ? `${s.app.name}，${s.levelLabel}：${s.message}` : s.app.name}
-              onClick={(e) => (edit ? e.preventDefault() : recordAppOpen(s.app))}
-              onContextMenu={(e) => props.onMenu(e, s.app, 'hosted')}
-              className={cn(itemClass, 'flex-none', !edit && liftClass, edit && 'pointer-events-none opacity-40')}
-              style={{ width: cell }}
+          {showAdd && <AddTile cell={cell} iconSize={iconSize} labels={labels} label={`添加 ${sites.length}/${capacity}`} onClick={props.onOpenDrawer} />}
+          <div className="relative flex-none" style={{ width: cell }}>
+            <Separator />
+            <button
+              ref={allRef}
+              type="button"
+              aria-label="快速打开"
+              onClick={props.onOpenDrawer}
               tabIndex={edit ? -1 : undefined}
+              className={cn(itemClass, 'w-full border-0 bg-transparent p-0', !edit && liftClass, edit && 'pointer-events-none opacity-40')}
             >
-              <AppTile target={{ kind: 'app', app: s.app }} size={iconSize} status={showBadges ? s.level : undefined} />
-              <Label name={s.app.name} labels={labels} onHover={labelsOnHover} cell={cell} />
-            </a>
-          ))}
-          <Separator />
-          <button
-            ref={allRef}
-            type="button"
-            aria-label="快速打开"
-            onClick={props.onOpenDrawer}
-            tabIndex={edit ? -1 : undefined}
-            className={cn(itemClass, 'flex-none border-0 bg-transparent p-0', !edit && liftClass, edit && 'pointer-events-none opacity-40')}
-            style={{ width: cell }}
-          >
-            <AppTile target={{ kind: 'all' }} size={iconSize} />
-            <Label name="快速打开" labels={labels} onHover={labelsOnHover} cell={cell} />
-          </button>
+              <AppTile target={{ kind: 'all' }} size={iconSize} />
+              <Label name="快速打开" labels={labels} onHover={labelsOnHover} cell={cell} />
+            </button>
+          </div>
         </div>
 
         {opened && (extra.length > 0 || props.addToExtension) && (
@@ -421,34 +395,17 @@ export function Dock(props: Props) {
             className="px-6 transition-[opacity,visibility] duration-200 ease-soft"
             style={{ paddingTop: EXT_TOP, opacity: expanded ? 1 : 0, visibility: expanded ? 'visible' : 'hidden' }}
           >
-            <SortableContext items={shownExtra.map((a) => a.id)} strategy={aligned ? horizontalListSortingStrategy : rectSortingStrategy}>
-              {aligned ? (
-                // A second row no longer than the first (a new space's 4×2): laid out like the Dock row,
-                // its sites right under the Dock's, with the 快速打开 column left empty.
-                <div className="flex items-start justify-center" style={{ gap: GAP }}>
-                  {shownExtra.map((app, k) => (
-                    <DockSite key={app.id} app={app} index={sites.length + k} cell={cell} {...siteProps} />
-                  ))}
-                  {Array.from({ length: sites.length - shownExtra.length }, (_, k) => (
-                    <span key={k} aria-hidden className="flex-none" style={{ width: cell }} />
-                  ))}
-                  <span aria-hidden className="invisible flex">
-                    <Separator />
-                  </span>
-                  <span aria-hidden className="flex-none" style={{ width: cell }} />
-                </div>
-              ) : (
-                <div
-                  key={current}
-                  className={cn('grid justify-center', dir === 'next' && 'nx-page-next', dir === 'prev' && 'nx-page-prev')}
-                  style={{ gridTemplateColumns: `repeat(${cols}, ${natural}px)`, columnGap: EXT_GAP_X, rowGap: EXT_GAP_Y }}
-                >
-                  {shownExtra.map((app, k) => (
-                    <DockSite key={app.id} app={app} index={sites.length + current * cols * rows + k} cell={natural} {...siteProps} />
-                  ))}
-                  {props.addToExtension && lastPage && shownExtra.length < cols * rows && <AddTile cell={natural} iconSize={iconSize} labels={labels} label="添加" onClick={props.onOpenDrawer} />}
-                </div>
-              )}
+            <SortableContext items={shownExtra.map((a) => a.id)} strategy={rectSortingStrategy}>
+              <div
+                key={current}
+                className={cn('grid justify-center', dir === 'next' && 'nx-page-next', dir === 'prev' && 'nx-page-prev')}
+                style={{ gridTemplateColumns: `repeat(${cols}, ${cell}px)`, columnGap: COL_GAP, rowGap: EXT_GAP_Y }}
+              >
+                {shownExtra.map((app, k) => (
+                  <DockSite key={app.id} app={app} index={sites.length + current * cols * rows + k} cell={cell} {...siteProps} />
+                ))}
+                {props.addToExtension && lastPage && shownExtra.length < cols * rows && <AddTile cell={cell} iconSize={iconSize} labels={labels} label="添加" onClick={props.onOpenDrawer} />}
+              </div>
             </SortableContext>
             {showPager && pages.length > 1 && (
               <div className="flex items-center justify-center gap-1 pt-2" style={{ height: PAGER_H }}>

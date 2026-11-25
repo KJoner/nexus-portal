@@ -33,25 +33,33 @@ async function blockedAria(page: Page) {
 test.describe('desktop', () => {
   test.skip(({ isMobile }) => isMobile, 'desktop layout');
 
-  test('more than 12 pins: the first row stays, the rest page through the extension', async ({ home: page }) => {
-    const pins = await addPinnedSites(page.context().request, 20);
-    expect(pins).toHaveLength(25);
+  test('more pins than fit: the first row is full, the rest page through the extension, column for column', async ({ home: page }) => {
+    const pins = await addPinnedSites(page.context().request, 28);
+    expect(pins).toHaveLength(33);
     await page.reload();
+    // A 760 px panel with 56 px icons has nine columns: eight pins and 快速打开 in the first row.
     const first = page.locator('[data-dock-row="first"] [data-dock]');
-    await expect(first).toHaveCount(5);
+    await expect(first).toHaveCount(8);
     const firstIds = await first.evaluateAll((els) => els.map((e) => e.getAttribute('data-dock')));
-    expect(firstIds).toEqual(pins.slice(0, 5));
+    expect(firstIds).toEqual(pins.slice(0, 8));
 
-    const toggle = page.getByRole('button', { name: '展开更多快捷方式（另有 20 个）' });
+    const toggle = page.getByRole('button', { name: '展开更多快捷方式（另有 25 个）' });
     await toggle.click();
     const ext = page.getByRole('group', { name: /更多快捷方式/ });
     await expect(ext).toHaveAttribute('aria-label', '更多快捷方式，第 1 / 2 页');
-    await expect(ext.locator(dock(pins[5]!))).toBeVisible();
+    await expect(ext.locator(dock(pins[8]!))).toBeVisible();
+    // One grid: the rows under the first are as wide as it, each tile on the column above it (the
+    // ninth column under 快速打开).
+    const left = async (sel: string) => Math.round((await page.locator(sel).boundingBox())!.x);
+    expect(await left(dock(pins[8]!))).toBe(await left(dock(pins[0]!)));
+    expect(await left(dock(pins[15]!))).toBe(await left(dock(pins[7]!)));
+    const allX = Math.round((await page.locator('[data-dock-row="first"]').getByRole('button', { name: '快速打开' }).boundingBox())!.x);
+    expect(await left(dock(pins[16]!))).toBe(allX);
     await ext.getByRole('button', { name: '下一页' }).click();
     await expect(ext).toHaveAttribute('aria-label', '更多快捷方式，第 2 / 2 页');
-    const last = ext.locator(dock(pins[24]!));
+    const last = ext.locator(dock(pins[32]!));
     await expect(last).toBeVisible();
-    await expect(last).toHaveAttribute('href', 'https://s19.example.com');
+    await expect(last).toHaveAttribute('href', 'https://s27.example.com');
 
     // The wheel turns pages only over the extension, one page per gesture.
     await ext.hover();
@@ -61,7 +69,7 @@ test.describe('desktop', () => {
     // Collapsing and expanding keeps both the first row and the order.
     await page.keyboard.press('Escape');
     await expect(page.getByRole('button', { name: /展开更多快捷方式/ })).toHaveAttribute('aria-expanded', 'false');
-    expect(await first.evaluateAll((els) => els.map((e) => e.getAttribute('data-dock')))).toEqual(pins.slice(0, 5));
+    expect(await first.evaluateAll((els) => els.map((e) => e.getAttribute('data-dock')))).toEqual(pins.slice(0, 8));
     expect((await serverConfig(page.context().request)).pins).toEqual(pins);
   });
 
@@ -165,7 +173,7 @@ test.describe('desktop', () => {
     const ext = page.getByRole('group', { name: /更多快捷方式/ });
     await page.locator('[data-dock-row="first"]').hover();
     await expect(ext).toBeVisible();
-    await ext.locator(dock(pins[5]!)).click({ button: 'right' });
+    await ext.locator(dock(pins[8]!)).click({ button: 'right' });
     await page.getByRole('menuitem', { name: '向前移动' }).hover();
     await page.waitForTimeout(500);
     await expect(ext).toBeVisible();
@@ -181,7 +189,7 @@ test.describe('desktop', () => {
     const ext = page.getByRole('group', { name: /更多快捷方式/ });
     const handle = page.getByRole('button', { name: /更多快捷方式/ });
     const firstRow = page.locator('[data-dock-row="first"]');
-    const tile = ext.locator(dock(pins[5]!));
+    const tile = ext.locator(dock(pins[8]!));
 
     // Peeking, focus on a tile, the mouse leaves.
     await firstRow.hover();
@@ -221,7 +229,7 @@ test.describe('desktop', () => {
     const context = page.context();
     const api = context.request;
     const pins = await addPinnedSites(api, 20);
-    const app = ((await serverConfig(api)) as unknown as { apps: App[] }).apps.find((a) => a.id === pins[5])!;
+    const app = ((await serverConfig(api)) as unknown as { apps: App[] }).apps.find((a) => a.id === pins[8])!;
     await ops(api, [{ type: 'app.upsert', app: { ...app, openIn: 'new' } }]);
     await context.route('https://*.example.com/**', (r) => r.fulfill({ contentType: 'text/html', body: 'ok' }));
     await page.reload();
@@ -233,10 +241,10 @@ test.describe('desktop', () => {
     await expect(ext).toBeVisible();
     await page.waitForTimeout(400); // the slab has grown: the tile is under the pointer's way
     const opened = context.waitForEvent('page');
-    await ext.locator(dock(pins[5]!)).click();
+    await ext.locator(dock(pins[8]!)).click();
     await (await opened).close();
     await page.bringToFront();
-    await expect(ext.locator(dock(pins[5]!))).toBeFocused();
+    await expect(ext.locator(dock(pins[8]!))).toBeFocused();
 
     await page.mouse.move(60, 600);
     await expect(handle).toHaveAttribute('aria-expanded', 'false');
@@ -250,18 +258,14 @@ test.describe('desktop', () => {
     await page.reload();
     const all = page.locator('[data-dock-row="first"]').getByRole('button', { name: '快速打开' });
     const handle = page.getByRole('button', { name: /更多快捷方式/ });
-    const first = page.locator(dock(pins[5]!));
+    const first = page.locator(dock(pins[8]!));
     const last = page.locator(dock(pins[pins.length - 1]!));
 
-    // Folded: the hidden links are skipped — after 快速打开 comes the shortcuts' footer (添加收藏, UI v2),
-    // then the button hanging under the slab, in screen order, in both directions.
-    const add = page.getByRole('button', { name: '添加收藏', exact: true });
+    // Folded: the hidden links are skipped — after 快速打开 comes the button hanging under the slab,
+    // in both directions.
     await all.focus();
     await page.keyboard.press('Tab');
-    await expect(add).toBeFocused();
-    await page.keyboard.press('Tab');
     await expect(handle).toBeFocused();
-    await page.keyboard.press('Shift+Tab');
     await page.keyboard.press('Shift+Tab');
     await expect(all).toBeFocused();
 
@@ -270,21 +274,16 @@ test.describe('desktop', () => {
     await page.keyboard.press('Enter');
     await expect(handle).toHaveAttribute('aria-expanded', 'true');
     await page.keyboard.press('Shift+Tab');
-    await expect(add).toBeFocused();
-    await page.keyboard.press('Shift+Tab');
     await expect(last).toBeFocused();
-    await page.keyboard.press('Tab');
     await page.keyboard.press('Tab');
     await expect(handle).toBeFocused();
     await all.focus();
     await page.keyboard.press('Tab');
     await expect(first).toBeFocused();
 
-    // Esc from inside lands on the button, where the keyboard carries on (folded again: back past the footer).
+    // Esc from inside lands on the button, where the keyboard carries on (folded again: back to 快速打开).
     await page.keyboard.press('Escape');
     await expect(handle).toBeFocused();
-    await page.keyboard.press('Shift+Tab');
-    await expect(add).toBeFocused();
     await page.keyboard.press('Shift+Tab');
     await expect(all).toBeFocused();
   });
@@ -317,7 +316,7 @@ test.describe('desktop', () => {
         await frame();
       }
       return { inert: el.hasAttribute('inert'), hitInside: !!hit && el.contains(hit), focused: document.activeElement === tile, samples };
-    }, pins[5]!);
+    }, pins[8]!);
 
     expect(seen.inert).toBe(true);
     expect(seen.hitInside).toBe(false);
@@ -353,7 +352,7 @@ test.describe('desktop', () => {
     // The button, with the focus thrown into the extension on the way.
     for (let i = 0; i < 6; i++) {
       await handle.click();
-      if (i % 2 === 0) await ext.locator(dock(pins[5]!)).focus();
+      if (i % 2 === 0) await ext.locator(dock(pins[8]!)).focus();
     }
     await expect(handle).toHaveAttribute('aria-expanded', 'false');
     await expect(element).toHaveAttribute('inert');
@@ -381,17 +380,19 @@ test.describe('desktop', () => {
   });
 
   test('edit mode: Alt+→ moves a pin from the first row into the extension', async ({ home: page }) => {
-    const pins = await addPinnedSites(page.context().request, 3);
+    // Nine pins: eight fill the first row, the ninth is in the extension.
+    const pins = await addPinnedSites(page.context().request, 4);
     await page.reload();
-    await page.locator(dock('notion')).click({ button: 'right' });
+    const moved = pins[7]!;
+    await page.locator(dock(moved)).click({ button: 'right' });
     await page.getByRole('menuitem', { name: '编辑首页…' }).click();
     const ext = page.getByRole('group', { name: /更多快捷方式/ });
     await expect(ext).toBeVisible();
-    await page.locator(dock('notion')).focus();
+    await page.locator(dock(moved)).focus();
     await page.keyboard.press('Alt+ArrowRight');
-    await expect.poll(async () => (await serverConfig(page.context().request)).pins.indexOf('notion')).toBe(5);
-    await expect(ext.locator(dock('notion'))).toBeFocused();
-    await expect(page.locator('[data-dock-row="first"] [data-dock]').nth(4)).toHaveAttribute('data-dock', pins[5]!);
+    await expect.poll(async () => (await serverConfig(page.context().request)).pins.indexOf(moved)).toBe(8);
+    await expect(ext.locator(dock(moved))).toBeFocused();
+    await expect(page.locator('[data-dock-row="first"] [data-dock]').nth(7)).toHaveAttribute('data-dock', pins[8]!);
   });
 
   test('context menu offers new tab and moving to the ends', async ({ home: page }) => {
@@ -470,7 +471,8 @@ test.describe('desktop', () => {
     expect(after.pins).toEqual(legacy.pins);
     expect(after.settings.home.shortcuts).toEqual({ mode: 'expand', pageRows: 2, pager: true, remember: false });
     await page.reload();
-    await expect(page.getByRole('button', { name: '展开更多快捷方式（另有 7 个）' })).toBeVisible();
+    // Eight fill the first row (1440 px window, default panel); four are left for the extension.
+    await expect(page.getByRole('button', { name: '展开更多快捷方式（另有 4 个）' })).toBeVisible();
   });
 });
 

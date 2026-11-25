@@ -1,6 +1,7 @@
-import { homeCapacity, isDailyId, MAX_PINS, type Op } from '@nexus/shared';
+import { isDailyId, MAX_PINS, type Op } from '@nexus/shared';
 import { toast } from '../../components/toast-store';
 import { dispatch, useConfigStore, wallpaperSources } from '../../data/config-store';
+import { desktopFirstRow } from './desktop/geometry';
 import { entryOf, type WallpaperEntry } from './Wallpaper';
 
 const cfg = () => useConfigStore.getState().snapshot.config;
@@ -35,7 +36,7 @@ async function owned(entry: WallpaperEntry): Promise<WallpaperEntry | null> {
 export const homeActions = {
   pin(appId: string, onFull?: () => void) {
     const position = cfg().pins.length + 1;
-    const { desktop } = homeCapacity(cfg());
+    const desktop = desktopFirstRow(cfg().settings, window.innerWidth);
     const single = cfg().settings.home.shortcuts.mode === 'single';
     const extra = position <= desktop ? '' : single ? `；桌面首排只显示前 ${desktop} 个` : '，位于桌面扩展区';
     commit({ type: 'pin.add', appId }, `已固定 ${nameOf(appId)} 到首页${extra}`, onFull);

@@ -5,6 +5,7 @@ import { deleteWallpaper, uploadWallpaper, useConfig } from '../../../data/confi
 import { AppTile } from '../../../icons/AppTile';
 import { cn } from '../../../lib/cn';
 import { formatClock, formatDate } from '../../../lib/time';
+import { desktopFirstRow } from '../../home/desktop/geometry';
 import { useDailyEntry } from '../../home/rotation';
 import { remoteSrc, useWallpapers, Wallpaper, type WallpaperEntry } from '../../home/Wallpaper';
 import { lookDiff, lookPatch, useLookDraft } from '../look-draft';
@@ -25,11 +26,14 @@ function Preview({ look, entry, device, onFocal }: { look: Look; entry: Wallpape
   const compact = useCompact();
   const now = new Date();
   const time = formatClock(now, look.clock, look.showSeconds);
-  const tiles = pinnedSites(config).slice(0, config.settings.home.dockSize);
+  const tiles = pinnedSites(config);
   const scaled: Look = { ...look, blur: Math.round(look.blur * 0.3 * 10) / 10 };
   const focal = look.focal[device];
   const size = ({ s: [17, 21], m: [20, 24], l: [23, 27] } as const)[look.iconSize];
   const pc = device === 'desktop';
+  // The desktop first row as this window shows it, down to what the 252 px drawing holds.
+  const pcGap = look.iconSize === 'l' ? 4 : 6;
+  const pcTiles = Math.min(desktopFirstRow(config.settings, window.innerWidth), Math.floor((236 - size[0]) / (size[0] + pcGap)));
   const box = compact ? { w: '100%', h: 232, r: 22 } : pc ? { w: 416, h: 260, r: 12 } : { w: 160, h: 346, r: 24 };
   return (
     <div
@@ -70,8 +74,8 @@ function Preview({ look, entry, device, onFocal }: { look: Look; entry: Wallpape
           <div className="rounded-[10px] backdrop-blur-[10px]" style={{ background: 'rgb(var(--nx-s1-rgb)/0.5)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.07)' }}>
             <div className="flex h-6 items-center px-[9px] text-[7.5px] opacity-60">搜索、输入网址，或打开应用</div>
             <div className="mx-2 h-px bg-ink/12" />
-            <div className="flex justify-center px-2 py-[9px]" style={{ gap: look.iconSize === 'l' ? 4 : 6 }}>
-              {[...tiles.map((a) => <AppTile key={a.id} target={{ kind: 'app', app: a }} size={size[0]} />), <AppTile key="all" target={{ kind: 'all' }} size={size[0]} />]}
+            <div className="flex justify-center px-2 py-[9px]" style={{ gap: pcGap }}>
+              {[...tiles.slice(0, pcTiles).map((a) => <AppTile key={a.id} target={{ kind: 'app', app: a }} size={size[0]} />), <AppTile key="all" target={{ kind: 'all' }} size={size[0]} />]}
             </div>
           </div>
         </div>

@@ -1,7 +1,8 @@
-import { homeCapacity, pinnedSites, UNFILED, type Config, type Op, type SettingsSection } from '@nexus/shared';
+import { pinnedSites, UNFILED, type Config, type Op, type SettingsSection } from '@nexus/shared';
 import { Bookmark, DatabaseBackup, EyeOff, Palette, Search, UserRound, type LucideIcon } from 'lucide-react';
 import { toast } from '../../components/toast-store';
 import { dispatch } from '../../data/config-store';
+import { desktopFirstRow } from '../home/desktop/geometry';
 import type { WallpaperEntry } from '../home/Wallpaper';
 
 export type PageId = 'appearance' | 'display' | 'home' | 'favorites' | 'search' | 'account' | 'data' | 'privacy';
@@ -102,12 +103,13 @@ export function summaries(c: Config, wp: WallpaperEntry, sync: string, data = '�
   const pr = c.settings.privacy;
   const engine = c.engines.find((e) => e.id === c.settings.search.defaultEngine);
   const pins = pinnedSites(c).length;
-  const cap = homeCapacity(c);
+  // This window's first row: it fills the row, so it follows the panel width and the icon size.
+  const first = desktopFirstRow(c.settings, window.innerWidth);
   const groups = c.categories.filter((k) => k.id !== UNFILED).length;
   return {
     appearance: `${c.settings.look.rotation.mode === 'potd' ? '' : `${wp.name} · `}${ROTATION[c.settings.look.rotation.mode]} · 动画${MOTION[c.settings.look.motion]}`,
     display: `${PRESET[c.settings.ui.preset]} · 搜索面板 ${c.settings.ui.desktop.searchWidth}px`,
-    home: `首页 ${pins} 个快捷方式（桌面首排 ${Math.min(pins, cap.desktop)} 个）· 手机 ${c.settings.home.mobileRows} 行`,
+    home: `首页 ${pins} 个快捷方式（桌面首排 ${Math.min(pins, first)} 个）· 手机 ${c.settings.home.mobileRows} 行`,
     favorites: `${groups} 个分组 · ${pins} 个固定到首页`,
     search: `默认 ${engine?.name ?? '—'} · ${c.engines.length} 个引擎 · 历史${c.settings.search.history ? '开启' : '关闭'}`,
     account: sync,

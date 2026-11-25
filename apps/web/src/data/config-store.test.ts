@@ -127,13 +127,28 @@ describe('structural changes are undoable', () => {
     expect(useToastStore.getState().current!.msg).toBe('已撤销');
   });
 
-  it('pinning beyond the Dock capacity explains where it appears', () => {
-    homeActions.pin('figma');
-    expect(useToastStore.getState().current!.msg).toBe('已固定 Figma 到首页，位于桌面扩展区');
-    homeActions.unpin('figma');
-    dispatch({ type: 'settings.patch', section: 'home', patch: { shortcuts: { ...useConfigStore.getState().snapshot.config.settings.home.shortcuts, mode: 'single' } } });
-    homeActions.pin('figma');
-    expect(useToastStore.getState().current!.msg).toBe('已固定 Figma 到首页；桌面首排只显示前 5 个');
+  it('pinning beyond the first row explains where it appears (the row fills the panel)', () => {
+    // A 640 px panel with large icons holds six columns: five pins and 快速打开.
+    const { look, ui } = useConfigStore.getState().snapshot.config.settings;
+    dispatch({ type: 'settings.patch', section: 'look', patch: { iconSize: 'l' } });
+    dispatch({ type: 'settings.patch', section: 'ui', patch: { desktop: { ...ui.desktop, searchWidth: 640 } } });
+    try {
+      homeActions.pin('figma');
+      expect(useToastStore.getState().current!.msg).toBe('已固定 Figma 到首页，位于桌面扩展区');
+      homeActions.unpin('figma');
+      dispatch({ type: 'settings.patch', section: 'home', patch: { shortcuts: { ...useConfigStore.getState().snapshot.config.settings.home.shortcuts, mode: 'single' } } });
+      homeActions.pin('figma');
+      expect(useToastStore.getState().current!.msg).toBe('已固定 Figma 到首页；桌面首排只显示前 5 个');
+      // The default panel and icons: the sixth pin is still in the first row.
+      dispatch({ type: 'settings.patch', section: 'look', patch: { iconSize: look.iconSize } });
+      dispatch({ type: 'settings.patch', section: 'ui', patch: { desktop: ui.desktop } });
+      homeActions.unpin('figma');
+      homeActions.pin('figma');
+      expect(useToastStore.getState().current!.msg).toBe('已固定 Figma 到首页');
+    } finally {
+      dispatch({ type: 'settings.patch', section: 'look', patch: { iconSize: look.iconSize } });
+      dispatch({ type: 'settings.patch', section: 'ui', patch: { desktop: ui.desktop } });
+    }
   });
 
   it('reordering does not raise a toast', () => {
