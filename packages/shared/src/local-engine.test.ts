@@ -160,6 +160,33 @@ describe('local collection: delete and restore are explicit', () => {
     expect(() => localItems.restore(s, item.id, op(), del.item.version, now())).toThrow(/再次删除/);
     expect(again.item.deletedAt).not.toBeNull();
   });
+
+  /**
+   * 删除分组 › 连同内容删除 (UI v2 B09) relies on this: favorites of a group (and its subgroups)
+   * moved to 回收站, then the groups deleted — a restore brings each back to the nearest group left,
+   * the deleted group's parent, or 未分组 for a top-level group (the same rule as the server).
+   */
+  it('a favorite in 回收站 whose group was deleted since comes back to that group’s parent, or 未分组', () => {
+    const s = fresh();
+    localPostOps(s, batch([
+      { type: 'group.create', group: { id: 'arch', label: '归档', parentId: null } },
+      { type: 'group.create', group: { id: 'proj', label: '项目', parentId: 'arch' } },
+      { type: 'group.create', group: { id: 'docs', label: '资料', parentId: 'proj' } },
+    ]), now());
+    const save = (title: string, folderId: string) => localItems.create(s, { opId: op(), item: { title, url: `https://${folderId}-${title.length}.example.test`, folderId } }, now()).item;
+    const [plan, handbook, top] = [save('方案', 'proj'), save('手册', 'docs'), save('总览', 'arch')];
+    for (const i of [plan, handbook]) localItems.remove(s, i.id, op(), i.version, now());
+    // Deepest first, as the page sends them: neither group has subgroups left when it goes.
+    localPostOps(s, batch([{ type: 'group.delete', groupId: 'docs' }, { type: 'group.delete', groupId: 'proj' }]), now());
+    expect(localItems.trash(s).map((i) => [i.title, i.folderId])).toEqual(expect.arrayContaining([['方案', 'arch'], ['手册', 'arch']]));
+    const back = localItems.restore(s, handbook.id, op(), undefined, now());
+    expect(back.item).toMatchObject({ folderId: 'arch', deletedAt: null });
+    // A top-level group: 未分组.
+    localItems.remove(s, top.id, op(), top.version, now());
+    localPostOps(s, batch([{ type: 'group.delete', groupId: 'arch' }]), now());
+    expect(localItems.restore(s, plan.id, op(), undefined, now()).item.folderId).toBe(LOCKED_CATEGORY.none);
+    expect(localItems.restore(s, top.id, op(), undefined, now()).item.folderId).toBe(LOCKED_CATEGORY.none);
+  });
 });
 
 describe('local collection: changes feed', () => {

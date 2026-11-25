@@ -4,11 +4,12 @@ import { join } from 'node:path';
 import { expect, freshTag, ops, test } from './fixtures';
 
 /**
- * 我的收藏 · 拖动 (UI v2 · v12.0.3 N2/N4, spec 06 B06/B10) on the built app: groups dragged in the
- * tree (beside a group, or into it as a subgroup), favorites dragged onto a group (the selected
- * ones with them), the grid sorted by drag. Real mouse events; every result is read back from the
- * server (after a reload where it matters). Synthetic data only (example.test). The Service Worker
- * is off, as in the other suites that stage requests.
+ * 我的收藏 · 拖动与连同内容删除 (UI v2 · v12.0.3 N2/N4, spec 06 B06/B09/B10) on the built app:
+ * groups dragged in the tree (beside a group, or into it as a subgroup), favorites dragged onto a
+ * group (the selected ones with them), the grid sorted by drag, and 删除分组 › 连同内容删除 —
+ * favorites to 回收站 first, groups after, a refusal stops it with no group deleted. Real mouse
+ * events; every result is read back from the server (after a reload where it matters). Synthetic
+ * data only (example.test). The Service Worker is off so a refused request can be staged.
  */
 test.use({ serviceWorkers: 'block' });
 
@@ -192,4 +193,88 @@ test('B10: the grid sorts by drag in a group — the same order the list and 上
   } finally {
     await clean(api, q);
   }
+});
+
+test('B09: 连同内容删除 — favorites to 回收站 first, then the groups; 回收站 after a reload; restored into the parent', async ({ home: page, isMobile }) => {
+  test.skip(isMobile, 'the phone path is in the B11 test');
+  const api = page.request;
+  const tag = freshTag();
+  const [p, c] = [`dp${tag}`, `dc${tag}`];
+  await ops(api, [
+    { type: 'group.create', group: { id: p, label: '待删项目', parentId: 'work' } },
+    { type: 'group.create', group: { id: c, label: '待删资料', parentId: p } },
+  ]);
+  const q = `连同内容${tag}`;
+  const made = [await create(api, `${q}方案`, p), await create(api, `${q}排期`, p), await create(api, `${q}手册`, c)];
+  try {
+    await page.setViewportSize({ width: 1440, height: 960 });
+    await page.goto('/settings/favorites');
+    await tree(page).getByRole('button', { name: '「待删项目」的操作' }).click();
+    await page.getByRole('menuitem', { name: /删除分组/ }).click();
+    const dialog = page.getByRole('dialog', { name: '删除分组「待删项目」' });
+    // The default keeps the content; 连同内容删除 is a choice of its own, with its own preview.
+    await expect(dialog.getByRole('radio', { name: /^只删除分组，保留内容/ })).toBeChecked();
+    await expect(dialog.getByRole('button', { name: '删除分组' })).toBeVisible();
+    await dialog.getByRole('radio', { name: /^连同内容删除/ }).check();
+    const impact = dialog.getByLabel('删除后的影响');
+    await expect(impact).toContainText('删除分组「工作 / 待删项目」和它的 1 个子分组（待删资料）');
+    await expect(impact).toContainText('3 个收藏移到回收站（不是永久删除，可以在「回收站」里恢复）');
+    await expect(impact).toContainText('原来的分组已不在，恢复的收藏会放到「工作」');
+    await expect(impact).toContainText('全部完成后才删除分组');
+    await evidence(page, 'fav-delete-with-content.png');
+
+    // One of them refused by the server (changed elsewhere): it stops there, no group is deleted.
+    const refused = made[1]!;
+    await page.route((url) => url.pathname === `/api/v2/items/${refused.id}`, (route) =>
+      route.request().method() === 'DELETE' ? route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ code: 'REVISION_CONFLICT', message: '这条收藏在你上次看到之后被修改过，没有删除；请确认后再删除', retryable: false }) }) : route.continue(),
+    );
+    await dialog.getByRole('button', { name: '移到回收站并删除分组' }).click();
+    const alert = dialog.getByRole('alert');
+    await expect(alert).toContainText('没有全部完成，分组没有删除');
+    await expect(alert).toContainText(`「${refused.title}」没有移到回收站`);
+    await expect(alert).toContainText(`已移到回收站的 1 个：「${made[0]!.title}」`);
+    await expect(alert).toContainText('分组「待删项目」和它的 1 个子分组都没有删除；另外 1 个收藏还在原来的分组里');
+    expect((await categories(api)).map((k) => k.id)).toEqual(expect.arrayContaining([p, c]));
+    expect((await search(api, q)).map((i) => i.title).sort()).toEqual([made[1]!.title, made[2]!.title].sort());
+
+    // Allowed again: 再试一次 finishes it (the one already in 回收站 is not sent twice).
+    await page.unrouteAll();
+    await dialog.getByRole('button', { name: '再试一次' }).click();
+    await expect(dialog).toBeHidden();
+    await expect(page.getByRole('status').filter({ hasText: '已删除分组「待删项目」及 1 个子分组；2 个收藏已移到回收站，恢复后放到「工作」' })).toBeVisible();
+    await expect.poll(async () => (await categories(api)).some((k) => k.id === p || k.id === c)).toBe(false);
+    expect(await search(api, q)).toEqual([]);
+    const trashed = await search(api, q, true);
+    expect(trashed.map((i) => i.folderId)).toEqual(['work', 'work', 'work']);
+
+    // Reopened: 回收站 lists them (read on its own, not only what this page deleted).
+    await page.reload();
+    await tree(page).getByRole('button', { name: /^回收站/ }).click();
+    const trash = page.getByRole('listbox', { name: /^回收站（\d+ 条）$/ });
+    for (const i of made) await expect(trash.getByRole('option').filter({ hasText: i.title })).toBeVisible();
+    await trash.getByRole('option').filter({ hasText: made[2]!.title }).getByRole('button', { name: '恢复' }).click();
+    await expect(page.getByRole('status').filter({ hasText: `已恢复「${made[2]!.title}」到「工作」` })).toBeVisible();
+    await page.reload();
+    expect((await search(api, made[2]!.title)).map((i) => i.folderId)).toEqual(['work']);
+    await tree(page).getByRole('button', { name: /^工作，直属/ }).click();
+    await expect(page.getByRole('listbox', { name: /（\d+ 条）$/ }).getByRole('option').filter({ hasText: made[2]!.title })).toBeVisible();
+  } finally {
+    await clean(api, q);
+  }
+});
+
+test('B09: offline, 连同内容删除 is not offered (and says why); 保留内容 still is', async ({ home: page, context, isMobile }) => {
+  test.skip(isMobile, 'desktop');
+  await ops(page.request, [{ type: 'group.create', group: { id: `off${freshTag()}`, label: '离线组', parentId: null } }]);
+  await page.goto('/settings/favorites');
+  await expect(groupRow(page, '离线组')).toBeVisible();
+  await context.setOffline(true);
+  await tree(page).getByRole('button', { name: '「离线组」的操作' }).click();
+  await page.getByRole('menuitem', { name: /删除分组/ }).click();
+  const dialog = page.getByRole('dialog', { name: '删除分组「离线组」' });
+  await expect(dialog.getByRole('radio', { name: /^连同内容删除/ })).toBeDisabled();
+  await expect(dialog).toContainText('现在离线：要先确认每个收藏都已移到回收站才能删除分组，联网后再试');
+  await expect(dialog.getByRole('radio', { name: /^只删除分组，保留内容/ })).toBeChecked();
+  await page.keyboard.press('Escape');
+  await context.setOffline(false);
 });

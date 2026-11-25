@@ -242,6 +242,28 @@ describe.each(DIALECTS)('UI v2 我的收藏 (%s)', (dialect) => {
     expect(s.folders.find((f) => f.id === 'fe')).toMatchObject({ parentId: 'work' });
   });
 
+  it('B09 连同内容删除：收藏先进回收站、再删分组与子分组；回收站读得到，恢复后放到上级（顶层分组则未分组）', async () => {
+    const { as } = await setup(dialect);
+    const a = await as(`del-content-${dialect}`);
+    await a.ops({ type: 'group.create', group: { id: 'proj', label: '项目', parentId: 'work' } }, { type: 'group.create', group: { id: 'docs', label: '资料', parentId: 'proj' } });
+    const [p, d, w] = [await a.page('方案', 'https://del-content.example.test/p', 'proj'), await a.page('手册', 'https://del-content.example.test/d', 'docs'), await a.page('周报', 'https://del-content.example.test/w', 'work')];
+    // The page's order: every favorite to 回收站 (against the version shown), then the groups, deepest first.
+    for (const i of [p, d]) expect((await a.req('DELETE', `/api/v2/items/${i.id}?opId=${op('d')}&baseVersion=${i.version}`)).status).toBe(200);
+    expect((await a.ops({ type: 'group.delete', groupId: 'docs' }, { type: 'group.delete', groupId: 'proj' })).status).toBe(200);
+    expect((await a.config()).categories.map((k) => k.id)).not.toContain('proj');
+    // 回收站 as the page reads it after reopening (the snapshot has live favorites only).
+    const trash = (await a.req('GET', '/api/v2/items?deleted=1&limit=200')).body as unknown as { items: Item[] };
+    expect(trash.items.map((i) => [i.title, i.folderId]).sort()).toEqual([['手册', 'work'], ['方案', 'work']]);
+    expect((await a.snapshot()).items.map((i) => i.title)).toEqual(['周报']);
+    const back = await a.req('POST', `/api/v2/items/${d.id}/restore`, { opId: op('r') });
+    expect(back.body).toMatchObject({ result: 'restored', item: { folderId: 'work', deletedAt: null } });
+    // A top-level group: 未分组.
+    expect((await a.req('DELETE', `/api/v2/items/${w.id}?opId=${op('d')}&baseVersion=${w.version}`)).status).toBe(200);
+    expect((await a.ops({ type: 'group.delete', groupId: 'work' })).status).toBe(200);
+    expect(((await a.req('POST', `/api/v2/items/${w.id}/restore`, { opId: op('r') })).body as unknown as { item: Item }).item.folderId).toBe('none');
+    expect(((await a.req('POST', `/api/v2/items/${p.id}/restore`, { opId: op('r') })).body as unknown as { item: Item }).item.folderId).toBe('none');
+  });
+
   it('B15 书签导入：保留层级、预览不写入、同名叶子不合并、撤销删掉新建的空分组', async () => {
     const { as } = await setup(dialect);
     const a = await as(`import-${dialect}`);

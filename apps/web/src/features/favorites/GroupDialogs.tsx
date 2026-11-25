@@ -1,15 +1,23 @@
 import { GROUP_LIMITS, groupDeleteImpact, groupPath, heightOf, isWithin, parentProblem, siblingNameTaken, UNFILED, type Category, type Item } from '@nexus/shared';
 import { useMemo, useState } from 'react';
+import { toast } from '../../components/toast-store';
+import { dispatch, useConfigStore } from '../../data/config-store';
+import { libraryApi, refileTrashed, useLibrary } from '../../data/library';
+import { cn } from '../../lib/cn';
+import { host } from '../../lib/host';
 import { apply } from '../settings/model';
-import { Button, Dialog } from '../settings/ui';
+import { Button, Dialog, Spinner } from '../settings/ui';
+import { contentDeleteDone, contentDeletePlan, contentDeleteReport, runContentDelete } from './group-delete';
 import { pathLabel } from './model';
 import { TextField } from './parts';
 
 /**
  * 管理分组 (UI v2 · spec 02 N4, 03 §4): create (also as a sub-group), rename, move with the full new
- * path shown first, delete with what it affects shown first — its favorites and sub-groups are kept
- * (moved one level up / to 未分组), never deleted. Every rule (cycle, depth 8, 50 groups, same name
- * under the same parent) is checked here for the message and again by the shared ops and the server.
+ * path shown first, delete with what it affects shown first — by default its favorites and
+ * sub-groups are kept (moved one level up / to 未分组); 连同内容删除 is a separate choice with its own
+ * preview, and even then the favorites go to 回收站 (group-delete.ts), never deleted for good. Every
+ * rule (cycle, depth 8, 50 groups, same name under the same parent) is checked here for the message
+ * and again by the shared ops and the server.
  */
 export type GroupTask = { kind: 'create'; parentId: string | null } | { kind: 'rename'; id: string } | { kind: 'move'; id: string } | { kind: 'delete'; id: string };
 
@@ -191,46 +199,139 @@ function MoveGroup({ group, categories, onClose }: { group: Category; categories
 
 function DeleteGroup({ group, categories, items, onClose, onDone }: { group: Category; categories: readonly Category[]; items: readonly Item[]; onClose(): void; onDone?(id: string | null): void }) {
   const impact = useMemo(() => groupDeleteImpact(categories, items, group.id), [categories, items, group.id]);
+  const pins = useLibrary((s) => s.pins);
+  const queued = useLibrary((s) => s.queued);
+  const space = useConfigStore((s) => s.space);
+  const online = useConfigStore((s) => s.online);
+  const plan = useMemo(() => contentDeletePlan(categories, items, new Set(pins), group.id), [categories, items, pins, group.id]);
+  const [mode, setMode] = useState<'keep' | 'content'>('keep');
+  const [busy, setBusy] = useState<{ done: number; total: number } | null>(null);
+  const [failure, setFailure] = useState<{ title: string; lines: string[] } | null>(null);
   if (!impact) return null;
+  // 连同内容删除 has to know that every favorite reached 回收站 before a group goes: not offline
+  // (a removal would only be queued here), not behind changes still waiting, never read-only.
+  const blocked = host.readOnly
+    ? '这里只能查看收藏，不能删除'
+    : space === 'account' && (!online || (typeof navigator !== 'undefined' && navigator.onLine === false))
+      ? '现在离线：要先确认每个收藏都已移到回收站才能删除分组，联网后再试'
+      : queued
+        ? `还有 ${queued} 项更改等待同步，同步完成后才能连同内容删除`
+        : !plan
+          ? `「${group.label}」不能连同内容删除`
+          : null;
+  // Unavailable now (gone offline meanwhile): shown as what the button does — keep the content.
+  const picked = blocked ? 'keep' : mode;
+  const content = picked === 'content' && !!plan;
   const remove = () => {
+    const before = useConfigStore.getState().snapshot.config.categories;
     if (apply({ type: 'group.delete', groupId: group.id }, `已删除分组「${group.label}」，里面的内容已移到「${impact.moveTo.label}」`, false)) {
+      refileTrashed(before, useConfigStore.getState().snapshot.config.categories);
       onDone?.(null);
       onClose();
     }
   };
+  const removeWithContent = async () => {
+    if (!plan || blocked || busy) return;
+    setFailure(null);
+    setBusy({ done: 0, total: plan.items.length });
+    const before = useConfigStore.getState().snapshot.config.categories;
+    const r = await runContentDelete(plan, {
+      remove: (i) => libraryApi.remove(i),
+      liveIn: (ids) => Object.values(useLibrary.getState().items).filter((i) => i.deletedAt === null && ids.has(i.folderId)),
+      deleteGroups: (ops) => {
+        const d = dispatch(ops);
+        return d.ok ? { ok: true } : { ok: false, reason: d.error.message };
+      },
+      progress: (done, total) => setBusy({ done, total }),
+    });
+    setBusy(null);
+    if (!r.ok) return setFailure(contentDeleteReport(plan, r));
+    refileTrashed(before, useConfigStore.getState().snapshot.config.categories);
+    toast({ msg: contentDeleteDone(plan, r), tone: 'ok' });
+    onDone?.(null);
+    onClose();
+  };
+  const choice = (value: 'keep' | 'content', title: string, sub: string, disabled?: boolean) => (
+    <label className={cn('flex items-start gap-3 rounded-xl px-3.5 py-3', disabled ? 'opacity-60' : 'cursor-pointer')} style={{ background: picked === value ? 'rgb(var(--nx-amber-rgb)/0.1)' : 'rgb(var(--nx-ink-rgb)/0.04)', boxShadow: picked === value ? 'inset 0 0 0 1.5px rgb(var(--nx-amber-rgb)/0.7)' : 'inset 0 0 0 1px rgb(var(--nx-ink-rgb)/0.1)' }}>
+      <input type="radio" name={`delete-${group.id}`} value={value} checked={picked === value} disabled={disabled || !!busy} onChange={() => setMode(value)} className="mt-0.5 size-4 flex-none accent-[var(--color-amber)]" />
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span className="text-[13.5px] font-medium">{title}</span>
+        <span className="text-[12.5px] leading-[1.6] text-ink/58">{sub}</span>
+      </span>
+    </label>
+  );
+  const n = plan?.items.length ?? 0;
   return (
     <Dialog
       open
-      onOpenChange={(o) => !o && onClose()}
+      onOpenChange={(o) => !o && !busy && onClose()}
       title={`删除分组「${group.label}」`}
-      description="只删除分组本身。里面的收藏和子分组都会保留，不会被删除。"
+      width={500}
+      description={content ? '分组和它的子分组会被删除；里面的收藏先移到回收站，不会被永久删除。' : '只删除分组本身。里面的收藏和子分组都会保留，不会被删除。'}
       footer={
         <>
-          <Button className="h-10 px-4" onClick={onClose}>
+          <Button className="h-10 px-4" disabled={!!busy} onClick={onClose}>
             取消
           </Button>
-          <Button variant="danger" className="h-10 px-5" onClick={remove}>
-            删除分组
-          </Button>
+          {content ? (
+            <Button variant="danger" className="h-10 px-5" disabled={!!busy} onClick={() => void removeWithContent()}>
+              {failure ? '再试一次' : n ? '移到回收站并删除分组' : plan?.subgroups.length ? '删除分组和子分组' : '删除分组'}
+            </Button>
+          ) : (
+            <Button variant="danger" className="h-10 px-5" disabled={!!busy} onClick={remove}>
+              删除分组
+            </Button>
+          )}
         </>
       }
     >
-      <ul aria-label="删除后的影响" className="m-0 flex flex-col gap-2 pl-5 text-[13.5px] leading-[1.6]">
-        <li>
-          直属的 {impact.directItems} 个收藏移到「{impact.moveTo.label}」
-        </li>
-        {impact.childGroups.length > 0 && (
+      <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
+        <legend className="mb-1 p-0 text-[13px] font-medium text-ink/80">删除方式</legend>
+        {choice('keep', '只删除分组，保留内容（推荐）', `收藏移到「${impact.moveTo.label}」，子分组上移一层`)}
+        {choice('content', '连同内容删除', blocked ?? `子分组一起删除；${n} 个收藏移到回收站，可以恢复`, !!blocked)}
+      </fieldset>
+      {content && plan ? (
+        <ul aria-label="删除后的影响" className="m-0 flex flex-col gap-2 pl-5 text-[13.5px] leading-[1.6]">
           <li>
-            {impact.childGroups.length} 个子分组（{impact.childGroups.map((c) => c.label).join('、')}）上移一层，放到「{impact.moveTo.id ? impact.moveTo.label : '顶层'}」，它们自己的 {impact.totalItems - impact.directItems} 个收藏和下级分组不变
+            删除分组「{pathLabel(categories, group.id)}」
+            {plan.subgroups.length > 0 && `和它的 ${plan.subgroups.length} 个子分组（${plan.subgroups.map((g) => g.label).join('、')}）`}
           </li>
-        )}
-        {impact.renamed.map((r) => (
-          <li key={r.id}>
-            子分组「{r.from}」与上级已有分组同名，会改名为「{r.to}」
+          <li>{n ? `${n} 个收藏移到回收站（不是永久删除，可以在「回收站」里恢复）` : '里面没有收藏'}</li>
+          {n > 0 && <li>原来的分组已不在，恢复的收藏会放到「{plan.restoreTo.path}」</li>}
+          {plan.pinned > 0 && <li>其中 {plan.pinned} 个固定在首页，会从首页取下；恢复后不会自动重新固定</li>}
+          <li className="text-ink/60">先把收藏逐个移到回收站，全部完成后才删除分组；有一个没有完成就停下，分组不删除。</li>
+        </ul>
+      ) : (
+        <ul aria-label="删除后的影响" className="m-0 flex flex-col gap-2 pl-5 text-[13.5px] leading-[1.6]">
+          <li>
+            直属的 {impact.directItems} 个收藏移到「{impact.moveTo.label}」
           </li>
-        ))}
-        <li className="text-ink/60">删除后不能自动撤销；需要时可以重新新建分组再把收藏移回去。</li>
-      </ul>
+          {impact.childGroups.length > 0 && (
+            <li>
+              {impact.childGroups.length} 个子分组（{impact.childGroups.map((c) => c.label).join('、')}）上移一层，放到「{impact.moveTo.id ? impact.moveTo.label : '顶层'}」，它们自己的 {impact.totalItems - impact.directItems} 个收藏和下级分组不变
+            </li>
+          )}
+          {impact.renamed.map((r) => (
+            <li key={r.id}>
+              子分组「{r.from}」与上级已有分组同名，会改名为「{r.to}」
+            </li>
+          ))}
+          <li className="text-ink/60">删除后不能自动撤销；需要时可以重新新建分组再把收藏移回去。</li>
+        </ul>
+      )}
+      {busy && (
+        <p role="status" className="m-0 flex items-center gap-2 text-[13px] text-ink/70">
+          <Spinner /> 正在移到回收站：{busy.done} / {busy.total}…
+        </p>
+      )}
+      {failure && (
+        <div role="alert" className="flex flex-col gap-1.5 rounded-xl p-3.5 text-[13px] leading-[1.6]" style={{ background: 'rgb(var(--nx-error-rgb)/0.1)' }}>
+          <span className="font-medium text-danger-ink">{failure.title}</span>
+          {failure.lines.map((l) => (
+            <span key={l}>{l}</span>
+          ))}
+        </div>
+      )}
     </Dialog>
   );
 }
