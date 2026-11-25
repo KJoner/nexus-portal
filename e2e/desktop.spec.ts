@@ -44,6 +44,9 @@ test('search keyboard model (R1.5 · 01)', async ({ home: page }) => {
   await page.keyboard.press('Escape');
   await expect(input).toHaveAttribute('aria-expanded', 'false');
   await input.focus();
+  // UI v2: the shortcuts' heading row (常用网站 · 整理) comes first, as on screen; then the shortcuts.
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('button', { name: '整理首页快捷方式' })).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(page.locator(dock('github'))).toBeFocused();
 });

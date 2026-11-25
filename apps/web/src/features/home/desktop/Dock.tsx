@@ -349,6 +349,8 @@ export function Dock(props: Props) {
 
   const shownExtra = pages[current] ?? [];
   const lastPage = current === pages.length - 1;
+  // One page that fits under the Dock row, with no services and no 添加 tile (a new space's 4×2).
+  const aligned = pages.length === 1 && !showAdd && services.length === 0 && !props.addToExtension && extra.length > 0 && extra.length <= sites.length && extra.length <= cols;
   const total = sites.length + extra.length;
 
   const onDragEnd = (e: DragEndEvent) => {
@@ -419,17 +421,34 @@ export function Dock(props: Props) {
             className="px-6 transition-[opacity,visibility] duration-200 ease-soft"
             style={{ paddingTop: EXT_TOP, opacity: expanded ? 1 : 0, visibility: expanded ? 'visible' : 'hidden' }}
           >
-            <SortableContext items={shownExtra.map((a) => a.id)} strategy={rectSortingStrategy}>
-              <div
-                key={current}
-                className={cn('grid justify-center', dir === 'next' && 'nx-page-next', dir === 'prev' && 'nx-page-prev')}
-                style={{ gridTemplateColumns: `repeat(${cols}, ${natural}px)`, columnGap: EXT_GAP_X, rowGap: EXT_GAP_Y }}
-              >
-                {shownExtra.map((app, k) => (
-                  <DockSite key={app.id} app={app} index={sites.length + current * cols * rows + k} cell={natural} {...siteProps} />
-                ))}
-                {props.addToExtension && lastPage && shownExtra.length < cols * rows && <AddTile cell={natural} iconSize={iconSize} labels={labels} label="添加" onClick={props.onOpenDrawer} />}
-              </div>
+            <SortableContext items={shownExtra.map((a) => a.id)} strategy={aligned ? horizontalListSortingStrategy : rectSortingStrategy}>
+              {aligned ? (
+                // A second row no longer than the first (a new space's 4×2): laid out like the Dock row,
+                // its sites right under the Dock's, with the 快速打开 column left empty.
+                <div className="flex items-start justify-center" style={{ gap: GAP }}>
+                  {shownExtra.map((app, k) => (
+                    <DockSite key={app.id} app={app} index={sites.length + k} cell={cell} {...siteProps} />
+                  ))}
+                  {Array.from({ length: sites.length - shownExtra.length }, (_, k) => (
+                    <span key={k} aria-hidden className="flex-none" style={{ width: cell }} />
+                  ))}
+                  <span aria-hidden className="invisible flex">
+                    <Separator />
+                  </span>
+                  <span aria-hidden className="flex-none" style={{ width: cell }} />
+                </div>
+              ) : (
+                <div
+                  key={current}
+                  className={cn('grid justify-center', dir === 'next' && 'nx-page-next', dir === 'prev' && 'nx-page-prev')}
+                  style={{ gridTemplateColumns: `repeat(${cols}, ${natural}px)`, columnGap: EXT_GAP_X, rowGap: EXT_GAP_Y }}
+                >
+                  {shownExtra.map((app, k) => (
+                    <DockSite key={app.id} app={app} index={sites.length + current * cols * rows + k} cell={natural} {...siteProps} />
+                  ))}
+                  {props.addToExtension && lastPage && shownExtra.length < cols * rows && <AddTile cell={natural} iconSize={iconSize} labels={labels} label="添加" onClick={props.onOpenDrawer} />}
+                </div>
+              )}
             </SortableContext>
             {showPager && pages.length > 1 && (
               <div className="flex items-center justify-center gap-1 pt-2" style={{ height: PAGER_H }}>

@@ -1,6 +1,6 @@
 import { appHref, desktopShortcuts, hostOf, MAX_PINS, pinnedSites, uiPreset, type AppEntry, type StatusLevel } from '@nexus/shared';
 import { Activity, ArrowRight, ArrowUpRight, Bookmark, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, ExternalLink, Eye, EyeOff, GripVertical, Image, LayoutTemplate, Pencil, Pin, PinOff, Plus, Settings, SlidersHorizontal, X } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { ContextMenu, menuPoint, type MenuItem, type MenuState } from '../../../components/ContextMenu';
 import { ToastHost } from '../../../components/ToastHost';
@@ -28,6 +28,9 @@ import { StatusPopover } from './StatusPopover';
 import { TopBar } from './TopBar';
 
 const ICON = { s: 48, m: 56, l: 64 } as const;
+/** UI v2 (spec 02 N1, prototype nexus.html#home): the shortcuts' heading row and footer inside the slab. */
+const FRAME_HEAD = 34;
+const FRAME_FOOT = 46;
 /** Per-browser memory of the extension being open (设置 · 记住展开状态). */
 const EXPANDED_KEY = 'nexus.home.expanded';
 
@@ -67,6 +70,12 @@ export function DesktopHome() {
   const iconSize = ICON[look.iconSize];
   const labels = home.labels.desktop;
   const showShortcuts = ui.shortcuts === 'show';
+  // 常用网站 · 整理 above the shortcuts and 固定到首页… · 添加收藏 under them; edit mode has its own bar.
+  // A short window (1280×720) keeps the heading only: 添加收藏 stays under the slab, so nothing below
+  // it (打开我的收藏, the starter hint) is pushed off the screen; a very short one (600) neither.
+  const framed = showShortcuts && !edit && h >= 680;
+  const footed = framed && h >= 820;
+  const frameH = (framed ? FRAME_HEAD : 0) + (footed ? FRAME_FOOT : 0);
   const pinned = useMemo(() => pinnedSites(config), [config]);
   const { first: dockSites, extra } = useMemo(() => desktopShortcuts(config), [config]);
   const { shortcuts } = home;
@@ -239,7 +248,7 @@ export function DesktopHome() {
   const addToExtension = edit && shortcuts.mode !== 'single' && dockSites.length >= home.dockSize && pinned.length < MAX_PINS;
   const extItems = extra.length + (addToExtension ? 1 : 0);
   const cols = extensionCols(iconSize, slabW);
-  const room = h - top - clockH - 67 - (edit ? 62 : 0) - 56;
+  const room = h - top - clockH - 67 - (edit ? 62 : 0) - 56 - frameH;
   const pagesFor = (r: number) => Math.max(1, Math.ceil(extItems / (cols * r)));
   const heightFor = (r: number) => {
     const m = dockHeights(iconSize, labels, Math.min(r, Math.ceil(extItems / cols) || 1), shortcuts.pager && pagesFor(r) > 1);
@@ -306,7 +315,7 @@ export function DesktopHome() {
             ref={slabRef}
             edit={edit}
             maxPanel={h - top - clockH - 67 - 36}
-            dockHeight={showShortcuts || edit ? metrics.first + (expanded ? metrics.extension : 0) : 0}
+            dockHeight={(showShortcuts || edit ? metrics.first + (expanded ? metrics.extension : 0) : 0) + frameH}
             dockHandle={showShortcuts && canToggle ? <DockHandle state={expandedPref ? 'pinned' : peek.open ? 'peek' : 'closed'} count={extra.length} hover={peek.button} onToggle={() => pinExpanded(!expandedPref)} /> : undefined}
             hideInput={ui.search === 'hide'}
             onFocusSearch={() => {
@@ -315,6 +324,7 @@ export function DesktopHome() {
             }}
             onAction={onAction}
             dock={
+              <ShortcutsFrame framed={framed} footer={footed} readOnly={ro} onArrange={() => navigate('/settings/favorites?view=pinned')} onAdd={() => openAddFavorite()}>
               <Dock
                 sites={dockSites}
                 extra={extra}
@@ -339,6 +349,7 @@ export function DesktopHome() {
                 onMove={homeActions.move}
                 onMoveTo={homeActions.moveTo}
               />
+              </ShortcutsFrame>
             }
           />
           {/* The dock's expand handle hangs below the slab: what follows starts under it, never on it. */}
@@ -373,7 +384,8 @@ export function DesktopHome() {
                 打开我的收藏
                 <ArrowRight className="size-3.5" />
               </button>
-              {!ro && (
+              {/* With the shortcuts' footer shown, 添加收藏 sits there; one button, not two. */}
+              {!ro && !footed && (
                 <button type="button" onClick={() => openAddFavorite()} className="flex h-9 items-center gap-1.5 rounded-xl border-0 bg-transparent px-3 text-ink/72 transition-colors duration-140 hover:bg-ink/8 hover:text-ink">
                   <Plus className="size-3.5" />
                   添加收藏
@@ -425,5 +437,43 @@ export function DesktopHome() {
       <ToastHost variant="desktop" />
       <LazyFavoriteDialogs />
     </div>
+  );
+}
+
+/**
+ * 常用网站 (UI v2 · spec 02 N1, prototype nexus.html#home): a heading row with 整理 (my favorites,
+ * on 首页快捷方式) above the shortcuts, and a footer saying where pinned favorites show up, with
+ * 添加收藏, under them. Lives in the slab's idle layer, so it fades out with the shortcuts while
+ * searching. The middle clips: an extension opening or closing never paints over the footer.
+ */
+function ShortcutsFrame({ framed, footer, readOnly, onArrange, onAdd, children }: { framed: boolean; footer: boolean; readOnly: boolean; onArrange(): void; onAdd(): void; children: ReactNode }) {
+  if (!framed) return children;
+  return (
+    <section aria-labelledby="nx-shortcuts-title" className="flex h-full flex-col">
+      <div className="flex flex-none items-end justify-between px-7 pb-0.5 text-[12px] text-ink/56" style={{ height: FRAME_HEAD }}>
+        <h2 id="nx-shortcuts-title" className="m-0 text-[12px] font-normal">
+          常用网站
+        </h2>
+        <button type="button" onClick={onArrange} aria-label="整理首页快捷方式" className="-mr-2 flex h-7 items-center gap-1 rounded-lg border-0 bg-transparent px-2 text-[12px] text-ink/60 transition-colors duration-140 hover:bg-ink/8 hover:text-ink">
+          整理
+          <ArrowUpRight className="size-3" aria-hidden />
+        </button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
+      {footer && (
+      <div className="mx-[22px] flex flex-none items-center justify-between gap-3 border-t border-ink/8 pl-1.5 text-[12px] text-ink/50" style={{ height: FRAME_FOOT }}>
+        <span className="flex min-w-0 items-center gap-1.5">
+          <Pin className="size-3 flex-none" aria-hidden />
+          <span className="truncate">固定到首页的收藏会出现在这里</span>
+        </span>
+        {!readOnly && (
+          <button type="button" onClick={onAdd} className="-mr-2 flex h-8 flex-none items-center gap-1.5 rounded-lg border-0 bg-transparent px-2 text-[12.5px] text-ink/72 transition-colors duration-140 hover:bg-ink/8 hover:text-ink">
+            <Plus className="size-3.5" aria-hidden />
+            添加收藏
+          </button>
+        )}
+      </div>
+      )}
+    </section>
   );
 }

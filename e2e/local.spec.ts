@@ -92,6 +92,43 @@ test('L01/L03/L05/L06: first visit is a usable home; saves stay in this browser,
   expect(priv).toEqual([]);
 });
 
+test('N1 (UI v2): 常用网站 · 整理 above the shortcuts, 添加收藏 under them; a new space is a real 4×2; nothing pushed off a laptop screen', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'the desktop home page');
+  /** Its centre is on screen and nothing covers it (Playwright would scroll a clipped element into view). */
+  const onTop = (name: string) =>
+    page.getByRole('button', { name, exact: true }).evaluate((el) => {
+      const b = el.getBoundingClientRect();
+      const hit = document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2);
+      return b.bottom <= innerHeight && !!hit && el.contains(hit);
+    });
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.goto('/');
+  const shortcuts = page.getByRole('region', { name: '常用网站' });
+  await expect(shortcuts).toBeVisible();
+  await expect(shortcuts.locator('[data-dock]')).toHaveCount(8);
+  // The eight starter sites: four in the Dock row and four right under them, column for column.
+  const boxes = await page.locator('[data-dock]').evaluateAll((els) => els.map((e) => e.getBoundingClientRect()).map((b) => ({ x: Math.round(b.x), y: Math.round(b.y) })));
+  for (let i = 0; i < 4; i++) {
+    expect(boxes[i + 4]!.x).toBe(boxes[i]!.x);
+    expect(boxes[i + 4]!.y).toBeGreaterThan(boxes[i]!.y);
+  }
+  // One 添加收藏 on the page (in the footer), and it, 整理 and 打开我的收藏 are all reachable.
+  await expect(page.getByText('固定到首页的收藏会出现在这里')).toBeVisible();
+  await expect(page.getByRole('button', { name: '添加收藏', exact: true })).toHaveCount(1);
+  for (const name of ['整理首页快捷方式', '添加收藏', '打开我的收藏']) expect(await onTop(name), name).toBe(true);
+  await shot(page, 'local-n1-home-frame');
+
+  // A laptop height keeps the heading; 添加收藏 goes back under the slab instead of off the screen.
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await expect(page.getByText('固定到首页的收藏会出现在这里')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '添加收藏', exact: true })).toHaveCount(1);
+  for (const name of ['整理首页快捷方式', '添加收藏', '打开我的收藏']) expect(await onTop(name), `${name} at 1280×720`).toBe(true);
+
+  // 整理 opens 我的收藏 on 首页快捷方式.
+  await page.getByRole('button', { name: '整理首页快捷方式' }).click();
+  await expect(page).toHaveURL(/\/settings\/favorites\?view=pinned$/);
+});
+
 test('L08: a saved page that is not on the home page is found by the home search and by 快速打开', async ({ page }) => {
   await addPage(page, '没有固定的参考文档', 'https://docs.example.org/reference/unpinned');
   await page.goto('/');

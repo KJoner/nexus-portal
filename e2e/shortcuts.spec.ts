@@ -253,28 +253,38 @@ test.describe('desktop', () => {
     const first = page.locator(dock(pins[5]!));
     const last = page.locator(dock(pins[pins.length - 1]!));
 
-    // Folded: the button comes straight after 快速打开, in both directions.
+    // Folded: the hidden links are skipped — after 快速打开 comes the shortcuts' footer (添加收藏, UI v2),
+    // then the button hanging under the slab, in screen order, in both directions.
+    const add = page.getByRole('button', { name: '添加收藏', exact: true });
     await all.focus();
     await page.keyboard.press('Tab');
+    await expect(add).toBeFocused();
+    await page.keyboard.press('Tab');
     await expect(handle).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
     await page.keyboard.press('Shift+Tab');
     await expect(all).toBeFocused();
 
     // Open: every link is reachable again.
-    await page.keyboard.press('Tab');
+    await handle.focus();
     await page.keyboard.press('Enter');
     await expect(handle).toHaveAttribute('aria-expanded', 'true');
     await page.keyboard.press('Shift+Tab');
+    await expect(add).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
     await expect(last).toBeFocused();
+    await page.keyboard.press('Tab');
     await page.keyboard.press('Tab');
     await expect(handle).toBeFocused();
     await all.focus();
     await page.keyboard.press('Tab');
     await expect(first).toBeFocused();
 
-    // Esc from inside lands on the button, where the keyboard carries on.
+    // Esc from inside lands on the button, where the keyboard carries on (folded again: back past the footer).
     await page.keyboard.press('Escape');
     await expect(handle).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(add).toBeFocused();
     await page.keyboard.press('Shift+Tab');
     await expect(all).toBeFocused();
   });
