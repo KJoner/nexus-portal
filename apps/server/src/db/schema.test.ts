@@ -3,7 +3,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { LEGACY_ADMIN_ID, MIGRATIONS, openDb } from '.';
+import { LEGACY_ADMIN_ID, migratePg, MIGRATIONS, openDb, PG_MIGRATIONS } from '.';
+import { Users } from '../users/users';
+import { PgliteDatabase } from './pglite';
 import { DIALECTS, testDb } from './testing';
 
 const TABLES = ['users', 'user_config', 'op_log', 'auth', 'sessions', 'wallpapers', 'icons', 'health_status', 'integrations', 'devices', 'login_intents', 'invites', 'mail_outbox', 'mail_suppression', 'meta'];
@@ -80,6 +82,66 @@ describe('SQLite v6 → v7 (single user → accounts)', () => {
     expect(await db.get('select owner_id, scopes from devices')).toEqual({ owner_id: LEGACY_ADMIN_ID, scopes: 'config:read' });
     expect(await db.get('select password_hash from auth')).toEqual({ password_hash: '$argon2id$x' });
     expect(await db.get("select value from meta where key = 'config_format'")).toEqual({ value: '3' });
+    await db.close();
+  });
+});
+
+/**
+ * UI v2 I1: the login-name snapshot is one added column (SQLite v11, PostgreSQL v5). Existing
+ * accounts keep every row and their identity; the column starts empty and the next sign-in fills it.
+ */
+describe('login name column (SQLite v10 → v11, PostgreSQL v4 → v5)', () => {
+  const ISSUER = 'https://id.example.test/realms/accounts';
+  const existing = "insert into users (id, issuer, subject, email, email_verified, display_name, is_admin, disabled, created_via, created_at, last_login_at) values ('u-old', 'https://id.example.test/realms/accounts', 'sub-old', 'old@example.test', 1, '旧 姓名', 0, 0, 'oidc', 1, 2)";
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'nexus-v11-'));
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('is SQLite v11 and PostgreSQL v5 (append-only: later versions come after it)', () => {
+    expect(MIGRATIONS[10]).toMatch(/alter table users add column username text not null default ''/);
+    expect(PG_MIGRATIONS[4]).toMatch(/alter table users add column username text not null default ''/);
+  });
+
+  it('SQLite: an account of v10 keeps its identity and profile, starts without a login name, and gets it at the next sign-in', async () => {
+    const file = join(dir, 'nexus.db');
+    const v10 = new Sqlite(file);
+    for (const m of MIGRATIONS.slice(0, 10)) v10.exec(m);
+    v10.pragma('user_version = 10');
+    v10.exec(existing);
+    v10.close();
+
+    const db = openDb(file);
+    expect(db.pragma('user_version', { simple: true })).toBe(MIGRATIONS.length);
+    expect(await db.get("select id, issuer, subject, email, display_name, username from users where id = 'u-old'")).toEqual({ id: 'u-old', issuer: ISSUER, subject: 'sub-old', email: 'old@example.test', display_name: '旧 姓名', username: '' });
+    expect(await db.get("select username from users where id = ?", [LEGACY_ADMIN_ID])).toEqual({ username: '' });
+    const r = await new Users(db).signIn({ issuer: ISSUER, subject: 'sub-old', email: 'old@example.test', username: 'old@example.test' }, 'closed');
+    expect(r).toMatchObject({ ok: true, created: false, user: { id: 'u-old', displayName: '旧 姓名', username: 'old@example.test' } });
+    await db.close();
+  });
+
+  it('PostgreSQL: the same, from a database at v4', async () => {
+    const db = await PgliteDatabase.create();
+    await db.exec('create table schema_migrations (version integer primary key, applied_at bigint not null)');
+    for (const [i, m] of PG_MIGRATIONS.slice(0, 4).entries()) {
+      await db.exec(m);
+      await db.run('insert into schema_migrations (version, applied_at) values (?, ?)', [i + 1, 1]);
+    }
+    await db.exec(existing);
+    expect(await migratePg(db)).toBe(PG_MIGRATIONS.length);
+    expect(await db.get('select max(version) as v from schema_migrations')).toEqual({ v: PG_MIGRATIONS.length });
+    expect(await db.get("select id, issuer, subject, email, display_name, username from users where id = 'u-old'")).toEqual({ id: 'u-old', issuer: ISSUER, subject: 'sub-old', email: 'old@example.test', display_name: '旧 姓名', username: '' });
+    const r = await new Users(db).signIn({ issuer: ISSUER, subject: 'sub-old', username: 'old_login' }, 'closed');
+    expect(r).toMatchObject({ ok: true, created: false, user: { id: 'u-old', username: 'old_login' } });
+    await db.close();
+  });
+
+  it('PostgreSQL: a database written by a newer release is refused, as SQLite is (rolling back needs the backup)', async () => {
+    const db = await PgliteDatabase.create();
+    await migratePg(db);
+    await db.run('insert into schema_migrations (version, applied_at) values (?, ?)', [PG_MIGRATIONS.length + 1, 1]);
+    await expect(migratePg(db)).rejects.toThrow(`数据库版本（${PG_MIGRATIONS.length + 1}）比当前程序（${PG_MIGRATIONS.length}）新`);
     await db.close();
   });
 });

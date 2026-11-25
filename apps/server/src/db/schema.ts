@@ -415,6 +415,12 @@ export const MIGRATIONS: readonly string[] = [
   alter table user_config add column tree_migration text;
   alter table user_config add column starter_version integer not null default 0;
   `,
+  `
+  -- v11 (UI v2 · v12.0.3 I1): the login name (preferred_username) the identity service sent at the
+  -- last sign-in, for the account page only ('' until the next sign-in, and for password accounts).
+  -- Never a key: accounts stay matched by (issuer, subject); a name, nickname or e-mail joins nothing.
+  alter table users add column username text not null default '';
+  `,
 ];
 
 /**
@@ -709,6 +715,10 @@ export const PG_MIGRATIONS: readonly string[] = [
   -- v4 (UI v2 · v12.0.3 N2/N3): see SQLite v10.
   alter table user_config add column tree_migration text;
   alter table user_config add column starter_version integer not null default 0;
+  `,
+  `
+  -- v5 (UI v2 · v12.0.3 I1): see SQLite v11.
+  alter table users add column username text not null default '';
   `,
 ];
 

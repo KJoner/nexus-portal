@@ -616,7 +616,9 @@ export function createApp(deps: Deps) {
     const u = me(c);
     const cfg = await repo.snapshot(u.id);
     return c.json({
-      account: { id: u.id, displayName: u.displayName || u.email || (u.id === LEGACY_ADMIN_ID ? '管理员' : '用户'), email: u.email, emailVerified: u.emailVerified },
+      // 登录用户名 (UI v2 I1): the identity service's own field, only when it sent one — never made up
+      // from the nickname or e-mail. For the account page; the status pill shows none of these.
+      account: { id: u.id, displayName: u.displayName || u.email || (u.id === LEGACY_ADMIN_ID ? '管理员' : '用户'), email: u.email, emailVerified: u.emailVerified, ...(u.username ? { username: u.username } : {}) },
       product: 'nexus',
       role: u.isAdmin ? 'admin' : 'user',
       permissions: u.isAdmin ? ['collection', 'devices', 'health', 'integrations', 'admin'] : ['collection', 'devices'],

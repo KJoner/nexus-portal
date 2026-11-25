@@ -116,7 +116,17 @@ export interface AuthOptions {
 
 /** GET /api/v2/me (v0.4): who this session belongs to. Never a source of permissions on the client. */
 export interface MeResponse {
-  account: { id: string; displayName: string; email: string; emailVerified: boolean };
+  account: {
+    id: string;
+    displayName: string;
+    email: string;
+    emailVerified: boolean;
+    /**
+     * UI v2 I1: the login name at the identity service (`preferred_username` of the last sign-in),
+     * present only when it sent one. For the account page; never a key, never shown in the top bar.
+     */
+    username?: string;
+  };
   product: 'nexus';
   role: 'admin' | 'user';
   permissions: string[];

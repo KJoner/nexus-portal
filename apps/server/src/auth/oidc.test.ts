@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { LEGACY_ADMIN_ID } from '../db';
+import { DIALECTS } from '../db/testing';
 import { buildTestApp, cookieOf, write, type TestApp } from '../testing/app';
 import { fakeIdp, type FakeIdp } from '../testing/fake-idp';
 import { safeReturnTo } from './intents';
@@ -147,6 +148,58 @@ describe('unified sign-in (OIDC, ADR-011)', () => {
     expect(await account(again.cookie)).toEqual(expect.objectContaining({ id: ida, displayName: '新的昵称' }));
   });
 
+  describe.each(DIALECTS)('I1: the login name (preferred_username) is a display-only snapshot (%s)', (dialect) => {
+    type Account = { id: string; displayName: string; email: string; username?: string };
+    const account = async (cookie: string) => ((await (await me(t!.app, cookie)).json()) as { account: Account }).account;
+    const stored = async (id: string) => (await t!.db.get<{ username: string }>('select username from users where id = ?', [id]))!.username;
+
+    it('/me returns it as sent (trimmed), never the nickname; same nickname is still two accounts; renaming the nickname leaves it alone', async () => {
+      const { t } = await setup({ dialect });
+      const a = await account((await t.loginOidc({ sub: 'u-1', email: 'u1@example.test', nickname: '小雨', preferredUsername: '  xiaoyu ' })).cookie);
+      expect(a).toMatchObject({ displayName: '小雨', email: 'u1@example.test', username: 'xiaoyu' });
+      // Another person with the same nickname: another account, with their own login name.
+      const b = await account((await t.loginOidc({ sub: 'u-2', email: 'u2@example.test', nickname: '小雨', preferredUsername: 'rain_2' })).cookie);
+      expect(b.id).not.toBe(a.id);
+      expect(b).toMatchObject({ displayName: '小雨', username: 'rain_2' });
+      // The nickname changes at the identity service: same account, new display name, same login name.
+      const again = await account((await t.loginOidc({ sub: 'u-1', email: 'u1@example.test', nickname: '新的昵称', preferredUsername: 'xiaoyu' })).cookie);
+      expect(again).toMatchObject({ id: a.id, displayName: '新的昵称', username: 'xiaoyu' });
+      expect(await stored(b.id)).toBe('rain_2');
+      // An account from before the change: its login name is its e-mail, shown as it is.
+      const old = await account((await t.loginOidc({ sub: 'u-3', email: 'old@example.test', name: '旧 姓名', preferredUsername: 'old@example.test' })).cookie);
+      expect(old).toMatchObject({ displayName: '旧 姓名', username: 'old@example.test' });
+    });
+
+    it('it never finds an account: the same login name from another subject is another account', async () => {
+      const { t } = await setup({ dialect });
+      // (A login name re-used at the identity service after the first account was deleted, say.)
+      const a = await account((await t.loginOidc({ sub: 'first', preferredUsername: 'same_login' })).cookie);
+      const b = await account((await t.loginOidc({ sub: 'second', preferredUsername: 'same_login' })).cookie);
+      expect(b.id).not.toBe(a.id);
+      expect(await t.db.all("select id from users where username = 'same_login'")).toHaveLength(2);
+    });
+
+    it('a token without it: a new account has none (no key in /me, nothing guessed); a known one keeps what it had', async () => {
+      const { t } = await setup({ dialect });
+      const fresh = await account((await t.loginOidc({ sub: 'bare', email: 'bare@example.test', nickname: '无名' })).cookie);
+      expect(fresh.displayName).toBe('无名');
+      expect('username' in fresh).toBe(false);
+      expect(await stored(fresh.id)).toBe('');
+      // Known account: first with the claim, then without it, then with a blank one.
+      const a = await account((await t.loginOidc({ sub: 'known', nickname: '有名', preferredUsername: 'known_user' })).cookie);
+      for (const preferredUsername of [undefined, '   ']) {
+        const later = await account((await t.loginOidc({ sub: 'known', nickname: '改名', ...(preferredUsername === undefined ? {} : { preferredUsername }) })).cookie);
+        expect(later).toMatchObject({ id: a.id, displayName: '改名', username: 'known_user' });
+      }
+    });
+
+    it('is clipped like the display name (80 characters)', async () => {
+      const { t } = await setup({ dialect });
+      const a = await account((await t.loginOidc({ sub: 'long', preferredUsername: `${'x'.repeat(100)}@example.test` })).cookie);
+      expect(a.username).toBe('x'.repeat(80));
+    });
+  });
+
   it('registration modes are enforced by the server', async () => {
     const closed = await setup({ registration: 'closed' });
     expect((await closed.t.loginOidc({ sub: 'new' })).location).toBe('/?auth_error=registration_closed');
@@ -193,6 +246,22 @@ describe('旧管理员认领 (claiming the legacy administrator)', () => {
     // Signing in later with the same identity is the administrator.
     const later = await t.loginOidc({ sub: 'owner' });
     expect(((await (await me(t.app, later.cookie)).json()) as { account: { id: string } }).account.id).toBe(LEGACY_ADMIN_ID);
+  });
+
+  it('I1: the claim records the login name of the identity (display-only), and a later sign-in without it keeps it', async () => {
+    const { t, idp } = await setup();
+    const legacy = await t.loginLegacy();
+    // A password session of the administrator: no login name before the claim.
+    expect(((await (await me(t.app, legacy)).json()) as { account: Record<string, unknown> }).account).not.toHaveProperty('username');
+    const start = await t.app.request('/auth/link/start', { headers: { cookie: legacy } });
+    const authUrl = new URL(start.headers.get('location')!);
+    const code = idp.authorize(authUrl, { sub: 'owner', email: 'owner@example.test', nickname: '站长', preferredUsername: 'site_owner' });
+    const cb = await t.app.request(`/auth/callback?code=${code}&state=${authUrl.searchParams.get('state')}`, { headers: { cookie: [legacy, cookieOf(start, 'nexus_oidc')].join('; ') } });
+    expect(cb.headers.get('location')).toBe('/settings/account?linked=1');
+    const cookie = cookieOf(cb, 'nexus_session')!;
+    expect(await (await me(t.app, cookie)).json()).toMatchObject({ account: { id: LEGACY_ADMIN_ID, displayName: '站长', username: 'site_owner' }, role: 'admin' });
+    const later = await t.loginOidc({ sub: 'owner', email: 'owner@example.test' });
+    expect(((await (await me(t.app, later.cookie)).json()) as { account: Record<string, unknown> }).account).toMatchObject({ id: LEGACY_ADMIN_ID, displayName: '站长', username: 'site_owner' });
   });
 
   it('an identity that already has an account cannot claim the administrator', async () => {

@@ -26,6 +26,16 @@ export function displayNameFromClaims(c: Readonly<Record<string, unknown>>): str
   return undefined;
 }
 
+/**
+ * The login-name snapshot (UI v2 I1): `preferred_username` as the identity service sent it, trimmed;
+ * undefined when absent or blank. Only for the account page's 登录用户名 — never derived from the
+ * nickname or e-mail, and never a way to find or match an account.
+ */
+export function usernameFromClaims(c: Readonly<Record<string, unknown>>): string | undefined {
+  const v = c.preferred_username;
+  return typeof v === 'string' && v.trim() ? v.trim() : undefined;
+}
+
 export class OidcError extends Error {
   constructor(
     readonly code: 'unavailable' | 'rejected',
@@ -106,7 +116,7 @@ export class Oidc {
     if (!c || !tokens.id_token) throw new OidcError('rejected', 'ID Token 缺失');
     const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
     return {
-      claims: { issuer: c.iss, subject: c.sub, email: str(c.email), emailVerified: c.email_verified === true, name: displayNameFromClaims(c) },
+      claims: { issuer: c.iss, subject: c.sub, email: str(c.email), emailVerified: c.email_verified === true, name: displayNameFromClaims(c), username: usernameFromClaims(c) },
       sid: str(c.sid) ?? null,
       refreshToken: tokens.refresh_token ?? null,
       idToken: tokens.id_token,

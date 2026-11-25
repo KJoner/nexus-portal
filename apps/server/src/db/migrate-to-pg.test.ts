@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ConfigRepo } from '../config/repo';
 import { Devices } from '../auth/devices';
-import { LEGACY_ADMIN_ID, MIGRATIONS } from '.';
+import { LEGACY_ADMIN_ID, MIGRATIONS, openDb } from '.';
 import { migrateSqliteToPg, MigrationRefused } from './migrate-to-pg';
 import { PgliteDatabase } from './pglite';
 
@@ -110,6 +110,22 @@ describe('SQLite → PostgreSQL (M4)', { timeout: 30_000 }, () => {
     db.prepare("update config set revision = 88 where id = 1").run();
     db.close();
     await expect(migrateSqliteToPg({ sqliteFile: file, target, dataDir: dir })).rejects.toThrow(/另一份数据/);
+    await target.close();
+  });
+
+  it('an accounts-era database (SQLite v11) brings each account with its login-name snapshot (UI v2 I1)', async () => {
+    const file = join(dir, 'nexus.db');
+    const src = openDb(file);
+    await src.run("insert into users (id, issuer, subject, email, display_name, username, created_via, created_at) values ('u-a', 'https://id.example.test/realms/accounts', 'sub-a', 'a@example.test', '小雨', 'xiaoyu', 'oidc', 1)");
+    await src.close();
+    const target = await PgliteDatabase.create();
+    const r = await migrateSqliteToPg({ sqliteFile: file, target, dataDir: dir });
+    expect(r.problems).toEqual([]);
+    expect(r.source.userVersion).toBe(MIGRATIONS.length);
+    expect(await target.get("select subject, display_name, username from users where id = 'u-a'")).toEqual({ subject: 'sub-a', display_name: '小雨', username: 'xiaoyu' });
+    expect(await target.get('select username from users where id = ?', [LEGACY_ADMIN_ID])).toEqual({ username: '' });
+    // The fingerprint does not depend on profile snapshots: a second run is still the same migration.
+    expect(await migrateSqliteToPg({ sqliteFile: file, target, dataDir: dir })).toMatchObject({ ok: true, alreadyMigrated: true });
     await target.close();
   });
 
