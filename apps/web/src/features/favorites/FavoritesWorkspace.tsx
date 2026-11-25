@@ -358,7 +358,12 @@ export function FavoritesWorkspace() {
       { label: '删除分组…', icon: Trash2, danger: true, onSelect: () => setGroupTask({ kind: 'delete', id: g.id }) },
     ];
     const header = { target: { kind: 'system' as const, icon: Folder }, name: g.label, sub: g.path.join(' / ') };
-    if (compact) return setSheet({ header, items });
+    if (compact) {
+      // The group chooser (a modal dialog) closes first: a sheet opened over it would be hidden
+      // from screen readers and the keyboard (everything outside a modal dialog is).
+      setTreeSheet(false);
+      return setSheet({ header, items });
+    }
     const r = el.getBoundingClientRect();
     setMenu({ x: Math.min(window.innerWidth - 248, r.left), y: r.bottom + 4, header, items: [...items.slice(0, 3), 'sep', ...items.slice(3, 7), 'sep', items[7]!], keyboard: true, origin: el });
   };

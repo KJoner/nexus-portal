@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { expect, freshTag, ops, test } from './fixtures';
 
 /**
- * 我的收藏 · 拖动与连同内容删除 (UI v2 · v12.0.3 N2/N4, spec 06 B06/B09/B10) on the built app:
+ * 我的收藏 · 拖动与连同内容删除 (UI v2 · v12.0.3 N2/N4, spec 06 B06/B09/B10/B11) on the built app:
  * groups dragged in the tree (beside a group, or into it as a subgroup), favorites dragged onto a
  * group (the selected ones with them), the grid sorted by drag, and 删除分组 › 连同内容删除 —
  * favorites to 回收站 first, groups after, a refusal stops it with no group deleted. Real mouse
@@ -277,4 +277,31 @@ test('B09: offline, 连同内容删除 is not offered (and says why); 保留内�
   await expect(dialog.getByRole('radio', { name: /^只删除分组，保留内容/ })).toBeChecked();
   await page.keyboard.press('Escape');
   await context.setOffline(false);
+});
+
+test('B11 (phone): no drag needed — the group menu, 删除分组 with both choices, and the favorite menu are all there', async ({ home: page, isMobile }) => {
+  test.skip(!isMobile, 'phone width');
+  await page.goto('/settings/favorites?view=group:work');
+  // Nothing to drag on a phone (the menus do it all).
+  await expect(page.getByRole('button', { name: /^拖动以排序/ })).toHaveCount(0);
+  const row = page.getByRole('listbox', { name: /（\d+ 条）$/ }).getByRole('option').nth(1);
+  await row.getByRole('button', { name: /的操作$/ }).click();
+  const sheet = page.getByRole('dialog').filter({ has: page.getByRole('button', { name: '移动到分组…' }) });
+  for (const name of ['在分组里上移', '在分组里下移', '移到分组最前', '移到分组最后', '移动到分组…']) await expect(sheet.getByRole('button', { name })).toBeVisible();
+  await sheet.getByRole('button', { name: '取消', exact: true }).click();
+
+  await page.getByRole('button', { name: /^工作$/ }).first().click();
+  const groups = page.getByRole('dialog', { name: '选择分组' });
+  await groups.getByRole('button', { name: '「工作」的操作' }).click();
+  const menu = page.getByRole('dialog', { name: '工作' });
+  for (const name of ['新建子分组', '重命名', '移动到…', '上移', '下移', '移到最前', '移到最后', '删除分组…']) await expect(menu.getByRole('button', { name })).toBeVisible();
+  await menu.getByRole('button', { name: '删除分组…' }).click();
+  const dialog = page.getByRole('dialog', { name: '删除分组「工作」' });
+  await expect(dialog.getByRole('radio', { name: /^只删除分组，保留内容/ })).toBeChecked();
+  await dialog.getByRole('radio', { name: /^连同内容删除/ }).check();
+  await expect(dialog.getByLabel('删除后的影响')).toContainText('移到回收站（不是永久删除');
+  await expect(dialog.getByRole('button', { name: '移到回收站并删除分组' })).toBeVisible();
+  await dialog.getByRole('button', { name: '取消' }).click();
+  await expect(dialog).toBeHidden();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 });
