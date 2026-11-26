@@ -3,7 +3,7 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 推送版本标签时，发布工作流会把对应版本的段落写进 GitHub Release 的说明，所以**打标签之前先在这里写好该版本的条目**。
 
-## [未发布]
+## [0.4.0] - 2026-11-26
 
 ### 新增
 
